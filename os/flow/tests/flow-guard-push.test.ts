@@ -12,6 +12,43 @@ FLOW-GUARD-04 (per-mode closed vocabulary).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 2 — pre-push guard tests</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,7 +58,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { gitExec, initRepo, installGuard } from "./helpers.ts";
+import { gitExec, initRepo, installGuard, remoteAddGitDaemon } from "./helpers.ts";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -46,7 +83,7 @@ async function adoptedWithOrigin(): Promise<{ repo: string; origin: string }> {
   dirs.push(origin);
   const bare = await gitExec(origin, ["init", "--bare", "-b", "develop", "."]);
   if (bare.exitCode !== 0) throw new Error(`bare init failed: ${bare.stderr}`);
-  await gitExec(repo, ["remote", "add", "origin", origin]);
+  await remoteAddGitDaemon(repo, origin);
   return { repo, origin };
 }
 

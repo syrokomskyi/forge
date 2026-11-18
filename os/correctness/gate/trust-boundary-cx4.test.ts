@@ -83,6 +83,43 @@ remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
 EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
 decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -194,7 +231,9 @@ describe("RFC-1616 r4 — remote-tracking ref trust (fetch-side levers)", () => 
     "CX-62: `url.<fake>.insteadOf` + `remote.origin.pushurl` in .git/config — the trusted fetch pulls the fake repo's refs (CX-50 fixed env config only) while the session push still lands on the real origin",
     { timeout: 120_000 },
     async () => {
-      const { repo, origin } = await initRepoWithOrigin(dirs, { prefix: "cx4-insteadof-" });
+      const { repo, origin, originUrl } = await initRepoWithOrigin(dirs, {
+        prefix: "cx4-insteadof-",
+      });
       const parent = path.dirname(repo);
       const tSha = await trailerCommit(repo, "t.txt", "X-Verifier-Report: r.yaml");
       // A fake "origin" whose develop sits exactly at the trailer commit.
@@ -202,23 +241,25 @@ describe("RFC-1616 r4 — remote-tracking ref trust (fetch-side levers)", () => 
       gitIn(parent, ["init", "--bare", "-b", "develop", "fake.git"]);
       await gitExec(repo, ["push", fake, "develop", "main"]);
       const cSha = await cleanCommit(repo, "clean.txt");
-      // fetch resolves remote.origin.url through insteadOf → the fake repo;
-      // push resolves pushurl → the real origin.
-      await gitExec(repo, ["config", `url.${fake}.insteadOf`, origin]);
-      await gitExec(repo, ["config", "remote.origin.pushurl", origin]);
+      // `url.*.insteadOf` is refuse-on-presence: the session-servable
+      // rewrite target cannot be distinguished from a real remote, so the
+      // channel refuses before any transport is contacted (CX-131).
+      await gitExec(repo, ["config", `url.${fake}.insteadOf`, originUrl]);
+      await gitExec(repo, ["config", "remote.origin.pushurl", originUrl]);
       const digest = await collectDigest(repo, ambientIo, { fetch: true });
-      expect(digest.fetched).toBe(true);
-      // the trusted fetch contacted the fake remote through the repo
-      // config rewrite — and the identity parity check must flag it:
-      expect(digest.develop.remote).toBe(tSha);
+      expect(digest.fetched).toBe(false);
+      // The fake remote's tip never entered the digest's remote view —
+      // a refused transport contributes nothing, not even a partial tip.
+      expect(digest.develop.remote).not.toBe(tSha);
       expect(
-        digest.diagnostics.some((d) => d.ruleId === "FLOW-PUSH-09"),
-        "url.insteadOf + pushurl split produced no remote-identity diagnostic",
+        digest.diagnostics.some((d) => d.ruleId === "FLOW-PUSH-13"),
+        `url.insteadOf produced no refused-key diagnostic ` +
+          `(diagnostics=${JSON.stringify(digest.diagnostics.map((d) => d.ruleId))})`,
       ).toBe(true);
       const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
       expect(
-        pushed08(data),
-        `pushFlow shipped a verifier-trailer commit judged on insteadOf-fetched refs ` +
+        data.pushed === false,
+        `pushFlow shipped a verifier-trailer commit over a refused remote surface ` +
           `(pushed=${data.pushed}, diagnostics=${JSON.stringify(data.diagnostics.map((d) => d.ruleId))})`,
       ).toBe(true);
       const remoteLog = gitIn(origin, ["rev-list", "develop"]);

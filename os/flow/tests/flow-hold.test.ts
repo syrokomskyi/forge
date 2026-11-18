@@ -13,7 +13,6 @@ replay; unhold recreates the worktree and integrate lands A again; the
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 4 — flow.hold/unhold tests</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
@@ -28,6 +27,44 @@ first-argument allowlist; the read-only adapter and the static scan use the same
 table. The kernel forwards --dry-run into commands that declare a dry-run flag,
 and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
 back to werkstatt run flow.install --dry-run.</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
+  <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -45,7 +82,7 @@ import { integrateFlowBranch } from "../handlers/flow-integrate.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
 import { releaseTagAnnotation, writeReleaseTag } from "../release-tags.ts";
 import { commonGitDir, readRegistry } from "../registry.ts";
-import { gitExec, initRepo } from "./helpers.ts";
+import { gitExec, initRepo, remoteAddGitDaemon } from "./helpers.ts";
 
 const NOW = new Date("2026-11-02T12:00:00Z");
 
@@ -68,7 +105,7 @@ async function repoWithOrigin(): Promise<{ repo: string; origin: string }> {
   const origin = await mkdtemp(join(tmpdir(), "flow-hold-origin-"));
   dirs.push(origin);
   await gitExec(origin, ["init", "--bare", "-b", "develop", "."]);
-  await gitExec(repo, ["remote", "add", "origin", origin]);
+  await remoteAddGitDaemon(repo, origin);
   await gitExec(repo, ["switch", "develop"]);
   const push = await gitExec(repo, ["push", "-u", "origin", "develop", "main"]);
   if (push.exitCode !== 0) throw new Error(`initial push failed: ${push.stderr}`);
@@ -448,11 +485,7 @@ describe("flow.hold", () => {
 
   it("heldBranchName truncates a 48-char slug to held-<43> and drops a dangling dash", async () => {
     const slug48 = "a".repeat(48);
-    const name = heldBranchName(
-      `auto/session-261102-03-${slug48}`,
-      [],
-      NOW,
-    );
+    const name = heldBranchName(`auto/session-261102-03-${slug48}`, [], NOW);
     expect(name).toBe(`auto/session-261102-01-held-${"a".repeat(43)}`);
     const parsed = (await import("../branch-name.ts")).parseFlowBranch(name!);
     expect(parsed?.slug).toHaveLength(48);

@@ -17,6 +17,43 @@ commit, new-tag detection versus origin, and FLOW-PUSH-01 without origin.</purpo
 
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,7 +68,7 @@ import { collectDigest } from "../digest.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
 import { integrateFlowBranch } from "../handlers/flow-integrate.ts";
 import { writeReleaseTag, releaseTagAnnotation } from "../release-tags.ts";
-import { gitExec, initRepo } from "./helpers.ts";
+import { gitExec, initRepo, remoteAddGitDaemon } from "./helpers.ts";
 
 const NOW = new Date("2026-11-02T12:00:00Z");
 
@@ -58,13 +95,16 @@ async function repoWithOrigin(): Promise<{ repo: string; origin: string }> {
   dirs.push(origin);
   const bare = await gitExec(origin, ["init", "--bare", "-b", "develop", "."]);
   if (bare.exitCode !== 0) throw new Error(`bare init failed: ${bare.stderr}`);
-  await gitExec(repo, ["remote", "add", "origin", origin]);
+  // Path remotes are session-servable — serve the fixture over loopback
+  // git:// so the trusted channel's protocol.file.allow=never pin (CX-131)
+  // admits it.
+  const originUrl = await remoteAddGitDaemon(repo, origin);
   await gitExec(repo, ["switch", "develop"]);
   // The trusted-remote anchor is judged from the COMMITTED forge.yaml —
   // declare it against the real origin or flow.digest refuses unanchored.
   await writeFile(
     join(repo, "forge.yaml"),
-    `schema: "forge/workspace@1"\npush:\n  expectedRemote: ${JSON.stringify(origin)}\n`,
+    `schema: "forge/workspace@1"\npush:\n  expectedRemote: ${JSON.stringify(originUrl)}\n`,
   );
   await gitExec(repo, ["add", "forge.yaml"]);
   await gitExec(repo, ["commit", "-m", "anchor remote"]);
@@ -138,7 +178,11 @@ describe("flow.digest", () => {
     const { repo } = await repoWithOrigin();
 
     const a = await openSession(repo, "alpha");
-    await commitIn(a.worktree!, "docs/rfcs/rfc-9001-alpha.md", "---\nid: RFC-9001\nversionBump: minor\n---\n# A\n");
+    await commitIn(
+      a.worktree!,
+      "docs/rfcs/rfc-9001-alpha.md",
+      "---\nid: RFC-9001\nversionBump: minor\n---\n# A\n",
+    );
     await commitIn(a.worktree!, "a.txt", "a", "X-RFC: RFC-9001");
     await integrate(repo, a.branch!);
 
@@ -162,12 +206,20 @@ describe("flow.digest", () => {
 
   it("classifies one item per risk category", async () => {
     const { repo } = await repoWithOrigin();
-    await pushedCommit(repo, "package.json", JSON.stringify({
-      name: "x",
-      version: "0.1.0",
-      exports: { ".": "./a.js", "./extra": "./x.js" },
-      dependencies: { dep: "^1.0.0" },
-    }, null, 2) + "\n");
+    await pushedCommit(
+      repo,
+      "package.json",
+      JSON.stringify(
+        {
+          name: "x",
+          version: "0.1.0",
+          exports: { ".": "./a.js", "./extra": "./x.js" },
+          dependencies: { dep: "^1.0.0" },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
 
     await unpushedCommit(repo, "docs/specs/spec-a.md", "# spec\n");
     let data = await collectDigest(repo, ambientIo, { fetch: false });
@@ -179,22 +231,38 @@ describe("flow.digest", () => {
     expect(data.items.at(-1)!.category).toBe("invariant");
 
     await pushedCommit(repo, "marker2.txt", "boundary\n");
-    await unpushedCommit(repo, "package.json", JSON.stringify({
-      name: "x",
-      version: "0.1.0",
-      exports: { ".": "./a.js" },
-      dependencies: { dep: "^1.0.0" },
-    }, null, 2) + "\n");
+    await unpushedCommit(
+      repo,
+      "package.json",
+      JSON.stringify(
+        {
+          name: "x",
+          version: "0.1.0",
+          exports: { ".": "./a.js" },
+          dependencies: { dep: "^1.0.0" },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
     data = await collectDigest(repo, ambientIo, { fetch: false });
     expect(data.items.at(-1)!.category).toBe("capability-removal");
 
     await pushedCommit(repo, "marker3.txt", "boundary\n");
-    await unpushedCommit(repo, "package.json", JSON.stringify({
-      name: "x",
-      version: "0.1.0",
-      exports: { ".": "./a.js" },
-      dependencies: { dep: "^2.0.0" },
-    }, null, 2) + "\n");
+    await unpushedCommit(
+      repo,
+      "package.json",
+      JSON.stringify(
+        {
+          name: "x",
+          version: "0.1.0",
+          exports: { ".": "./a.js" },
+          dependencies: { dep: "^2.0.0" },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
     data = await collectDigest(repo, ambientIo, { fetch: false });
     expect(data.items.at(-1)!.category).toBe("major-dependency");
 
@@ -278,10 +346,7 @@ describe("flow.digest", () => {
   it("RFC-1498 AC-8: a malformed workflow reports FLOW-11 and the digest still returns", async () => {
     const { repo } = await repoWithOrigin();
     await mkdir(join(repo, ".github", "workflows"), { recursive: true });
-    await writeFile(
-      join(repo, ".github", "workflows", "broken.yml"),
-      "name: broken\non: [push\n",
-    );
+    await writeFile(join(repo, ".github", "workflows", "broken.yml"), "name: broken\non: [push\n");
     await writeFile(
       join(repo, ".github", "workflows", "fancy.yml"),
       "name: fancy\non:\n  push:\n    tags: ['v[0-9]*']\n",
@@ -316,7 +381,9 @@ describe("flow.digest", () => {
     const repo = await initRepo({ prefix: "flow-digest-noorigin-" });
     dirs.push(repo);
     const data = await collectDigest(repo, ambientIo, { fetch: false });
-    expect(data.diagnostics.some((d) => d.ruleId === "FLOW-PUSH-01" && d.severity === "error")).toBe(true);
+    expect(
+      data.diagnostics.some((d) => d.ruleId === "FLOW-PUSH-01" && d.severity === "error"),
+    ).toBe(true);
     expect(data.fetched).toBe(false);
   }, 30_000);
 });

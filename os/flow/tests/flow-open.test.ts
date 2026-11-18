@@ -14,6 +14,43 @@ worktree and registry entry.</purpose>
   <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
   <item>RFC-1536: evidence — routing/warning tests, FLOW-OPEN-10 validation renumber, owning-worktree doc rule, frictions F-0091/F-0096/F-0106/F-0119 addressed</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,7 +67,7 @@ import { ambientIo } from "../../../src/utils/io.ts";
 import { formatFlowBranch } from "../branch-name.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
 import { commonGitDir, readRegistry } from "../registry.ts";
-import { gitExec, initRepo } from "./helpers.ts";
+import { gitExec, initRepo, remoteAddGitDaemon } from "./helpers.ts";
 
 const NOW = new Date("2026-11-02T12:00:00Z");
 
@@ -122,7 +159,7 @@ describe("flow.open", () => {
     const repo = await governedRepo();
     const first = formatFlowBranch({ kind: "session", date: NOW, seq: 1, slug: "remote-one" });
     await gitExec(repo, ["branch", first, "develop"]);
-    await gitExec(repo, ["remote", "add", "origin", origin]);
+    await remoteAddGitDaemon(repo, origin);
     const push = await gitExec(repo, ["push", "-u", "origin", first, "develop"]);
     expect(push.exitCode, push.stderr).toBe(0);
     await gitExec(repo, ["branch", "-D", first]);

@@ -21,7 +21,6 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
 
@@ -119,6 +118,43 @@ r9-remediated channel — this commit closes both root causes.
 
 The independent r10 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
   <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -126,13 +162,16 @@ follow-up port commit.</item>
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
-import { execFile, readFileSync } from "../../src/utils/sync-fs.ts";
+import { readFileSync } from "../../src/utils/sync-fs.ts";
 import {
+  evidenceIndexForSpawn,
   evidencePinEnv,
   evidenceRepoPreflight,
-  isUnprovenIndexRead,
+  closeSpawnIndexFd,
+  isIndexConsultingRead,
   isVerifierGitQuery,
   resolveGitBin,
+  spawnCaptured,
   verifierGitEnv,
   type EvidencePreflight,
 } from "../../src/utils/verifier-git.ts";
@@ -244,7 +283,7 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
   // surface degrades every read to `null` — unreadable → `unresolved`,
   // which the tier rules treat as self — never a forged answer. Cached
   // per OriginGit instance: one enumeration per derivation — and the
-  // preflight's `GIT_CONFIG_*` pins and HEAD-anchored index env ride EVERY spawn,
+  // preflight's `GIT_CONFIG_*` pins and verifier-index env ride EVERY spawn,
   // not just the gate, so a non-refused lever (fsmonitor program,
   // pager/filter driver, forged `.git/index`) cannot fire inside a
   // trusted read either (CX-115/CX-121).
@@ -259,30 +298,40 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
   const runBatchBytes = async (specs: string[]): Promise<(Buffer | null)[] | null> => {
     const { ok, pf } = await surfaceState();
     if (!ok) return null;
+    // `--batch` is a line protocol: ONE input line ↔ ONE output record.
+    // A spec carrying `\n`/`\r`/`\0` injects extra query lines — the
+    // records then desynchronize from the input array and wrong-object
+    // bytes get attributed to the wrong spec (CX-130). A `:`-leading
+    // spec resolves a staged blob through the index — under an unproven
+    // index it must degrade to `null`, not consult the ambient index.
+    // Both map to a per-entry null: unreadable, never a forged answer.
+    const idx = evidenceIndexForSpawn(pf);
+    const sent = specs.map((s) =>
+      s.length === 0 ||
+      /[\n\r\0]/.test(s) ||
+      (idx.unproven && (s === ":" || /^:(?![/(!+^-])/.test(s)))
+        ? null
+        : s,
+    );
     const argv = ["cat-file", "--batch"];
-    return new Promise<(Buffer | null)[] | null>((resolve) => {
-      try {
-        const child = execFile(
-          bin,
-          argv,
-          {
-            cwd: workspaceRoot,
-            timeout: 60000,
-            maxBuffer: 128 * 1024 * 1024,
-            env: { ...gitEnvForCwd(), ...evidencePinEnv(argv, pf), ...(pf?.indexEnv ?? {}) },
-            encoding: "buffer",
-          },
-          (err, stdout) => resolve(err ? null : parseCatFileBatchBytes(specs, stdout)),
-        );
-        // The child may exit before the spec list drains (a refused read
-        // or a bad first spec) — EPIPE on stdin must not escape as an
-        // unhandled 'error' event; the batch already resolves null.
-        child.stdin?.on("error", () => {});
-        child.stdin?.end(`${specs.join("\n")}\n`);
-      } catch {
-        resolve(null);
-      }
+    const r = await spawnCaptured(bin, argv, {
+      cwd: workspaceRoot,
+      timeoutMs: 60000,
+      maxBuffer: 128 * 1024 * 1024,
+      env: { ...gitEnvForCwd(), ...evidencePinEnv(argv, pf), ...idx.env },
+      indexFd: idx.indexFd,
+      input: `${sent.filter((s): s is string => s !== null).join("\n")}\n`,
     });
+    if (r.exitCode !== 0) return null;
+    const parsed = parseCatFileBatchBytes(
+      sent.filter((s): s is string => s !== null),
+      r.stdout,
+    );
+    if (parsed === null) return null;
+    const results: (Buffer | null)[] = [];
+    let j = 0;
+    for (const s of sent) results.push(s === null ? null : (parsed[j++] ?? null));
+    return results;
   };
   return {
     run: async (args) => {
@@ -293,63 +342,40 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       if (!isVerifierGitQuery(args)) return null;
       const { ok, pf } = await surfaceState();
       if (!ok) return null;
-      // An unproven claims rebuild (CX-124) leaves no GIT_INDEX_FILE
-      // redirect — an index-consulting op would answer from the
-      // session-writable ambient index (the CX-121 forgery surface).
-      if (isUnprovenIndexRead(args, pf)) return null;
-      return new Promise<string | null>((resolve) => {
-        try {
-          execFile(
-            bin,
-            args,
-            {
-              cwd: workspaceRoot,
-              timeout: 15000,
-              maxBuffer: 32 * 1024 * 1024,
-              env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...(pf?.indexEnv ?? {}) },
-            },
-            (err, stdout) => resolve(err ? null : String(stdout)),
-          );
-        } catch {
-          resolve(null);
-        }
+      // An unproven index refuses index-consulting ops (CX-124/CX-129).
+      const idx = evidenceIndexForSpawn(pf);
+      if (idx.unproven && isIndexConsultingRead(args)) {
+        closeSpawnIndexFd(idx);
+        return null;
+      }
+      const r = await spawnCaptured(bin, args, {
+        cwd: workspaceRoot,
+        timeoutMs: 15000,
+        maxBuffer: 32 * 1024 * 1024,
+        env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...idx.env },
+        indexFd: idx.indexFd,
       });
+      return r.exitCode === 0 ? r.stdout.toString() : null;
     },
     runExit: async (args) => {
       if (!isVerifierGitQuery(args)) return null;
       const { ok, pf } = await surfaceState();
       if (!ok) return null;
-      if (isUnprovenIndexRead(args, pf)) return null;
-      return new Promise<{ code: number; stdout: string; bytes?: Buffer } | null>((resolve) => {
-        try {
-          execFile(
-            bin,
-            args,
-            {
-              cwd: workspaceRoot,
-              timeout: 15000,
-              maxBuffer: 32 * 1024 * 1024,
-              env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...(pf?.indexEnv ?? {}) },
-              // Raw bytes — path listings must validate UTF-8 at byte level;
-              // the default utf8 decode erases the distinction (CX-72).
-              encoding: "buffer",
-            },
-            (err, stdout) => {
-              const bytes = Buffer.isBuffer(stdout) ? stdout : undefined;
-              if (err === null) return resolve({ code: 0, stdout: String(stdout), bytes });
-              // A numeric exit code means the process ran and answered;
-              // spawn/timeout/kill failures carry no code — unreadable.
-              resolve(
-                typeof err.code === "number"
-                  ? { code: err.code, stdout: String(stdout), bytes }
-                  : null,
-              );
-            },
-          );
-        } catch {
-          resolve(null);
-        }
+      const idx = evidenceIndexForSpawn(pf);
+      if (idx.unproven && isIndexConsultingRead(args)) {
+        closeSpawnIndexFd(idx);
+        return null;
+      }
+      const r = await spawnCaptured(bin, args, {
+        cwd: workspaceRoot,
+        timeoutMs: 15000,
+        maxBuffer: 32 * 1024 * 1024,
+        env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...idx.env },
+        indexFd: idx.indexFd,
       });
+      // Exit code -1 marks spawn/timeout/kill — unreadable, not an answer.
+      if (r.exitCode === -1) return null;
+      return { code: r.exitCode, stdout: r.stdout.toString(), bytes: r.stdout };
     },
     showMany: async (specs) =>
       (await runBatchBytes(specs))?.map((b) => (b === null ? null : b.toString("utf8"))) ?? null,

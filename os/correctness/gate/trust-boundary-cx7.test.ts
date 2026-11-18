@@ -245,7 +245,7 @@ describe("RFC-1616 r7 — repo-config ref-write levers on the pinned fetch", () 
     "CX-94: `remote.origin.fetch` unions with the pinned refspec — the evidence fetch creates local `refs/heads/x-*` branches (and `remote.origin.tagOpt` plants remote tags) — CX-81's argv fix never judged the config",
     { timeout: 120_000 },
     async () => {
-      const { repo } = await initRepoWithOrigin(dirs, { prefix: "cx7-fetchcfg-" });
+      const { repo, origin } = await initRepoWithOrigin(dirs, { prefix: "cx7-fetchcfg-" });
       // Session-writable config — remote.* is KEEP so nothing pins or refuses it.
       await gitExec(repo, [
         "config",
@@ -254,9 +254,9 @@ describe("RFC-1616 r7 — repo-config ref-write levers on the pinned fetch", () 
         "+refs/heads/*:refs/heads/x-*",
       ]);
       await gitExec(repo, ["config", "remote.origin.tagOpt", "--tags"]);
-      // Fixture: remote carries a tag the session wants planted locally.
-      const originPath = gitIn(repo, ["remote", "get-url", "origin"]).trim();
-      gitIn(originPath, ["tag", "t-planted", "refs/heads/develop"]);
+      // Fixture: remote carries a tag the session wants planted locally —
+      // `origin` is the bare PATH (the remote URL is a git:// loopback).
+      gitIn(origin, ["tag", "t-planted", "refs/heads/develop"]);
       const fetch = await gitEvidence(repo, [
         "fetch",
         "--prune",

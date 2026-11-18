@@ -43,7 +43,8 @@ Round-10 attack surfaces (assumptions the r9 remediation left open):
 </MODULE_CONTRACT>
 */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import net from "node:net";
 import {
   chmodSync,
   existsSync,
@@ -294,49 +295,86 @@ describe("RFC-1616 r10 — the hooks pin target is dead, not a persistent planta
       writeFileSync(path.join(remote, "r.txt"), "remote\n");
       gitIn(remote, ["add", "-A"]);
       gitIn(remote, ["commit", "-qm", "remote commit"]);
-      gitIn(root, ["config", "remote.origin.url", remote]);
-      gitIn(root, ["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"]);
+      // The remote must ride a transport the session cannot author — a
+      // `remote.origin.url` naming a PATH is session-servable and the
+      // r11 transport judgment refuses it (CX-131), so the fixture
+      // serves the repo over loopback git://.
+      const daemonPort = await new Promise<number>((resolve, reject) => {
+        const srv = net.createServer();
+        srv.once("error", reject);
+        srv.listen(0, "127.0.0.1", () => {
+          const p = (srv.address() as net.AddressInfo).port;
+          srv.close(() => resolve(p));
+        });
+      });
+      const daemon = spawn("git", [
+        "daemon",
+        "--export-all",
+        "--reuseaddr",
+        `--base-path=${path.dirname(remote)}`,
+        "--listen=127.0.0.1",
+        `--port=${daemonPort}`,
+      ]);
+      try {
+        for (let i = 0; ; i++) {
+          try {
+            gitIn(root, ["ls-remote", `git://127.0.0.1:${daemonPort}/${path.basename(remote)}`]);
+            break;
+          } catch (e) {
+            if (i > 50) throw e;
+            await new Promise((r) => setTimeout(r, 100));
+          }
+        }
+        gitIn(root, [
+          "config",
+          "remote.origin.url",
+          `git://127.0.0.1:${daemonPort}/${path.basename(remote)}`,
+        ]);
+        gitIn(root, ["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"]);
 
-      // Trusted spawns must not materialize a hooks dir the session can
-      // discover by polling the temp root and plant hooks into (CX-123).
-      const s = await verifierGit(root, ["status", "--porcelain"]);
-      expect(s.exitCode).toBe(0);
-      const fresh = readdirSync(os.tmpdir()).filter(
-        (d) => d.startsWith("forge-evidence-hooks-") && !hooksDirsBefore.has(d),
-      );
-      expect(
-        fresh,
-        "the verifier still materializes a plantable hooks dir under the session-owned temp root",
-      ).toEqual([]);
+        // Trusted spawns must not materialize a hooks dir the session can
+        // discover by polling the temp root and plant hooks into (CX-123).
+        const s = await verifierGit(root, ["status", "--porcelain"]);
+        expect(s.exitCode).toBe(0);
+        const fresh = readdirSync(os.tmpdir()).filter(
+          (d) => d.startsWith("forge-evidence-hooks-") && !hooksDirsBefore.has(d),
+        );
+        expect(
+          fresh,
+          "the verifier still materializes a plantable hooks dir under the session-owned temp root",
+        ).toEqual([]);
 
-      // The session's strongest lever: repo-config `core.hooksPath` aimed
-      // at a dir holding an executable reference-transaction hook. The
-      // pin must override it with the dead path — the ref update fires
-      // nothing — while the fetch itself still succeeds.
-      const planted = path.join(root, ".planted-hooks");
-      mkdirSync(planted, { recursive: true });
-      const marker = path.join(root, ".ref-tx-marker");
-      const hook = path.join(planted, "reference-transaction");
-      writeFileSync(
-        hook,
-        `#!/bin/sh\necho HOOK-RAN > ${JSON.stringify(marker).slice(1, -1)}\nexit 0\n`,
-      );
-      chmodSync(hook, 0o755);
-      gitIn(root, ["config", "core.hooksPath", planted]);
-      // Control: the repo's own hooks dir carries no such hook — the exec
-      // could only have come from the configured path.
-      expect(existsSync(path.join(root, ".git/hooks/reference-transaction"))).toBe(false);
+        // The session's strongest lever: repo-config `core.hooksPath` aimed
+        // at a dir holding an executable reference-transaction hook. The
+        // pin must override it with the dead path — the ref update fires
+        // nothing — while the fetch itself still succeeds.
+        const planted = path.join(root, ".planted-hooks");
+        mkdirSync(planted, { recursive: true });
+        const marker = path.join(root, ".ref-tx-marker");
+        const hook = path.join(planted, "reference-transaction");
+        writeFileSync(
+          hook,
+          `#!/bin/sh\necho HOOK-RAN > ${JSON.stringify(marker).slice(1, -1)}\nexit 0\n`,
+        );
+        chmodSync(hook, 0o755);
+        gitIn(root, ["config", "core.hooksPath", planted]);
+        // Control: the repo's own hooks dir carries no such hook — the exec
+        // could only have come from the configured path.
+        expect(existsSync(path.join(root, ".git/hooks/reference-transaction"))).toBe(false);
 
-      const f = await gitEvidence(root, ["fetch", "origin"]);
-      expect(
-        f.exitCode,
-        `the pinned fetch must still run (stderr=${JSON.stringify(f.stderr.slice(0, 120))})`,
-      ).toBe(0);
-      expect(gitIn(root, ["rev-parse", "refs/remotes/origin/master"]).trim().length).toBe(40);
-      expect(
-        !existsSync(marker),
-        "the session-configured hook executed inside the trusted fetch — the pin did not override core.hooksPath",
-      ).toBe(true);
+        const f = await gitEvidence(root, ["fetch", "origin"]);
+        expect(
+          f.exitCode,
+          `the pinned fetch must still run (stderr=${JSON.stringify(f.stderr.slice(0, 120))})`,
+        ).toBe(0);
+        expect(gitIn(root, ["rev-parse", "refs/remotes/origin/master"]).trim().length).toBe(40);
+        expect(
+          !existsSync(marker),
+          "the session-configured hook executed inside the trusted fetch — the pin did not override core.hooksPath",
+        ).toBe(true);
+      } finally {
+        daemon.kill();
+      }
     },
   );
 });
@@ -349,7 +387,7 @@ describe("RFC-1616 r10 — the hooks pin target is dead, not a persistent planta
 
 describe("RFC-1616 r10 — the claims-rebuild failure refuses, never falls back to the forged ambient index", () => {
   it(
-    "CX-124 (closed): sabotaging the verifier's throwaway index dir (chmod 0555 — no race needed) makes every claims rebuild fail, and the channels now REFUSE the read (EVIDENCE-REFUSED / null) instead of consulting the ambient session-writable `.git/index` — a hand-written CX-121 stat-forged index can no longer answer clean on dirty bytes; the healthy-path control still reports the dirt",
+    "CX-124 (closed): a session-corrupted `.git/index` makes every claims rebuild fail (the verifier's own index is a nameless O_TMPFILE inode), and the channels now REFUSE the read (EVIDENCE-REFUSED / null) instead of consulting the ambient session-writable `.git/index` — a hand-written CX-121 stat-forged index can no longer answer clean on dirty bytes; the healthy-path control still reports the dirt",
     { timeout: 120_000 },
     async () => {
       const root = repo("cx10-idx-");
@@ -378,34 +416,31 @@ describe("RFC-1616 r10 — the claims-rebuild failure refuses, never falls back 
         `control: the rebuilt claims index must show the dirt (exit=${honest.exitCode}, out=${JSON.stringify(honest.stdout)})`,
       ).toBe(true);
 
-      // Sabotage: the session chmods the verifier's own throwaway index
-      // dir(s) read-only — update-index cannot create its lock file, the
-      // rebuild fails. The channels must FAIL CLOSED: refuse the read
-      // (EVIDENCE-REFUSED / null) — never consult the ambient forged
-      // index. (An evidence call has already run in this process, so its
-      // dir is necessarily present; stale dirs from other processes are
-      // restored in the finally block.)
-      const idxDirs = readdirSync(os.tmpdir()).filter((d) => d.startsWith("forge-evidence-idx-"));
-      expect(idxDirs.length, "premise: the verifier's index dir exists").toBeGreaterThan(0);
-      for (const d of idxDirs) chmodSync(path.join(os.tmpdir(), d), 0o555);
-      try {
-        const ev = await gitEvidence(root, ["status", "--porcelain"]);
-        expect(
-          ev.exitCode !== 0 && ev.stderr.includes("EVIDENCE-REFUSED"),
-          `the sabotaged rebuild did not refuse the evidence read (exit=${ev.exitCode}, out=${JSON.stringify(ev.stdout)})`,
-        ).toBe(true);
-        const og = await createOriginGit(root).run([
-          "status",
-          "--porcelain",
-          "--untracked-files=no",
-        ]);
-        expect(
-          og === null,
-          `the sabotaged rebuild let the origin channel answer from the ambient forged index (${JSON.stringify(og)})`,
-        ).toBe(true);
-      } finally {
-        for (const d of idxDirs) chmodSync(path.join(os.tmpdir(), d), 0o700);
-      }
+      // Sabotage: the verifier index is a nameless O_TMPFILE inode the
+      // session cannot discover or chmod — but `.git/index` is
+      // session-writable too. Garbage bytes make the claims enumeration
+      // (`git ls-files --stage`) die with `index file corrupt`, the
+      // rebuild fails, and the channels must FAIL CLOSED: refuse the
+      // read (EVIDENCE-REFUSED / null) — never consult the ambient
+      // forged index.
+      writeFileSync(path.join(root, ".git", "index"), "garbage-not-an-index");
+      const ev = await gitEvidence(root, ["status", "--porcelain"]);
+      expect(
+        ev.exitCode !== 0 && ev.stderr.includes("EVIDENCE-REFUSED"),
+        `the sabotaged rebuild did not refuse the evidence read (exit=${ev.exitCode}, out=${JSON.stringify(ev.stdout)})`,
+      ).toBe(true);
+      const og = await createOriginGit(root).run(["status", "--porcelain", "--untracked-files=no"]);
+      expect(
+        og === null,
+        `the sabotaged rebuild let the origin channel answer from the ambient forged index (${JSON.stringify(og)})`,
+      ).toBe(true);
+      // The degradation is scoped: reads that never consult the index
+      // still answer — only index-consulting ops refuse (CX-124's rule).
+      const rev = await gitEvidence(root, ["rev-parse", "HEAD"]);
+      expect(
+        rev.exitCode === 0 && rev.stdout.trim().length > 0,
+        `a non-index read was refused under the unproven index (exit=${rev.exitCode})`,
+      ).toBe(true);
     },
   );
 });

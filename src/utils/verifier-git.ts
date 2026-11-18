@@ -18,7 +18,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
 
 Independent clean-context verification (round 7, candidate d2f270ad6)
@@ -160,13 +159,63 @@ r9-remediated channel — this commit closes both root causes.
 
 The independent r10 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  constants as fsConstants,
+  closeSync,
+  existsSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { inflateSync } from "node:zlib";
@@ -359,9 +408,16 @@ export function evidenceConfigArgs(args?: readonly string[]): string[] {
   // dir under the session-owned OS temp root was plantable post-creation
   // (CX-123), and `TMPDIR` survives the env allowlists.
   const onConfigRead = args?.[0] === "config";
+  // `protocol.file.allow=never` rides only the transport ops: a trusted
+  // `ls-remote`/`fetch` must never contact a `file:`/path transport —
+  // the session authors everything it returns (CX-131). Emitted per-op
+  // rather than statically because the scratch channel's `clone <path>`
+  // IS the file transport on purpose.
+  const onTransport = args?.[0] === "ls-remote" || args?.[0] === "fetch";
   return [
     ...EVIDENCE_CONFIG_PINS.flatMap((kv) => ["-c", kv]),
     ...(onConfigRead ? [] : ["-c", `core.hooksPath=${DEVNULL}`]),
+    ...(onTransport ? ["-c", "protocol.file.allow=never"] : []),
     "-c",
     `core.attributesFile=${DEVNULL}`,
     "-c",
@@ -473,10 +529,16 @@ export interface EvidencePreflight {
    * resolves and have NO env/config kill switch — `info/grafts` (grafted
    * parents reach rev-list/merge-base around GIT_NO_REPLACE_OBJECTS,
    * CX-79), `objects/info/alternates` (foreign object store injected into
-   * every lookup), `shallow` (fabricated history truncation). Presence
-   * refuses the channel; `info/attributes` is exempt — driver commands
-   * are neutralized by the diff/filter pins, so the file can no longer
-   * reach a program.
+   * every lookup), `shallow` (fabricated history truncation),
+   * `info/attributes` (CX-125: the file needs no program to falsify a
+   * content hash — git's BUILT-IN clean-side conversions
+   * `working-tree-encoding`/`text`/`eol`/`crlf`/`ident` run inside the
+   * index-vs-worktree hash, so a session-set `working-tree-encoding`
+   * transcoding to the committed blob's encoding makes status/diff
+   * answer clean on completely different worktree bytes; the
+   * `core.attributesFile` pin only covers the GLOBAL file — repo-local
+   * info/attributes is always consulted and has no kill switch).
+   * Presence refuses the channel.
    */
   shapeViolations: string[];
   /**
@@ -490,80 +552,230 @@ export interface EvidencePreflight {
    */
   warnedShape: string[];
   /**
-   * Channel-owned `GIT_INDEX_FILE` pointing at a verifier-built rebuild
-   * of the session index's claims — `.git/index` is session-writable and
-   * a forged stat tuple answers `status --porcelain` clean on dirty bytes
-   * (CX-121), while a HEAD-anchored index cannot express staged or
-   * unborn-HEAD state. The rebuilt entries carry zero stat, so every
+   * The verifier-owned claims index — `.git/index` is session-writable
+   * and a forged stat tuple answers `status --porcelain` clean on dirty
+   * bytes (CX-121), while a HEAD-anchored index cannot express staged or
+   * unborn-HEAD state. The index is self-serialized DIRC v2 from
+   * `ls-files --stage` claims with zeroed stat, so every
    * index-consulting read (status/diff/ls-files/grep --cached)
-   * content-hashes the worktree instead of trusting the session's tuples.
-   * Empty when the session index cannot be enumerated.
+   * content-hashes the worktree instead of trusting a session tuple.
+   * Held as an inherited fd (`GIT_INDEX_FILE=/dev/fd/3`) so no path a
+   * same-uid session can rewrite ever exists (CX-129); platforms
+   * without `/dev/fd` keep the on-disk path and re-verify the bytes
+   * against `bytes` before every spawn.
    */
-  indexEnv?: Record<string, string>;
+  index?: EvidenceIndex;
   /**
-   * Set when the claims rebuild could not be proven (CX-124): the
-   * `GIT_INDEX_FILE` redirect is absent, so index-consulting spawns would
+   * Set when the claims rebuild could not be proven (CX-124): no
+   * verifier-owned index view exists, so index-consulting spawns would
    * consult the session-writable ambient index — exactly the CX-121
-   * forgery surface. Index-consulting argv (INDEX_CONSULTING_OPS) must
-   * refuse; non-index reads (rev-parse/cat-file/log/ls-tree/…) never
-   * consult the index and stay trustworthy — refusing them wholesale
-   * would turn a corrupt-index fixture into a dead channel instead of
-   * the per-read degradation the gate contract records.
+   * forgery surface. Index-consulting argv must refuse; non-index
+   * reads (rev-parse/cat-file/log/ls-tree/…) never consult the index
+   * and stay trustworthy — refusing them wholesale would turn a
+   * corrupt-index fixture into a dead channel instead of the per-read
+   * degradation the gate contract records.
    */
   indexUnproven?: string;
 }
 
 /**
- * Read-table ops whose answer consults `.git/index` (directly or as the
- * worktree-enumeration/stat source). When the preflight could not prove
- * a verifier-owned index view (`indexUnproven`), these ops must refuse —
- * every other op never reads the index and proceeds.
+ * A `.git` index file the verifier owns end to end: `bytes` is the
+ * self-serialized DIRC claims index — `fd` (held open, passed to
+ * children so `GIT_INDEX_FILE=/dev/fd/3` resolves inside their own fd
+ * table) is the airtight form, `path` the no-`/dev/fd` fallback whose
+ * on-disk bytes are re-verified against `bytes` before every spawn
+ * (CX-129: a same-uid session can enumerate and rewrite anything under
+ * `os.tmpdir()`, so the rebuild must not sit there addressably).
  */
-const INDEX_CONSULTING_OPS = new Set(["status", "diff", "ls-files", "grep"]);
+export interface EvidenceIndex {
+  fd?: number;
+  path?: string;
+  bytes: Buffer;
+}
 
 /**
- * True when `args` is an index-consulting read and the preflight could
- * not prove the verifier-owned index view — the spawn would answer from
- * the session-writable ambient index (CX-124's fail-open).
+ * The env/`indexFd` a trusted spawn needs for the verifier index, plus
+ * the honesty flag: `unproven` when no proven index view exists —
+ * either the rebuild failed (CX-124) or a path-mode index failed its
+ * integrity re-read just now (CX-129's post-build rewrite). In fd mode
+ * the bytes are pinned by the open file description; a session rewrite
+ * of the (already-unlinked) name is impossible.
+ */
+export function evidenceIndexForSpawn(preflight: EvidencePreflight | null | undefined): {
+  env: Record<string, string>;
+  indexFd?: number;
+  unproven: boolean;
+} {
+  const flagged = preflight?.indexUnproven !== undefined;
+  const idx = preflight?.index;
+  if (idx?.fd !== undefined) {
+    // A child inheriting fd 3 shares the HELD fd's open file description —
+    // its file OFFSET. Two concurrent children then lseek one description
+    // through each other (`diff`/`status` races read the index mid-offset
+    // and die on corrupt bytes). Reopening `/dev/fd/N` mints an
+    // independent description for this spawn only — the caller owns it
+    // and closes it once the spawn resolves. The same-uid session can
+    // still reach the inode through `/proc/<pid>/fd/` (a nameless
+    // O_TMPFILE has no path, but procfs enumerates the process's open
+    // fds), so the inode's bytes are re-proven through the fresh
+    // description before the child is trusted with them — a rewrite
+    // flips the read to unproven, never to a forged index.
+    try {
+      const childFd = openSync(`/dev/fd/${idx.fd}`, "r");
+      const back = Buffer.alloc(idx.bytes.length);
+      const got = readSync(childFd, back, 0, idx.bytes.length, 0);
+      if (got !== idx.bytes.length || !back.equals(idx.bytes)) {
+        closeSync(childFd);
+        return { env: {}, unproven: true };
+      }
+      return { env: { GIT_INDEX_FILE: "/dev/fd/3" }, indexFd: childFd, unproven: flagged };
+    } catch {
+      return { env: {}, unproven: true };
+    }
+  }
+  if (idx?.path !== undefined) {
+    try {
+      const onDisk = readFileSync(idx.path);
+      if (onDisk.equals(idx.bytes)) {
+        return { env: { GIT_INDEX_FILE: idx.path }, unproven: flagged };
+      }
+    } catch {
+      /* unreadable — same as forged */
+    }
+    return { env: {}, unproven: true };
+  }
+  return { env: {}, unproven: flagged };
+}
+
+/**
+ * Close the per-spawn fd `evidenceIndexForSpawn` minted — required on
+ * every path that returns BEFORE `spawnCaptured` (which closes it itself
+ * once the child inherited its dup).
+ */
+export function closeSpawnIndexFd(idx: { indexFd?: number }): void {
+  if (idx.indexFd !== undefined) {
+    try {
+      closeSync(idx.indexFd);
+    } catch {
+      /* already closed */
+    }
+  }
+}
+
+/** Release a preflight's held index fd — per-call channels close it; cached preflights keep it. */
+export function closeEvidenceIndex(preflight: EvidencePreflight | null | undefined): void {
+  if (preflight?.index?.fd !== undefined) {
+    try {
+      closeSync(preflight.index.fd);
+    } catch {
+      /* already closed */
+    }
+  }
+}
+
+/**
+ * True when `args` consults `.git/index` — directly, as the worktree-
+ * enumeration/stat source, or through a `:`-leading index object spec.
+ * The judgment is per-argv, not per-subcommand, and every unprovable
+ * shape answers true (a refused read is recorded as unreadable; a
+ * served forgery is not):
  *
- * The judgment is per-argv, not per-subcommand: a tree-anchored read
- * (`git grep <sha>`, `git diff A..B`) never consults the index and must
- * still work when the index is unproven (the audit's tree prefilter and
- * the gate's range diffs degrade per-read, not channel-wide), while
- * `status`/`ls-files` and index- or worktree-anchored `diff`/`grep` read
- * the session-writable index directly. Ambiguous shapes refuse — a
- * refused read is recorded as unreadable, a served forgery is not.
+ * - `status`/`ls-files` always read the index.
+ * - `diff` ALWAYS counts: only a two-rev tree diff stays off the index,
+ *   but rev-vs-path disambiguation cannot be judged textually — an
+ *   existing (or even merely pathspec-able) second token makes it a
+ *   worktree diff on the ambient index (CX-126), and a staged path can
+ *   be forged into it. Under an unproven index every diff refuses.
+ * - `describe` consults the index only under `--dirty`/`--broken`
+ *   (the worktree-vs-HEAD freshness check is diff-index machinery,
+ *   CX-127).
+ * - `grep` consults the index unless ≥1 rev-position token forces a
+ *   tree walk — tokens between the pattern and `--` must resolve as
+ *   revs or git fails honestly, so their mere presence is provable.
+ *   `grep <pattern> -- <path>` has no rev token: a worktree grep whose
+ *   file enumeration the ambient index drives (CX-128).
+ * - any `:<path>`/`:<n>:<path>` spec in ANY op resolves a staged blob
+ *   through the index; `:/…`/`:(…)`/`:!…` rev-and-pathspec magics do
+ *   not.
+ */
+const INDEX_SPEC_ARG = /^:(?![/(!+^-])/;
+const INDEX_ALWAYS_OPS = new Set(["status", "ls-files"]);
+const GREP_INDEX_FLAGS = new Set([
+  "--cached",
+  "--untracked",
+  "--no-index",
+  "--exclude-standard",
+  "--recurse-submodules",
+  "--all-objects",
+]);
+/** Short grep options whose value is separate (`-e pat`) or attached (`-epat`). */
+const GREP_VALUE_SHORT = new Set(["e", "f", "m", "A", "B", "C", "O"]);
+export function isIndexConsultingRead(args: readonly string[]): boolean {
+  // `:<path>`/`:<stage>:<path>` resolve through the index in ANY op —
+  // `:/`, `:(`, `:!`, `:+`, `:^`, `:-` are rev/pathspec magics, not
+  // index specs, and a `rev:path` spec never leads with `:`.
+  for (const a of args.slice(1)) {
+    if (a === ":" || INDEX_SPEC_ARG.test(a)) return true;
+  }
+  const op = args[0] ?? "";
+  if (INDEX_ALWAYS_OPS.has(op)) return true;
+  if (op === "diff") return true;
+  if (op === "describe") {
+    return args.some(
+      (a) =>
+        a === "--dirty" ||
+        a.startsWith("--dirty=") ||
+        a === "--broken" ||
+        a.startsWith("--broken="),
+    );
+  }
+  if (op !== "grep") return false;
+  const dd = args.indexOf("--");
+  const head = dd === -1 ? args.slice(1) : args.slice(1, dd);
+  if (head.some((a) => GREP_INDEX_FLAGS.has(a))) return true;
+  // Option-aware rev scan: `-e`/`-f` carry the pattern as an option
+  // value so every later non-option token is a rev; otherwise the
+  // first non-option token IS the pattern and only the rest can be
+  // revs. Unknown bare long options pessimistically eat the next
+  // token as their value — miscounting toward FEWER revs only
+  // refuses a valid tree grep, never admits a worktree one.
+  let patternGiven = false;
+  let patternSeen = false;
+  let revs = 0;
+  for (let i = 0; i < head.length; i++) {
+    const a = head[i]!;
+    if (a.startsWith("--")) {
+      if (a.includes("=")) continue;
+      i++; // separate value (known or pessimistically assumed)
+      continue;
+    }
+    if (a.startsWith("-") && a.length > 1) {
+      const cluster = a.slice(1);
+      const vi = [...cluster].findIndex((c) => GREP_VALUE_SHORT.has(c));
+      if (vi === -1) continue;
+      if (cluster[vi] === "e" || cluster[vi] === "f") patternGiven = true;
+      if (vi === cluster.length - 1) i++; // value is the next token
+      continue;
+    }
+    if (!patternGiven && !patternSeen) {
+      patternSeen = true;
+      continue;
+    }
+    revs++;
+  }
+  return revs === 0;
+}
+
+/**
+ * Legacy two-argument form kept for callers that carry the preflight:
+ * true when the read consults the index AND the preflight could not
+ * prove the verifier-owned index view (CX-124's fail-closed rule).
  */
 export function isUnprovenIndexRead(
   args: readonly string[],
   preflight?: EvidencePreflight | null,
 ): boolean {
-  if (preflight?.indexUnproven === undefined) return false;
-  const op = args[0] ?? "";
-  if (!INDEX_CONSULTING_OPS.has(op)) return false;
-  if (op === "status" || op === "ls-files") return true;
-  const dd = args.indexOf("--");
-  const head = dd === -1 ? args.slice(1) : args.slice(1, dd);
-  if (op === "diff") {
-    let revs = 0;
-    for (const a of head) {
-      if (a.startsWith("-")) {
-        if (a === "--cached" || a === "--index") return true;
-        continue;
-      }
-      revs += a.includes("..") ? 2 : 1;
-    }
-    return revs < 2;
-  }
-  // grep: `-e <pattern>` carries the pattern as an option value, so every
-  // non-option token before `--` is a rev — a tree-anchored grep reads
-  // tree objects only. The tree-anchored shape requires an explicit `--`
-  // with a non-option, non-`-e`-value token in front of it; anything else
-  // (worktree grep, `--cached`, no separator) consults the index.
-  if (args.includes("--cached")) return true;
-  if (dd === -1) return true;
-  const beforeSep = head[head.length - 1];
-  return beforeSep === undefined || beforeSep.startsWith("-") || head[head.length - 2] === "-e";
+  return preflight?.indexUnproven !== undefined && isIndexConsultingRead(args);
 }
 
 /**
@@ -612,6 +824,7 @@ const EVIDENCE_CONFIG_STATIC = new Set([
   "protocol.rsync.allow",
   "protocol.ftp.allow",
   "protocol.ftps.allow",
+  "protocol.file.allow",
   "core.attributesfile",
   "core.excludesfile",
   "core.commitgraph",
@@ -655,13 +868,26 @@ const EVIDENCE_CONFIG_REFUSE: ReadonlyArray<{ key: RegExp; value?: RegExp }> = [
   // session-set driver can never shape `diff` evidence, and the
   // allowlisted `log -p`/`show`/`diff` internal paths keep working.
   { key: /^diff\.external$/i },
+  // `url.<base>.insteadOf`/`.pushInsteadOf` silently retarget EVERY
+  // transport — name-positioned AND literal-URL — so `ls-remote origin`
+  // answers a session repo's refs while `remote get-url origin` still
+  // reports the real URL (CX-131). The key is a URL-keyed multivalued
+  // map: no `-c` can enumerate or neutralize the bases, and the
+  // channel's transport honesty depends on the spawned argv being the
+  // contacted target. Presence refuses the channel.
+  { key: /^url\..*\.(?:push)?insteadof$/i },
 ];
 
 /** The stderr prefix a refused evidence call carries — callers treat it as unverifiable, never as an empty answer. */
 export const EVIDENCE_REFUSED_PREFIX = "EVIDENCE-REFUSED";
 
 /** `.git` metadata paths whose presence refuses evidence — resolved via `--git-path` so linked worktrees land on the right common/worktree dir. */
-const EVIDENCE_SHAPE_PATHS = ["info/grafts", "objects/info/alternates", "shallow"] as const;
+const EVIDENCE_SHAPE_PATHS = [
+  "info/grafts",
+  "objects/info/alternates",
+  "shallow",
+  "info/attributes",
+] as const;
 
 /**
  * Shape paths reported as diagnostics without refusing — they cannot
@@ -1269,13 +1495,16 @@ export async function scanPackObjects(objectsDir: string): Promise<string[]> {
   return forged;
 }
 
-let evidenceIndexDirPath: string | undefined;
 let evidenceIndexSeq = 0;
-function evidenceIndexDir(): string {
-  if (evidenceIndexDirPath === undefined) {
-    evidenceIndexDirPath = mkdtempSync(path.join(os.tmpdir(), "forge-evidence-idx-"));
-  }
-  return evidenceIndexDirPath;
+/**
+ * The named-fallback index file name — flat under the OS temp root,
+ * unique per process + sequence. A same-uid session can still discover
+ * and overwrite the file, but the per-spawn byte re-prove turns any
+ * rewrite into `indexUnproven` (a refused read), never a forged view
+ * (CX-129).
+ */
+function evidenceIndexName(): string {
+  return `forge-evidence-index-${process.pid}-${++evidenceIndexSeq}`;
 }
 
 /**
@@ -1304,42 +1533,162 @@ function evidenceIndexDir(): string {
  * index must refuse, never degrade.
  */
 export interface EvidenceIndexPreparation {
-  /** `GIT_INDEX_FILE` env for index-consulting spawns; empty on failure. */
-  env: Record<string, string>;
-  /** Shape-violation string when the rebuild could not be proven. */
+  /** The verifier-owned claims index; absent on failure. */
+  index?: EvidenceIndex;
+  /** Failure string when the rebuild could not be proven. */
   failure?: string;
 }
 
+interface IndexClaim {
+  mode: number;
+  sha: Buffer;
+  stage: number;
+  name: Buffer;
+}
+
+/**
+ * `ls-files --stage -z` emits `mode SP sha SP stage TAB name NUL` — the
+ * session index's OBJECT CLAIMS only: no stat tuples, no
+ * assume-unchanged/skip-worktree flags. Claims are sorted by (name,
+ * stage) byte order because the DIRC writer and `git diff-index`
+ * disagree on unordered input.
+ */
+function parseIndexClaims(listing: string): IndexClaim[] | null {
+  const claims: IndexClaim[] = [];
+  for (const rec of listing.split("\0")) {
+    if (rec.length === 0) continue;
+    const tab = rec.indexOf("\t");
+    const meta = /^([0-7]+) ([0-9a-f]{40}|[0-9a-f]{64}) ([0-3])$/.exec(
+      tab === -1 ? rec : rec.slice(0, tab),
+    );
+    if (meta === null || tab === -1) return null;
+    claims.push({
+      mode: Number.parseInt(meta[1]!, 8),
+      sha: Buffer.from(meta[2]!, "hex"),
+      stage: Number.parseInt(meta[3]!, 10),
+      name: Buffer.from(rec.slice(tab + 1), "utf8"),
+    });
+  }
+  claims.sort((a, b) =>
+    Buffer.compare(a.name, b.name) !== 0 ? Buffer.compare(a.name, b.name) : a.stage - b.stage,
+  );
+  return claims;
+}
+
+/**
+ * Serialize claims into a minimal DIRC v2/v3 index — the on-disk format
+ * `GIT_INDEX_FILE` consumes: header, `zero-stat + mode + sha + flags +
+ * name` entries (8-byte aligned), trailer digest over the whole image.
+ * v3 is chosen only when a pathname exceeds 0xFFF bytes (v2's flags
+ * field cannot express the long-name marker). Zeroed stat means every
+ * index-vs-worktree comparison falls back to content hashing — a forged
+ * stat tuple can never answer "clean" through this index (CX-121), and
+ * the claims themselves can only fabricate dirt (an index entry a
+ * session never staged), never hide real dirt.
+ */
+function serializeIndexClaims(claims: IndexClaim[]): Buffer {
+  const shaBytes = claims.find((c) => c.sha.length === 32) ? 32 : 20;
+  const longName = claims.some((c) => c.name.length > 0xfff);
+  const fixedLen = 40 + shaBytes + 2; // stat block + object id + flags
+  const entries = claims.map((c) => {
+    const rawLen = fixedLen + c.name.length;
+    const entry = Buffer.alloc(Math.ceil((rawLen + 1) / 8) * 8); // ≥1 NUL, 8-byte aligned
+    // stat block = ctime(2) mtime(2) dev ino mode uid gid size → 10 u32;
+    // everything zero except the file MODE (u32 #7, offset 24) — zeroed
+    // tuples force content hashing, but the entry must still carry its
+    // real mode or the index records a different file type.
+    entry.writeUInt32BE(c.mode, 24);
+    c.sha.copy(entry, 40);
+    const flags = (c.stage << 12) | Math.min(c.name.length, 0xfff);
+    entry.writeUInt16BE(flags, 40 + shaBytes);
+    c.name.copy(entry, 40 + shaBytes + 2);
+    return entry;
+  });
+  const header = Buffer.alloc(12);
+  header.write("DIRC", 0);
+  header.writeUInt32BE(longName ? 3 : 2, 4);
+  header.writeUInt32BE(claims.length, 8);
+  const body = Buffer.concat([header, ...entries]);
+  const digest = shaBytes === 32 ? createHash("sha256") : createHash("sha1");
+  digest.update(body);
+  return Buffer.concat([body, digest.digest()]);
+}
+
+/**
+ * Held index bytes a same-uid session can never reach: prefer
+ * O_TMPFILE — an unnamed inode, never path-addressable; fall back to a
+ * named file that is written, reopened read-only, byte-proven, and
+ * unlinked while the fd is still held. The fd is what children inherit
+ * as fd 3 (`GIT_INDEX_FILE=/dev/fd/3`) — a rewrite attack has no path
+ * left to target (CX-129).
+ */
+function createHeldIndexFile(bytes: Buffer): number | null {
+  const oTmpfile = (fsConstants as { O_TMPFILE?: number }).O_TMPFILE;
+  if (typeof oTmpfile === "number") {
+    // O_TMPFILE straight on the OS temp root — the inode is created
+    // NAMELESS, so nothing ever lands in a directory listing for a
+    // same-uid session to discover, chmod, or overwrite (CX-129). `/tmp`
+    // is root-owned/sticky — the session cannot chmod the dir itself to
+    // block the creation, and no `forge-evidence-idx-*` name exists for
+    // its enumeration probes to find.
+    try {
+      const fd = openSync(os.tmpdir(), oTmpfile | fsConstants.O_RDWR, 0o600);
+      writeSync(fd, bytes);
+      return fd;
+    } catch {
+      /* tmpfs/fs lacks O_TMPFILE — named fallback below */
+    }
+  }
+  const p = path.join(os.tmpdir(), evidenceIndexName());
+  try {
+    writeFileSync(p, bytes, { mode: 0o600 });
+    const fd = openSync(p, "r");
+    const back = Buffer.alloc(bytes.length);
+    const got = readSync(fd, back, 0, bytes.length, 0);
+    unlinkSync(p);
+    if (got !== bytes.length || !back.equals(bytes)) {
+      closeSync(fd);
+      return null;
+    }
+    return fd;
+  } catch {
+    rmSync(p, { force: true });
+    return null;
+  }
+}
+
 export async function prepareEvidenceIndex(repoRoot: string): Promise<EvidenceIndexPreparation> {
-  const indexFile = path.join(evidenceIndexDir(), `index-${++evidenceIndexSeq}`);
-  const env = { GIT_INDEX_FILE: indexFile };
-  // Both spawns carry the static pins via env: `ls-files` consults
-  // `core.fsmonitor` even for a pure --stage dump, and `update-index`
-  // can refresh the fsmonitor token — a session program must not exec
-  // inside the claims enumeration or the rebuild (CX-115 class).
+  // The claims listing spawns with the static pins via env: `ls-files`
+  // consults `core.fsmonitor` even for a pure --stage dump — a session
+  // program must not exec inside the enumeration (CX-115 class).
   const claims = await execEvidenceGit(repoRoot, ["ls-files", "--stage", "-z"], {
     extraEnv: evidencePinEnv(["ls-files"]),
   });
   if (claims.exitCode !== 0) {
     return {
-      env: {},
       failure: `.git/index claims enumeration failed (git ls-files --stage, exit ${claims.exitCode})`,
     };
   }
-  // `-z` claims feed `--index-info` verbatim.
-  const rebuilt = await execEvidenceGit(repoRoot, ["update-index", "-z", "--index-info"], {
-    extraEnv: { ...env, ...evidencePinEnv(["update-index"]) },
-    input: claims.stdout,
-  });
-  if (rebuilt.exitCode !== 0) {
-    return {
-      env: {},
-      failure: `.git/index claims rebuild failed (git update-index --index-info, exit ${rebuilt.exitCode})`,
-    };
+  const parsed = parseIndexClaims(claims.stdout);
+  if (parsed === null) {
+    return { failure: ".git/index claims listing is unparsable (forged --stage output)" };
   }
-  // An empty claim set leaves no file — GIT_INDEX_FILE aimed at a
-  // nonexistent path is git's own empty-index answer, matching ambient.
-  return { env };
+  const bytes = serializeIndexClaims(parsed);
+  const fd = createHeldIndexFile(bytes);
+  if (fd !== null && existsSync("/dev/fd")) {
+    return { index: { fd, bytes } };
+  }
+  if (fd !== null) closeSync(fd);
+  // No /dev/fd (win32): the on-disk fallback stays addressable but every
+  // spawn re-verifies its bytes against `bytes` before trusting it —
+  // a session rewrite flips the index to unproven, never to forged data.
+  const p = path.join(os.tmpdir(), evidenceIndexName());
+  try {
+    writeFileSync(p, bytes, { mode: 0o600 });
+  } catch (e) {
+    return { failure: `.git/index claims write failed (${(e as Error).message})` };
+  }
+  return { index: { path: p, bytes } };
 }
 
 /**
@@ -1521,11 +1870,12 @@ export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidenceP
   }
   // `.git/index` is session-writable — a forged stat tuple answers
   // status/diff clean on dirty bytes (CX-121). Rebuild the index's claims
-  // into a verifier-owned zero-stat file every index-consulting spawn
-  // redirects to. A failed rebuild marks the index unproven (CX-124):
-  // index-consulting reads refuse, non-index reads stay trustworthy.
+  // into a verifier-owned zero-stat index the trusted spawns inherit as
+  // an fd, so no same-uid-rewritable path ever holds it (CX-129). A
+  // failed rebuild marks the index unproven (CX-124): index-consulting
+  // reads refuse, non-index reads stay trustworthy.
   const prepared = await prepareEvidenceIndex(repoRoot);
-  preflight.indexEnv = prepared.env;
+  preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
   return preflight;
 }
@@ -1653,10 +2003,85 @@ export async function verifierSpawn(
 }
 
 /**
+ * `spawn`-based execFile replacement — Node's `execFile` silently drops
+ * `stdio[3+]`, so an inherited index fd (CX-129's `/dev/fd/3` transport)
+ * requires `spawn` outright. Mirrors the channels' contract: timeout and
+ * maxBuffer kill to exitCode -1, stdout/stderr captured as Buffers,
+ * optional `input` written to stdin and closed.
+ */
+export function spawnCaptured(
+  bin: string,
+  args: readonly string[],
+  opts: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    timeoutMs: number;
+    maxBuffer: number;
+    indexFd?: number;
+    input?: string | Buffer;
+  },
+): Promise<{ exitCode: number; stdout: Buffer; stderr: Buffer }> {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(bin, args as string[], {
+        cwd: opts.cwd,
+        env: opts.env,
+        stdio: opts.indexFd !== undefined ? ["pipe", "pipe", "pipe", opts.indexFd] : "pipe",
+      });
+    } catch (e) {
+      resolve({ exitCode: -1, stdout: Buffer.alloc(0), stderr: Buffer.from(String(e)) });
+      return;
+    } finally {
+      // The child inherited its own dup of the index fd at fork — the
+      // parent's per-spawn copy is dead weight after spawn() returns
+      // (and on a spawn error it never reached a child at all).
+      if (opts.indexFd !== undefined) {
+        try {
+          closeSync(opts.indexFd);
+        } catch {
+          /* already closed */
+        }
+      }
+    }
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    let total = 0;
+    let done = false;
+    const finish = (code: number) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve({ exitCode: code, stdout: Buffer.concat(out), stderr: Buffer.concat(err) });
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(-1);
+    }, opts.timeoutMs);
+    child.stdout?.on("data", (d: Buffer) => {
+      total += d.length;
+      if (total > opts.maxBuffer) {
+        child.kill("SIGKILL");
+        finish(-1);
+        return;
+      }
+      out.push(d);
+    });
+    child.stderr?.on("data", (d: Buffer) => err.push(d));
+    child.on("error", () => finish(-1));
+    child.on("close", (code) => finish(code ?? -1));
+    child.stdin?.on("error", () => {
+      /* EPIPE — a finished read must not crash the parent */
+    });
+    child.stdin?.end(opts.input ?? "");
+  });
+}
+
+/**
  * Shared spawn for the trusted-git channels: surface preflight → argv
- * judgment → pinned execFile. `judge` picks the table — the read table
+ * judgment → pinned spawn. `judge` picks the table — the read table
  * for `verifierGit`, the bounded mutation set for `verifierScratchGit`.
- * `useIndexEnv` applies the preflight's claims-rebuilt throwaway index —
+ * `useIndexEnv` applies the preflight's claims-rebuilt verifier index —
  * read-table ops only; the scratch channel's mutations (add/commit)
  * need the clone's real index (CX-121's env is a read-judgment surface,
  * never a write path).
@@ -1676,72 +2101,68 @@ async function verifierGitSpawn(
   // (clone/init destinations) has no config to enumerate — the op itself
   // decides whether the path must be a repo.
   const preflight = await evidenceRepoPreflight(cwd);
-  if (
-    preflight !== null &&
-    (preflight.refusedKeys.length > 0 || preflight.shapeViolations.length > 0)
-  ) {
-    return {
-      exitCode: -1,
-      stdout: "",
-      stderr: `${EVIDENCE_REFUSED_PREFIX}: ${[...preflight.refusedKeys, ...preflight.shapeViolations].join(", ")}`,
-    };
-  }
-  // argv judgment BEFORE the spawn: the r7 channel scanned only for
-  // `@{…}`/reflog-shaped args — `reflog`/`stash`/`update-ref`/`config`
-  // writes and every leading global option rode through unjudged, and a
-  // caller `-c`/`--git-dir` lands AFTER the pins where the last write
-  // wins (CX-108/109). Denylist is unprovable; the allowlist table is
-  // the contract.
-  if (!judge(args)) {
-    return {
-      exitCode: -1,
-      stdout: "",
-      stderr: `${EVIDENCE_REFUSED_PREFIX}: argv outside the ${table}: git ${args.join(" ")}`,
-    };
-  }
-  // An unproven claims rebuild (CX-124) leaves no GIT_INDEX_FILE redirect —
-  // an index-consulting op would answer from the session-writable ambient
-  // index, the exact CX-121 forgery surface. Non-index ops never consult
-  // the index and proceed (a corrupt-index fixture degrades per-read, not
-  // channel-wide).
-  if (useIndexEnv && isUnprovenIndexRead(args, preflight)) {
-    return {
-      exitCode: -1,
-      stdout: "",
-      stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven}): git ${args.join(" ")}`,
-    };
-  }
-  return new Promise((resolve) => {
-    try {
-      execFile(
-        resolveGitBin(),
-        args,
-        {
-          cwd,
-          env: {
-            ...verifierGitEnv(),
-            // Pins ride the env, not argv — the spawned argv is the judged
-            // query verbatim so positional argv contracts (subcommand at
-            // $1) hold for failure-injection seams.
-            ...evidencePinEnv(args, preflight),
-            // The preflight's claims-rebuilt throwaway index — the
-            // session's `.git/index` is never consulted for a trusted
-            // verdict (CX-121).
-            ...(useIndexEnv ? (preflight?.indexEnv ?? {}) : {}),
-            ...filterEvidenceExtraEnv(opts?.extraEnv),
-          },
-          timeout: opts?.timeoutMs ?? 60_000,
-          maxBuffer: opts?.maxBuffer ?? 64 * 1024 * 1024,
-        },
-        (err, stdout, stderr) => {
-          const code = err === null ? 0 : typeof err.code === "number" ? err.code : -1;
-          resolve({ exitCode: code, stdout: String(stdout), stderr: String(stderr) });
-        },
-      );
-    } catch (e) {
-      resolve({ exitCode: -1, stdout: "", stderr: String(e) });
+  try {
+    if (
+      preflight !== null &&
+      (preflight.refusedKeys.length > 0 || preflight.shapeViolations.length > 0)
+    ) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: ${[...preflight.refusedKeys, ...preflight.shapeViolations].join(", ")}`,
+      };
     }
-  });
+    // argv judgment BEFORE the spawn: the r7 channel scanned only for
+    // `@{…}`/reflog-shaped args — `reflog`/`stash`/`update-ref`/`config`
+    // writes and every leading global option rode through unjudged, and a
+    // caller `-c`/`--git-dir` lands AFTER the pins where the last write
+    // wins (CX-108/109). Denylist is unprovable; the allowlist table is
+    // the contract.
+    if (!judge(args)) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: argv outside the ${table}: git ${args.join(" ")}`,
+      };
+    }
+    // The verifier index is resolved per spawn — the fd form carries no
+    // path at all (CX-129); the path form re-proves its on-disk bytes
+    // before the redirect is trusted. An unproven index (rebuild failed,
+    // CX-124, or a rewrite caught just now) refuses index-consulting ops;
+    // non-index ops never consult it and proceed — a corrupt-index
+    // fixture degrades per-read, not channel-wide.
+    const idx = useIndexEnv ? evidenceIndexForSpawn(preflight) : { env: {}, unproven: false };
+    if (idx.unproven && isIndexConsultingRead(args)) {
+      closeSpawnIndexFd(idx);
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven ?? "index bytes rewritten"}): git ${args.join(" ")}`,
+      };
+    }
+    const r = await spawnCaptured(resolveGitBin(), args, {
+      cwd,
+      env: {
+        ...verifierGitEnv(),
+        // Pins ride the env, not argv — the spawned argv is the judged
+        // query verbatim so positional argv contracts (subcommand at
+        // $1) hold for failure-injection seams.
+        ...evidencePinEnv(args, preflight),
+        // The verifier-owned claims index — the session's `.git/index`
+        // is never consulted for a trusted verdict (CX-121/CX-129).
+        ...idx.env,
+        ...filterEvidenceExtraEnv(opts?.extraEnv),
+      },
+      timeoutMs: opts?.timeoutMs ?? 60_000,
+      maxBuffer: opts?.maxBuffer ?? 64 * 1024 * 1024,
+      indexFd: idx.indexFd,
+    });
+    return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+  } finally {
+    // The per-call preflight owns its index fd — a cached preflight
+    // (OriginGit) keeps it for the instance's lifetime instead.
+    closeEvidenceIndex(preflight);
+  }
 }
 
 /**

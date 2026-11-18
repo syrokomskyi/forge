@@ -15,6 +15,43 @@ no commit; deleting a marker flips flow.check to FLOW-10.</purpose>
   <item>RFC-1498: step 2 — network-only marker source
 
 markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,7 +65,7 @@ import { ambientIo } from "../../../src/utils/io.ts";
 import { collectFlowCheck } from "../handlers/flow-check.ts";
 import { executeInstall, planInstall } from "../handlers/flow-install.ts";
 import { MARKER_FILE, markerSource } from "../markers.ts";
-import { gitExec, initRepo } from "./helpers.ts";
+import { gitExec, initRepo, remoteAddGitDaemon } from "./helpers.ts";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -43,26 +80,20 @@ async function repoWithPackageLine(): Promise<{ repo: string; origin: string }> 
   dirs.push(repo);
   await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
   await writeFile(join(repo, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
-  await writeFile(
-    join(repo, "package.json"),
-    '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n',
-  );
+  await writeFile(join(repo, "package.json"), '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n');
   await mkdir(join(repo, "packages", "lib"), { recursive: true });
   await writeFile(
     join(repo, "packages", "lib", "package.json"),
     '{\n  "name": "lib",\n  "version": "0.1.0"\n}\n',
   );
-  await writeFile(
-    join(repo, "packages", "lib", "extract.config.yaml"),
-    "standalone: true\n",
-  );
+  await writeFile(join(repo, "packages", "lib", "extract.config.yaml"), "standalone: true\n");
   await gitExec(repo, ["add", "-A"]);
   await gitExec(repo, ["commit", "-m", "config"]);
 
   const origin = await mkdtemp(join(tmpdir(), "flow-markers-origin-"));
   dirs.push(origin);
   await gitExec(origin, ["init", "--bare", "-b", "develop", "."]);
-  await gitExec(repo, ["remote", "add", "origin", origin]);
+  await remoteAddGitDaemon(repo, origin);
   return { repo, origin };
 }
 
@@ -77,10 +108,7 @@ describe("flow.install markers step (RFC-1491)", () => {
     expect(plan.steps.find((s) => s.step === "markers")?.status).toBe("done");
 
     // The marker is committed content — worktrees must check it out.
-    const committed = await gitExec(repo, [
-      "show",
-      `develop:packages/lib/${MARKER_FILE}`,
-    ]);
+    const committed = await gitExec(repo, ["show", `develop:packages/lib/${MARKER_FILE}`]);
     expect(committed.stdout).toContain("schema: forge/generated@1");
     expect(committed.stdout).toContain("generator: repo-extract");
     // And the source names the line directory.
@@ -102,6 +130,10 @@ describe("flow.install markers step (RFC-1491)", () => {
 
   it("RFC-1498 AC-3: a local-path origin falls back to the directory basename", async () => {
     const { repo, origin } = await repoWithPackageLine();
+    // The fixture serves origin over git:// (trusted fetch denies path
+    // remotes); this case exercises the local-path classification, so
+    // point the remote back at the bare path.
+    await gitExec(repo, ["remote", "set-url", "origin", origin]);
     const result = await markerSource(repo, ambientIo);
     expect(result.rejectedOrigin).toBe("local-path");
     expect(result.source).toBe(basename(repo));
@@ -123,12 +155,7 @@ describe("flow.install markers step (RFC-1491)", () => {
 
   it("RFC-1498 AC-4: scp-style and credential-bearing origins stay usable", async () => {
     const { repo } = await repoWithPackageLine();
-    await gitExec(repo, [
-      "remote",
-      "set-url",
-      "origin",
-      "git@github.com:owner/repo.git",
-    ]);
+    await gitExec(repo, ["remote", "set-url", "origin", "git@github.com:owner/repo.git"]);
     const scp = await markerSource(repo, ambientIo);
     expect(scp.source).toBe("git@github.com:owner/repo.git");
     expect(scp.rejectedOrigin).toBeNull();
