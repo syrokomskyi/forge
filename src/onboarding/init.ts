@@ -7,9 +7,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
@@ -22,7 +19,8 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
-  <history>RFC-0374, RFC-0391, RFC-0392, RFC-0393, RFC-0524, RFC-0539, RFC-0543, RFC-0544, RFC-0552, RFC-0640, RFC-0643, RFC-0663, RFC-0941, RFC-1019, RFC-1154</history>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
+  <history>RFC-0374, RFC-0391, RFC-0392, RFC-0393, RFC-0524, RFC-0539, RFC-0543, RFC-0544, RFC-0552, RFC-0640, RFC-0643, RFC-0663, RFC-0941, RFC-1019, RFC-1097, RFC-1154</history>
 </CHANGE_SUMMARY>
 */
 
@@ -538,6 +536,10 @@ export function runInit(
   const trustBoundary = scaffoldTrustBoundary(workspaceRoot, config.project.owner);
   created.push(...trustBoundary.created);
   skipped.push(...trustBoundary.skipped);
+  // A boundary path that could not be installed (a planted symlink escape)
+  // leaves the workspace's external boundary unestablished — init reports it
+  // as an error, not a benign skip (CX-83).
+  errors.push(...trustBoundary.conflicts);
 
   return {
     command: "forge.init",

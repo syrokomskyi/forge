@@ -25,6 +25,7 @@ Extract forge-policy.template.yml and CODEOWNERS.template into
 src/scaffold/github/ (shipped in package files[]) so the AC-7/AC-8
 file-contains probes verify the real artifacts; rename the push-trailer
 suite to the RFC-bound flow-push-verifier-review.test.ts.</item>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -106,7 +107,7 @@ describe("flow.push verifier-trailer scan (RFC-1616)", () => {
     const { repo, origin } = await initRepoWithOrigin(dirs, { prefix: "flow-push-vt-" });
     await writeFile(
       join(repo, "forge.yaml"),
-      "schema: forge/config@1\nproject:\n  name: opt-out\npaths: {}\npush:\n  requireVerifierReview: false\n",
+      `schema: forge/config@1\nproject:\n  name: opt-out\npaths: {}\npush:\n  requireVerifierReview: false\n  expectedRemote: ${JSON.stringify(origin)}\n`,
     );
     await gitExec(repo, ["add", "forge.yaml"]);
     await gitExec(repo, ["commit", "-qm", "opt out"]);
@@ -119,10 +120,10 @@ describe("flow.push verifier-trailer scan (RFC-1616)", () => {
   }, 60_000);
 
   it("push.requireVerifierReview: true (explicit) still requires the flag", async () => {
-    const { repo } = await initRepoWithOrigin(dirs, { prefix: "flow-push-vt-" });
+    const { repo, origin } = await initRepoWithOrigin(dirs, { prefix: "flow-push-vt-" });
     await writeFile(
       join(repo, "forge.yaml"),
-      "schema: forge/config@1\nproject:\n  name: opted-in\npaths: {}\npush:\n  requireVerifierReview: true\n",
+      `schema: forge/config@1\nproject:\n  name: opted-in\npaths: {}\npush:\n  requireVerifierReview: true\n  expectedRemote: ${JSON.stringify(origin)}\n`,
     );
     await gitExec(repo, ["add", "forge.yaml"]);
     await gitExec(repo, ["commit", "-qm", "declare"]);
