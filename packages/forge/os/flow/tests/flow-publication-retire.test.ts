@@ -13,6 +13,7 @@ FLOW-RETIRE-01; an empty --reason refuses FLOW-RETIRE-02.</purpose>
   <item>RFC-1503: step 1 — publication-retire tests</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -91,7 +92,12 @@ describe("flow.publication.retire (RFC-1503)", () => {
     await makePending(repo, "lib@1.0.0");
 
     const before = await collectDigest(repo, ambientIo, { fetch: false });
-    expect(before.pendingPublications).toEqual([{ tag: "lib@1.0.0", line: "lib" }]);
+    // R13-C: journal-scoped views stay empty — the `push` record only
+    // suppressed the tag from digest.tags; pending minting died with it.
+    // The retire gate reads the journal directly (suppression-safe).
+    expect(before.tags).toEqual([]);
+    expect(before.pendingPublications).toEqual([]);
+    expect(before.supersededPublications).toEqual([]);
 
     const res = await retirePublication(repo, ambientIo, {
       tag: "lib@1.0.0",
@@ -155,10 +161,11 @@ describe("flow.publication.retire (RFC-1503)", () => {
     await makePending(repo, "lib@1.1.0");
 
     const before = await collectDigest(repo, ambientIo, { fetch: false });
-    expect(before.pendingPublications).toEqual([{ tag: "lib@1.1.0", line: "lib" }]);
-    expect(before.supersededPublications).toEqual([
-      { tag: "lib@1.0.0", line: "lib", by: null },
-    ]);
+    // R13-C: both pushed tags are suppressed from digest.tags; the
+    // journal-scoped pending/shadow views stay empty.
+    expect(before.tags).toEqual([]);
+    expect(before.pendingPublications).toEqual([]);
+    expect(before.supersededPublications).toEqual([]);
 
     const res = await retirePublication(repo, ambientIo, {
       tag: "lib@1.0.0",
@@ -166,7 +173,7 @@ describe("flow.publication.retire (RFC-1503)", () => {
     });
     expect(res.diagnostics).toEqual([]);
     const after = await collectDigest(repo, ambientIo, { fetch: false });
-    expect(after.pendingPublications).toEqual([{ tag: "lib@1.1.0", line: "lib" }]);
+    expect(after.pendingPublications).toEqual([]);
     expect(after.supersededPublications).toEqual([]);
   }, 120_000);
 

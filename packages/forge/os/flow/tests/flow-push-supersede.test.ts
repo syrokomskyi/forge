@@ -1,11 +1,12 @@
 /*
 <MODULE_CONTRACT>
-<purpose>flow.push supersession tests (RFC-1503, AC-1..AC-5): with two pending
-tags of one line only the highest is attempted; publishing it journals
-publish-superseded for the lower one; a pending tag at or below the newest
-published is never extracted and is superseded on sight; the exit code
-counts only this run's refs and attempted publications; the digest reports
-pendingPublications as the highest pending tag per line.</purpose>
+<purpose>flow.push supersession tests (RFC-1503, AC-1..AC-5): with two
+candidate tags of one line only the highest is attempted; publishing it
+journals publish-superseded for the lower one; a candidate at or below
+the newest published is never extracted and is superseded on sight; the
+exit code counts only this run's refs and attempted publications;
+journal-scoped pending/superseded views stay empty (R13-C —
+suppressor-only journal).</purpose>
 <non-goals>
   <item>No real repo-extract — the fixture installs node_modules/.bin/repo-extract.</item>
   <item>Never touches the enclosing repository — all fixtures are mkdtemp repos.</item>
@@ -14,6 +15,7 @@ pendingPublications as the highest pending tag per line.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1503: step 1 — supersede/ordering publication tests</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -81,14 +83,6 @@ async function extractLogText(path: string): Promise<string> {
   }
 }
 
-/** Push every digest tag with the extract forced to fail — all become pending. */
-async function failAllPublications(repo: string): Promise<void> {
-  process.env["FAKE_EXTRACT_FAIL"] = "1";
-  const digest = await collectDigest(repo, ambientIo, { fetch: false });
-  await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
-  delete process.env["FAKE_EXTRACT_FAIL"];
-}
-
 describe("flow.push supersession (RFC-1503)", () => {
   it("attempts only the highest pending tag of a line and supersedes the lower one (AC-1, AC-2, AC-4)", async () => {
     const { repo, extractLog: log } = await initRepoWithOrigin(dirs, {
@@ -98,13 +92,14 @@ describe("flow.push supersession (RFC-1503)", () => {
     await addPackageLine(repo);
     await tag(repo, "lib@1.0.0", "lib", "1.0.0");
     await tag(repo, "lib@1.1.0", "lib", "1.1.0");
-    await failAllPublications(repo);
 
     const digest = await collectDigest(repo, ambientIo, { fetch: false });
-    expect(digest.pendingPublications).toEqual([{ tag: "lib@1.1.0", line: "lib" }]);
-    expect(digest.supersededPublications).toEqual([
-      { tag: "lib@1.0.0", line: "lib", by: null },
-    ]);
+    // R13-C: journal-scoped views stay empty — "pushed but unpublished"
+    // has no honest local source. Both tags are fresh digest tags; the
+    // in-run plan picks the highest and supersedes the lower.
+    expect(digest.tags).toEqual(["lib@1.0.0", "lib@1.1.0"]);
+    expect(digest.pendingPublications).toEqual([]);
+    expect(digest.supersededPublications).toEqual([]);
 
     const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
     // AC-4: refs and this run's attempted publications succeeded → exit-0 data.
@@ -128,6 +123,7 @@ describe("flow.push supersession (RFC-1503)", () => {
     expect(logged).not.toContain("--ref lib@1.0.0");
 
     const after = await collectDigest(repo, ambientIo, { fetch: false });
+    expect(after.tags).toEqual([]);
     expect(after.pendingPublications).toEqual([]);
     expect(after.supersededPublications).toEqual([]);
   }, 120_000);
@@ -167,9 +163,9 @@ describe("flow.push supersession (RFC-1503)", () => {
     expect(logged).not.toContain("--ref lib@1.0.0");
     const common = await commonGitDir(ambientIo, repo);
     const journal = await readJournal(ambientIo, common);
-    expect(
-      journal.filter((e) => e.event === "publish-superseded").map((e) => e.branch),
-    ).toEqual(["lib@1.0.0"]);
+    expect(journal.filter((e) => e.event === "publish-superseded").map((e) => e.branch)).toEqual([
+      "lib@1.0.0",
+    ]);
   }, 120_000);
 
   it("semver order, not string order: 9.10.0 outranks 9.9.0 (AC-5)", async () => {
@@ -180,16 +176,22 @@ describe("flow.push supersession (RFC-1503)", () => {
     await addPackageLine(repo);
     await tag(repo, "lib@9.9.0", "lib", "9.9.0");
     await tag(repo, "lib@9.10.0", "lib", "9.10.0");
-    await failAllPublications(repo);
 
     const digest = await collectDigest(repo, ambientIo, { fetch: false });
-    expect(digest.pendingPublications).toEqual([{ tag: "lib@9.10.0", line: "lib" }]);
-    expect(digest.supersededPublications).toEqual([
-      { tag: "lib@9.9.0", line: "lib", by: null },
-    ]);
+    // R13-C: the ordering now lives in the push run's plan, not a
+    // journal-scoped pending view — a dry-run exposes it without pushing.
+    expect(digest.tags).toEqual(["lib@9.10.0", "lib@9.9.0"]);
+    expect(digest.pendingPublications).toEqual([]);
+    expect(digest.supersededPublications).toEqual([]);
+    const plan = await pushFlow(repo, ambientIo, {
+      digest: digest.digestId,
+      dryRun: true,
+    });
+    expect(plan.publications.map((p) => p.tag)).toEqual(["lib@9.10.0"]);
+    expect(plan.superseded).toEqual([{ tag: "lib@9.9.0", by: "lib@9.10.0" }]);
   }, 120_000);
 
-  it("a lower pending tag stays pending when the highest fails", async () => {
+  it("a lower tag is never superseded when the highest fails to publish", async () => {
     const { repo } = await initRepoWithOrigin(dirs, {
       prefix: "flow-sup-",
       fakeExtract: true,
@@ -197,7 +199,6 @@ describe("flow.push supersession (RFC-1503)", () => {
     await addPackageLine(repo);
     await tag(repo, "lib@1.0.0", "lib", "1.0.0");
     await tag(repo, "lib@1.1.0", "lib", "1.1.0");
-    await failAllPublications(repo);
 
     process.env["FAKE_EXTRACT_FAIL"] = "1";
     const digest = await collectDigest(repo, ambientIo, { fetch: false });
@@ -208,12 +209,14 @@ describe("flow.push supersession (RFC-1503)", () => {
     delete process.env["FAKE_EXTRACT_FAIL"];
     expect(failed.diagnostics[0]?.ruleId).toBe("FLOW-PUSH-05");
 
-    // Both stay pending — 1.0.0 is not superseded because 1.1.0 never published.
+    // The refs pushed (the journal `push` record suppresses both tags
+    // from digest.tags), but no publication journal minted — 1.0.0 is
+    // not superseded because 1.1.0 never published (R13-C: a
+    // pushed-but-unpublished tag leaves the candidate set entirely).
     const after = await collectDigest(repo, ambientIo, { fetch: false });
-    expect(after.pendingPublications).toEqual([{ tag: "lib@1.1.0", line: "lib" }]);
-    expect(after.supersededPublications).toEqual([
-      { tag: "lib@1.0.0", line: "lib", by: null },
-    ]);
+    expect(after.tags).toEqual([]);
+    expect(after.pendingPublications).toEqual([]);
+    expect(after.supersededPublications).toEqual([]);
     const common = await commonGitDir(ambientIo, repo);
     const journal = await readJournal(ambientIo, common);
     expect(journal.filter((e) => e.event === "publish-superseded")).toEqual([]);

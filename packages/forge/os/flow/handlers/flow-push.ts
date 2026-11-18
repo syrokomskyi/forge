@@ -3,21 +3,20 @@
 <purpose>flow.push — the only outbound path (RFC-1491): refuse preflight
 FLOW-PUSH-01/02/03/06/07, run the atomic push of develop+main+tags under
 FORGE_FLOW_OP=push, journal the push, then publish the package-line tags
-(pushed now plus journal-scoped pending, minus baseline) through
-repo-extract with a single ours-merge reconcile — never force-push, never
-a manual push path.</purpose>
+(this run's pushed tags only, minus baseline) through repo-extract with
+a single ours-merge reconcile — never force-push, never a manual push
+path.</purpose>
 <non-goals>
   <item>No digest computation beyond collectDigest — digest.ts owns the shape.</item>
   <item>No real repo-extract in tests — fixtures install a fake binary.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The digest must be quoted: a recomputed mismatch refuses FLOW-PUSH-02 naming the new id.</item>
-  <item>A rerun with an empty digest skips the push but still retries pendingPublications — retries are journal-scoped locally.</item>
+  <item>The digest must be quoted: a recomputed digestId mismatch refuses FLOW-PUSH-02 and names the new id, so the operator always pushes what they reviewed.</item>
+  <item>Publication candidates are this run's pushed tags only — journal `push` records are suppressor-only (R13-C): they can hide a tag from digest.tags but never mint eligibility, so a pushed-but-unpublished tag leaves the candidate set rather than trusting a session-writable retry ledger.</item>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
@@ -66,6 +65,7 @@ EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
 decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <history>RFC-1491, RFC-1501, RFC-1503, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -347,9 +347,12 @@ export async function pushFlow(
 
   const { lines } = await discoverReleaseLines(repoRoot, io);
 
-  // Publications (RFC-1503): candidates = package-line tags pushed now +
-  // journal-scoped pending, minus baseline annotations; per line only the
-  // highest version is attempted — lower ones supersede, retired tags drop.
+  // Publications (RFC-1503/R13-C): candidates = package-line tags pushed
+  // in this run only. The journal is session-writable, so a `push` record
+  // can suppress a tag (hiding it from digest.tags) but never mint one —
+  // "pushed but unpublished" is unverifiable locally and stays out of the
+  // candidate set entirely. Per line only the highest version is
+  // attempted — lower ones supersede, retired tags drop.
   const journalEvents = await readJournal(io, common);
   const publishedTags = new Set(
     journalEvents.filter((e) => e.event === "publish").map((e) => e.branch),
@@ -365,8 +368,6 @@ export async function pushFlow(
     if (line !== null && line.id !== "repo") publicationTags.set(tag, line);
   };
   for (const tag of digest.tags) addCandidate(tag, null);
-  for (const pending of digest.pendingPublications) addCandidate(pending.tag, pending.line);
-  for (const sup of digest.supersededPublications) addCandidate(sup.tag, sup.line);
 
   const baselineSkipped: PublicationRow[] = [];
   const planCandidates: PublicationPlanEntry[] = [];
@@ -416,10 +417,14 @@ export async function pushFlow(
 
   // Sha-pinned refspecs — the push ships exactly the reviewed tips; a local
   // branch that moved since the digest stays local instead of sneaking in.
+  // Refspecs cover digest.tags in full (R13-C): every tag this run will
+  // treat as publishable is pushed in the same atomic push — a fabricated
+  // journal `push` record can never make an unpushed tag look remote.
+  const pushedTagNames = digest.tags;
   const refspecs = [
     `${digest.develop.local}:refs/heads/develop`,
     `${digest.main.local}:refs/heads/main`,
-    ...digest.tags.map((t) => `refs/tags/${t}:refs/tags/${t}`),
+    ...pushedTagNames.map((t) => `refs/tags/${t}:refs/tags/${t}`),
   ];
 
   if (opts.dryRun) {
@@ -452,7 +457,7 @@ export async function pushFlow(
   }
 
   // --- push ------------------------------------------------------------------
-  const hasRefs = digest.develop.ahead > 0 || digest.main.ahead > 0 || digest.tags.length > 0;
+  const hasRefs = digest.develop.ahead > 0 || digest.main.ahead > 0 || pushedTagNames.length > 0;
   const journalWarnings: string[] = [];
   let pushed = false;
   if (hasRefs) {
@@ -489,11 +494,11 @@ export async function pushFlow(
         branch: "develop",
         sha: digest.develop.local,
         base: digest.develop.remote ?? undefined,
-        detail: digest.tags.join(" "),
+        detail: pushedTagNames.join(" "),
       });
     } catch (error) {
       journalWarnings.push(
-        `push journal record could not be appended — pending-publication retries for ${digest.tags.join(", ") || "no tags"} are lost: ${String(error)}`,
+        `push journal record could not be appended — pushed tags ${pushedTagNames.join(", ") || "(none)"} stay in digest.tags and will be re-pushed on the next run: ${String(error)}`,
       );
     }
   }
@@ -590,7 +595,7 @@ export async function pushFlow(
         severity: "error",
         message: `publication of ${tag} (${line.id}) failed: ${row.error ?? "unknown"}`,
         fixHint:
-          "fix the extract or destination, then re-run flow.push with a fresh digest — pending publications are retried",
+          "fix the extract or destination; the tag is already on origin and suppressed from digest.tags — republish it via repo-extract directly or retire it with flow.publication.retire",
       });
       continue;
     }
@@ -606,7 +611,7 @@ export async function pushFlow(
         diagnostics.push({
           ruleId: "FLOW-07",
           severity: "warning",
-          message: `publish journal record for ${tag} could not be appended — the tag will be retried as pending: ${String(error)}`,
+          message: `publish journal record for ${tag} could not be appended — the publication went out but has no local record; the tag stays suppressed from digest.tags: ${String(error)}`,
         });
       }
       for (const low of shadowed.get(line.id) ?? []) {

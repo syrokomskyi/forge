@@ -713,12 +713,12 @@ describe("RFC-1616 r8 — extraEnv allowlist and pin coverage", () => {
       expect(pre !== null, "preflight failed").toBe(true);
       // The two submodule-recursion levers are STATIC-owned: they must
       // produce NO dynamic pin and NO refusal — the static `=false` pin is
-      // the sole guard. (core.fsmonitor is deliberately NOT static-owned —
-      // a boolean file value produces a dynamic `-c core.fsmonitor=`
-      // empty pin, which empirically disables it; a command-valued file
-      // entry is REFUSE'd outright.)
+      // the sole guard. (core.fsmonitor joined the unconditional static
+      // set in R13-D — `core.fsmonitor=false` pins every spawn, so a
+      // boolean file value dies without a dynamic pin; a command-valued
+      // file entry is still REFUSE'd outright.)
       const dynamicPins = (pre?.configArgs ?? []).join(" ").toLowerCase();
-      for (const k of ["fetch.recursesubmodules", "submodule.recurse"]) {
+      for (const k of ["fetch.recursesubmodules", "submodule.recurse", "core.fsmonitor"]) {
         expect
           .soft(
             !dynamicPins.includes(`${k}=`),
@@ -726,14 +726,6 @@ describe("RFC-1616 r8 — extraEnv allowlist and pin coverage", () => {
           )
           .toBe(true);
       }
-      // core.fsmonitor=true must land the empty pin (kills the file
-      // value); a program value must REFUSE the channel instead.
-      expect
-        .soft(
-          dynamicPins.includes("core.fsmonitor="),
-          "core.fsmonitor=true produced no dynamic pin",
-        )
-        .toBe(true);
       const { repo: repo2 } = await initRepoWithOrigin(dirs, { prefix: "cx8-fsm-" });
       await gitExec(repo2, ["config", "core.fsmonitor", "/tmp/cx8-fsm.sh"]);
       const pre2 = await evidencePreflight(repo2);

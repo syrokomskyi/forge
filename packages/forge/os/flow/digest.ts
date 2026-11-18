@@ -2,9 +2,11 @@
 <MODULE_CONTRACT>
 <purpose>Risk digest of the unpushed outbound state (RFC-1491): the unpushed
 develop tail segmented into journal-attributed items, risk categories from
-each item's diff, new release tags versus origin, held registry branches and
-journal-scoped pending publications — fingerprinted into a digestId that
-flow.push must quote.</purpose>
+each item's diff, new release tags versus origin and held registry
+branches — fingerprinted into a digestId that flow.push must quote.
+Journal records are suppressor-only (R13-C): they can hide a tag from
+digest.tags but never mint pending/superseded publication entries, which
+stay empty by construction.</purpose>
 <non-goals>
   <item>No mutation — the only write is the optional git fetch of remote-tracking refs.</item>
   <item>No push or publish policy — handlers/flow-push.ts owns outbound execution.</item>
@@ -18,7 +20,6 @@ flow.push must quote.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
@@ -67,6 +68,7 @@ EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
 decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -88,8 +90,6 @@ import {
   type FlowJournalEvent,
   type RiskCategory,
 } from "./registry.ts";
-import { planPublications, type PublicationPlanEntry } from "./publication-order.ts";
-import { tagAnnotationLevel } from "./publish.ts";
 import { discoverReleaseLines, type ReleaseLine } from "./release-lines.ts";
 import { parseVersion, type SemVer } from "./semver.ts";
 import { listLineTags } from "./release-tags.ts";
@@ -140,15 +140,16 @@ export interface FlowDigestData {
     heldAt: string;
   }>;
   /**
-   * RFC-1503: the highest pending tag per package line — what the next
-   * flow.push actually attempts. Lower pending tags moved to
-   * `supersededPublications`.
+   * RFC-1503/R13-C: always empty — a journal `push` record can only
+   * suppress a tag from `tags`, never mint a pending publication, so
+   * "pushed but unpublished" has no honest local source and stays out
+   * of the candidate set. Field kept for the digest shape.
    */
   pendingPublications: Array<{ tag: string; line: string }>;
   /**
-   * RFC-1503: lower pending tags the next push supersedes (`by` = the
-   * superseding tag, null when the tag waits behind a higher candidate
-   * that has not published yet).
+   * RFC-1503/R13-C: always empty — same suppressor-only reason as
+   * `pendingPublications`; in-run supersession lives inside flow.push's
+   * plan, not the digest.
    */
   supersededPublications: Array<{ tag: string; line: string; by: string | null }>;
   /**
@@ -1016,64 +1017,41 @@ export async function collectDigest(
       heldAt: b.held!.heldAt,
     }));
 
-  // RFC-1503: pending candidates are journal-scoped — pushed, not published,
-  // not superseded, not retired. planPublications picks the highest per line
-  // as the real pending list and routes the rest to supersededPublications.
+  // RFC-1503/R13-C: journal `push` records are session-writable
+  // provenance — they can only SUPPRESS (a fabricated record hides a tag
+  // from `tags`), never mint eligibility. "Pushed but unpublished" has no
+  // honest local source — the remote is the only witness and transports
+  // are untrusted (CX-132) — so pendingPublications/supersededPublications
+  // stay empty and flow.push derives its candidates from `tags` alone.
   const pushedTags = new Set<string>();
-  const publishedTags = new Set<string>();
-  const supersededTags = new Set<string>();
-  const retiredTags = new Set<string>();
   for (const event of journal) {
-    if (event.event === "push") {
-      for (const token of event.detail.split(/[^A-Za-z0-9._/@-]+/)) {
-        if (token.length > 0) pushedTags.add(token);
-      }
-    } else if (event.event === "publish") {
-      publishedTags.add(event.branch);
-    } else if (event.event === "publish-superseded") {
-      supersededTags.add(event.branch);
-    } else if (event.event === "publish-retired") {
-      retiredTags.add(event.branch);
+    if (event.event !== "push") continue;
+    for (const token of event.detail.split(/[^A-Za-z0-9._/@-]+/)) {
+      if (token.length > 0) pushedTags.add(token);
     }
   }
 
   // --- new release tags ------------------------------------------------------
   // "Is the tag on the remote?" has no trusted answer — every remote
   // target is session-authored and transports are refused (CX-132). The
-  // honest provenance is the flow's own journal: a tag this flow pushed
-  // is remote-known; anything else stays pending so a re-push attempt is
-  // always offered (a duplicate push on an identical remote tag is a
-  // no-op — the withheld direction is the only unsafe one). Session-made
-  // journal entries can hide a tag here — availability only, and the
-  // trailer scan still judges the whole branch before anything ships.
+  // flow's own journal is session-writable too, so a `push` record can
+  // only SUPPRESS here: it hides the tag from this list (the withheld
+  // direction is the safe one), never mints eligibility. A fabricated
+  // `push` record can neither surface a pending publication nor be
+  // corroborated into one (R13-C) — flow.push publishes only what this
+  // run itself pushes.
   const { lines } = await discoverReleaseLines(repoRoot, io);
   const tags: string[] = [];
-  const allLocalTags = new Set<string>();
   for (const line of lines) {
     const { reachable } = await listLineTags(repoRoot, line, io);
     for (const tag of reachable) {
-      allLocalTags.add(tag);
       if (!pushedTags.has(tag)) tags.push(tag);
     }
   }
   tags.sort((a, b) => a.localeCompare(b));
 
-  const pendingCandidates: PublicationPlanEntry[] = [];
-  for (const tag of [...pushedTags].sort((a, b) => a.localeCompare(b))) {
-    if (!allLocalTags.has(tag) || publishedTags.has(tag)) continue;
-    if (supersededTags.has(tag) || retiredTags.has(tag)) continue;
-    const line = lineForTag(lines, tag);
-    // Repo-line tags are never extracted, and baseline annotations are
-    // skipped at push time — neither ever gains a publish record.
-    if (line === null || line.id === "repo") continue;
-    if ((await tagAnnotationLevel(repoRoot, io, tag)) === "baseline") continue;
-    pendingCandidates.push({ tag, line: line.id });
-  }
-  const plan = planPublications(pendingCandidates, publishedTags, retiredTags, (tag, line) =>
-    versionOfTag(lines, tag, line),
-  );
-  const pendingPublications = plan.attempt;
-  const supersededPublications = plan.superseded;
+  const pendingPublications: FlowDigestData["pendingPublications"] = [];
+  const supersededPublications: FlowDigestData["supersededPublications"] = [];
 
   // --- CI workflows a tag push would trigger (RFC-1498) --------------------
   // Read on the primary checkout — that is the working copy the operator

@@ -11,10 +11,9 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
 <KEY_DECISIONS>
   <item>Hooks live in &lt;repo&gt;/hooks (committed), never .git/hooks — worktrees check out committed content (AUDIT-RFC-1486-G1).</item>
   <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
-  <item>Fixtures exclude docs/.index/ via info/exclude like .gitignore — unignored it would ride the flow.open sweep and collide merges.</item>
+  <item>Fixtures exclude docs/.index/ via a self-ignoring root .gitignore — the kernel counters journal regenerates it on every rule evaluation, and unignored it rides the flow.open sweep into branch trees and collides merges. `.git/info/exclude` cannot carry the patterns: CX-141 made effective content there refuse the evidence channel outright.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1606: deterministic flow and gate test foundations (RFC-1606)</item>
   <item>RFC-1603: key the artifact cache on the copied tree and end mission.close with a converging tail sync</item>
   <item>RFC-1603: record the sweep/journal collision friction and the fixture-ignore decision</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
@@ -55,7 +54,8 @@ r10-remediated channel — this commit closes all of them.
 
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
-  <history>RFC-1486, RFC-1490, RFC-1491, RFC-1502, RFC-1580</history>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
+  <history>RFC-1486, RFC-1490, RFC-1491, RFC-1502, RFC-1580, RFC-1606</history>
 </CHANGE_SUMMARY>
 */
 
@@ -191,7 +191,9 @@ export async function remoteAddGitDaemon(
  * correctness.gate` and refuses FLOW-INT-18 when it is missing. Test
  * primaries get a stand-in that answers a passing gate (or the verdict in
  * `<primary>/.correctness-gate.json` when a test drops one there). The path
- * is excluded via .git/info/exclude so it never reads as primary dirt.
+ * is excluded via a self-ignoring root .gitignore so it never reads as
+ * primary dirt — `.git/info/exclude` would refuse the evidence channel
+ * outright (CX-141: effective content there can hide untracked state).
  */
 export async function installFakePrimaryForge(repo: string): Promise<void> {
   const bin = join(repo, "node_modules", ".bin");
@@ -213,18 +215,17 @@ export async function installFakePrimaryForge(repo: string): Promise<void> {
     ].join("\n"),
   );
   await chmod(script, 0o755);
-  const exclude = join(repo, ".git", "info", "exclude");
-  await mkdir(join(repo, ".git", "info"), { recursive: true });
   // docs/.index/ mirrors the real repo's .gitignore (line ~360): the kernel
   // counters journal appends docs/.index/checks/counters.jsonl on every
   // rule-evaluating command — unignored, the flow.open sweep stages it into
-  // the branch tree and the next journal append collides the integrate merge.
+  // the branch tree and the next journal append collides the integrate
+  // merge. The file must cover itself too: `info/exclude` is a refused
+  // evidence surface (CX-141), and an unignored root .gitignore would
+  // itself read as untracked dirt — a `/.gitignore` self-line keeps the
+  // whole ignore set invisible to both ambient and evidence status.
   await writeFile(
-    exclude,
-    "node_modules/\n.correctness-gate.json\n.correctness-gate.exit\ndocs/.index/\n",
-    {
-      flag: "a",
-    },
+    join(repo, ".gitignore"),
+    "/.gitignore\nnode_modules/\n.correctness-gate.json\n.correctness-gate.exit\ndocs/.index/\n",
   );
 }
 
@@ -232,7 +233,8 @@ export async function installFakePrimaryForge(repo: string): Promise<void> {
  * RFC-1606: point the primary's `node_modules/.bin/forge` at a real forge CLI
  * (this checkout's own `bin/cli.ts`) — for tests that must run the genuine
  * command rather than the passing stand-in. Overwrites the stand-in
- * `installFakePrimaryForge` planted; `info/exclude` already covers the path.
+ * `installFakePrimaryForge` planted; the self-ignoring `.gitignore` already
+ * covers the path.
  * NODE_OPTIONS is scrubbed: vitest registers its ESM loader there, and a
  * bare `node` child resolving it outside the workspace exits 1 before
  * printing anything — the "no JSON result" flake (F-0278's env half).

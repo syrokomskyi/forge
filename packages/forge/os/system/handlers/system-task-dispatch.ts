@@ -6,7 +6,8 @@ task branch. Resolves the product folder through products.local.yaml
 undeclared → SYSTEM-TASK-04 warning), refuses briefs that leak the system
 identity or other products' folders (SYSTEM-TASK-06), opens an
 auto/task-… branch via openFlowBranchCore with owner {kind: task, id},
-git-excludes .forge/task/ through the common git dir's info/exclude, writes
+git-excludes .forge/task/ through a self-hiding .gitignore inside the task
+dir (info/exclude refuses the evidence channel, CX-141), writes
 the brief into the worktree, and records dispatch + briefSha256 on the task.
 A launcher argv from products.local.yaml runs best-effort (SYSTEM-TASK-09).</purpose>
 <non-goals>
@@ -17,6 +18,7 @@ A launcher argv from products.local.yaml runs best-effort (SYSTEM-TASK-09).</pur
   <item>RFC-1509: step 3 — system.task.dispatch handler</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +34,6 @@ import type {
   WorkspaceIO,
 } from "../../../src/types.ts";
 import { openFlowBranchCore } from "../../flow/handlers/flow-open.ts";
-import { commonGitDir } from "../../flow/registry.ts";
 import { assertSystemRepository, edgeVerdict, loadSystemMap, type SystemMap } from "../repo.ts";
 import type { SystemTask } from "../task-schemas.ts";
 import { readBrief, readTask, writeTask } from "../task-store.ts";
@@ -127,7 +128,9 @@ function briefLeakDiagnostics(
   const diagnostics: Diagnostic[] = [];
   const needles: { label: string; value: string }[] = [
     { label: `system id '${map.system.id}'`, value: map.system.id },
-    ...(map.system.name ? [{ label: `system name '${map.system.name}'`, value: map.system.name }] : []),
+    ...(map.system.name
+      ? [{ label: `system name '${map.system.name}'`, value: map.system.name }]
+      : []),
   ];
   for (const product of map.products.products) {
     if (product.id === task.product) continue;
@@ -174,7 +177,9 @@ export async function runSystemTaskDispatch(
 
   const id = flagString(input, "task");
   if (id === null) {
-    diagnostics.push(refusal("SYSTEM-TASK-01", "--task is required", "see forge system.task.dispatch --help"));
+    diagnostics.push(
+      refusal("SYSTEM-TASK-01", "--task is required", "see forge system.task.dispatch --help"),
+    );
   }
 
   let map: SystemMap | null = null;
@@ -277,29 +282,20 @@ export async function runSystemTaskDispatch(
     // means the task must stay ready — the worktree/entry are kept for
     // operator inspection per flow.open's contract.
     const openFailed =
-      opened.diagnostics.some((d) => d.severity === "error") ||
-      (!opened.opened && !dryRun);
+      opened.diagnostics.some((d) => d.severity === "error") || (!opened.opened && !dryRun);
     if (!openFailed && opened.branch && opened.worktree && !dryRun) {
       branch = opened.branch;
       worktree = opened.worktree;
 
-      // RFC-1509: .forge/task/ must never become a tracked artifact — extend
-      // the common git dir's info/exclude once (idempotent).
-      const common = await commonGitDir(io, productRoot);
-      const infoDir = path.join(common, "info");
-      const excludeFile = path.join(infoDir, "exclude");
-      const excludeLine = "/.forge/task/";
-      await io.mkdir(infoDir);
-      const existing = (await io.exists(excludeFile)) ? await io.readFile(excludeFile) : "";
-      if (!existing.split(/\r?\n/).some((line) => line.trim() === excludeLine)) {
-        await io.appendFile(
-          excludeFile,
-          `${existing.length > 0 && !existing.endsWith("\n") ? "\n" : ""}${excludeLine}\n`,
-        );
-      }
-
+      // RFC-1509: .forge/task/ must never become a tracked artifact. The
+      // hide rides a `.gitignore` inside the task dir itself (`*` covers
+      // every sibling and, being inside the ignored dir, itself) —
+      // `.git/info/exclude` cannot carry it: CX-141 made effective
+      // content there refuse the evidence channel outright, and the
+      // product worktree runs governed git reads through that channel.
       const taskDir = path.join(worktree, ".forge", "task");
       await io.mkdir(taskDir);
+      await io.writeFile(path.join(taskDir, ".gitignore"), "*\n");
       await io.writeFile(path.join(taskDir, "brief.md"), briefContent);
 
       const briefSha = createHash("sha256").update(briefContent, "utf8").digest("hex");
