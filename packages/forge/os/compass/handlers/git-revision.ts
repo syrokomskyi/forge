@@ -15,13 +15,48 @@ plus getFileRevisionFromHistory and the porcelain dirty-path helpers
   <item>RFC-0556: moved from @warpgogol/site-kernel-integrity to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
 </CHANGE_SUMMARY>
 */
 
-import { execFile, execFileSync } from "../../../src/utils/sync-fs.ts";
 import { ambientIo } from "../../../src/utils/io.ts";
 import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
-import { promisify } from "node:util";
+import { verifierGit } from "../../../src/utils/verifier-git.ts";
 import { createHash } from "node:crypto";
 
 import { resolve, join } from "node:path";
@@ -30,9 +65,6 @@ import { resolve, join } from "node:path";
 // with `const io = resolveIo(context.io)` inside their own scope.
 const io = ambientIo;
 
-const execFileAsync = promisify(execFile);
-const DEFAULT_GIT_TIMEOUT_MS = 15_000;
-
 export const DIRTY_LIST_CAP = 20;
 
 // Re-exported for the compass handlers that canonicalize through this
@@ -40,28 +72,42 @@ export const DIRTY_LIST_CAP = 20;
 export { canonicalRepoDir };
 
 /** The repository top-level containing `repoRoot` — null when not a git repo. */
-export function repoTopLevel(repoRoot: string): string | null {
-  try {
-    const out = execFileSync("git", ["-C", repoRoot, "rev-parse", "--show-toplevel"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 15000,
-    }).trim();
-    return out.length > 0 ? out : null;
-  } catch {
-    return null;
-  }
+export async function repoTopLevel(repoRoot: string): Promise<string | null> {
+  const r = await verifierGit(repoRoot, ["rev-parse", "--show-toplevel"]);
+  const out = r.stdout.trim();
+  return r.exitCode === 0 && out.length > 0 ? out : null;
 }
 
-/** Paths with uncommitted changes under `repoRoot` — null when not a git repo. */
-export function listDirtyPaths(repoRoot: string): string[] | null {
-  try {
-    const out = execFileSync("git", ["-C", repoRoot, "status", "--porcelain"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 15000,
-    });
-    return out
+export interface DirtyPathResult {
+  /** Porcelain paths — null when the workspace is not a git repo. */
+  paths: string[] | null;
+  /**
+   * True when the trusted channel refused to answer (a session-forged repo
+   * surface — object/config/shape violation — made the dirty verdict
+   * unprovable). Callers must treat refusal as dirty: a write guard that
+   * skips on refusal fails open on exactly the forgery it guards (CX-121).
+   */
+  refused: boolean;
+  reason?: string;
+}
+
+/** Paths with uncommitted changes under `repoRoot` — see DirtyPathResult. */
+export async function listDirtyPaths(repoRoot: string): Promise<DirtyPathResult> {
+  const r = await verifierGit(repoRoot, ["status", "--porcelain"]);
+  if (r.exitCode !== 0) {
+    // Not-a-repo answers the same non-zero way a refused channel does —
+    // `git rev-parse` separates the two (a plain missing repo must still
+    // read as "nothing to protect", a refused verdict must block).
+    const probe = await verifierGit(repoRoot, ["rev-parse", "--is-inside-work-tree"]);
+    const isRepo = probe.exitCode === 0 && probe.stdout.trim() === "true";
+    return {
+      paths: null,
+      refused: isRepo,
+      reason: isRepo ? r.stderr.trim() : undefined,
+    };
+  }
+  return {
+    paths: r.stdout
       .split("\n")
       .filter((line) => line.length >= 3)
       .map((line) => {
@@ -74,11 +120,9 @@ export function listDirtyPaths(repoRoot: string): string[] | null {
         if (arrow >= 0) path = path.slice(arrow + 4);
         return path.replace(/^"|"$/g, "");
       })
-      .filter(Boolean);
-  } catch {
-    // Not a git repository — nothing to protect, skip the check.
-    return null;
-  }
+      .filter(Boolean),
+    refused: false,
+  };
 }
 
 /**
@@ -89,26 +133,22 @@ export function isDirtyPath(path: string, dirty: readonly string[]): boolean {
   return dirty.some((d) => path === d || (d.endsWith("/") && path.startsWith(d)));
 }
 
-async function runGit(
-  cwd: string,
-  args: string[],
-  timeoutMs: number = DEFAULT_GIT_TIMEOUT_MS,
-): Promise<string> {
-  const { stdout } = await execFileAsync("git", args, {
-    cwd,
-    maxBuffer: 20 * 1024 * 1024,
-    timeout: timeoutMs,
-  });
-  return stdout.trimEnd();
+async function runGit(cwd: string, args: string[]): Promise<string> {
+  const r = await verifierGit(cwd, args, { timeoutMs: 15_000, maxBuffer: 20 * 1024 * 1024 });
+  if (r.exitCode !== 0) throw new Error(r.stderr || `git ${args[0]} failed`);
+  return r.stdout.trimEnd();
 }
 
 export async function getFileRevisionFromHistory(cwd: string, repoPath: string): Promise<number> {
   try {
-    const output = await runGit(
-      cwd,
-      ["log", "--follow", "--diff-filter=AMT", "--format=%H", "--", repoPath],
-      15_000,
-    ).catch(() => "");
+    const output = await runGit(cwd, [
+      "log",
+      "--follow",
+      "--diff-filter=AMT",
+      "--format=%H",
+      "--",
+      repoPath,
+    ]).catch(() => "");
 
     if (!output) {
       return 1;

@@ -10,7 +10,6 @@ fallback), and path normalization shared by every reference comparison.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
   <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
 
 settingsFromForgeDoc replicates the zod schema verdict as configError so
@@ -47,28 +46,61 @@ freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
 policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
-  <history>RFC-1578</history>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <history>RFC-1578, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 
 import {
   forgeConfigSchema,
   loadForgeConfig,
   type ForgeConfig,
 } from "../../src/config/forge-config.ts";
+import { verifierGit } from "../../src/utils/verifier-git.ts";
 import {
   CORRECTNESS_MODES,
   CORRECTNESS_TIERS,
   type CorrectnessMode,
   type CorrectnessTier,
 } from "./manifest-schema.ts";
-
-const execFileAsync = promisify(execFile);
 
 export interface CorrectnessSettings {
   /** null when forge.yaml is absent or unreadable. */
@@ -284,20 +316,22 @@ export async function listWorkspaceFiles(
   onGitFailure?: (label: string) => void,
 ): Promise<string[]> {
   if (existsSync(path.join(workspaceRoot, ".git"))) {
-    try {
-      const { stdout } = await execFileAsync(
-        "git",
-        ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-        { cwd: workspaceRoot, maxBuffer: 256 * 1024 * 1024 },
-      );
-      const files = [...new Set(stdout.split("\0").filter((f) => f.length > 0))]
+    // verifierGit: ambient GIT_* selectors and a session-written
+    // `.git/index` cannot redirect the cached set — the channel's
+    // HEAD-anchored index lists the committed tree plus real untracked
+    // files (CX-121/CX-122).
+    const r = await verifierGit(
+      workspaceRoot,
+      ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      { maxBuffer: 256 * 1024 * 1024 },
+    );
+    if (r.exitCode === 0) {
+      return [...new Set(r.stdout.split("\0").filter((f) => f.length > 0))]
         .filter((f) => existsSync(path.join(workspaceRoot, f)))
         .sort();
-      return files;
-    } catch {
-      onGitFailure?.("ls-files --cached --others --exclude-standard");
-      // fall through to the fs walk
     }
+    onGitFailure?.("ls-files --cached --others --exclude-standard");
+    // fall through to the fs walk
   }
   const out: string[] = [];
   walk(workspaceRoot, "", out);

@@ -21,7 +21,6 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
@@ -55,6 +54,42 @@ evidence channel — this commit closes all root causes.
 
 The independent r8 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
   <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -64,9 +99,12 @@ import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { execFile, readFileSync } from "../../src/utils/sync-fs.ts";
 import {
+  evidencePinEnv,
   evidenceRepoPreflight,
+  isVerifierGitQuery,
   resolveGitBin,
   verifierGitEnv,
+  type EvidencePreflight,
 } from "../../src/utils/verifier-git.ts";
 import { parseRfcFile } from "./frontmatter-io.ts";
 import { RFC_ORIGIN_CUTOFF } from "./types.ts";
@@ -100,6 +138,13 @@ export interface OriginGit {
    * do not implement `showMany` take that fallback directly.
    */
   showMany?(specs: string[]): Promise<(string | null)[] | null>;
+  /**
+   * `showMany`'s byte-faithful twin — the same `cat-file --batch` channel and
+   * the same per-object re-hash, but entries stay Buffers. Export
+   * materialization needs raw bytes: a utf8 decode+re-encode round trip
+   * rewrites non-utf8 blobs (CX-116/117 boundary).
+   */
+  showManyBytes?(specs: string[]): Promise<(Buffer | null)[] | null>;
 }
 
 /**
@@ -122,8 +167,8 @@ export function gitEnvForCwd(): NodeJS.ProcessEnv {
  * anomaly resolves the whole call to null (wholesale failure → caller falls
  * back); a `missing` record maps only its own entry to null.
  */
-function parseCatFileBatch(specs: string[], out: Buffer): (string | null)[] | null {
-  const results: (string | null)[] = [];
+function parseCatFileBatchBytes(specs: string[], out: Buffer): (Buffer | null)[] | null {
+  const results: (Buffer | null)[] = [];
   let off = 0;
   for (const spec of specs) {
     const nl = out.indexOf(0x0a, off);
@@ -148,7 +193,7 @@ function parseCatFileBatch(specs: string[], out: Buffer): (string | null)[] | nu
       .update(`${meta[2]} ${meta[3]}\0`)
       .update(payload)
       .digest("hex");
-    results.push(hashed === meta[1] ? payload.toString("utf8") : null);
+    results.push(hashed === meta[1] ? payload : null);
     off += size + 1;
   }
   return results;
@@ -168,17 +213,56 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
   // answer the show/--batch reads below with fabricated bytes. A refused
   // surface degrades every read to `null` — unreadable → `unresolved`,
   // which the tier rules treat as self — never a forged answer. Cached
-  // per OriginGit instance: one enumeration per derivation.
-  let surface: Promise<boolean> | undefined;
-  const surfaceOk = (): Promise<boolean> => {
-    surface ??= evidenceRepoPreflight(workspaceRoot).then(
-      (p) => p === null || (p.refusedKeys.length === 0 && p.shapeViolations.length === 0),
-    );
+  // per OriginGit instance: one enumeration per derivation — and the
+  // preflight's `GIT_CONFIG_*` pins and HEAD-anchored index env ride EVERY spawn,
+  // not just the gate, so a non-refused lever (fsmonitor program,
+  // pager/filter driver, forged `.git/index`) cannot fire inside a
+  // trusted read either (CX-115/CX-121).
+  let surface: Promise<{ ok: boolean; pf: EvidencePreflight | null }> | undefined;
+  const surfaceState = () => {
+    surface ??= evidenceRepoPreflight(workspaceRoot).then((pf) => ({
+      ok: pf === null || (pf.refusedKeys.length === 0 && pf.shapeViolations.length === 0),
+      pf,
+    }));
     return surface;
+  };
+  const runBatchBytes = async (specs: string[]): Promise<(Buffer | null)[] | null> => {
+    const { ok, pf } = await surfaceState();
+    if (!ok) return null;
+    const argv = ["cat-file", "--batch"];
+    return new Promise<(Buffer | null)[] | null>((resolve) => {
+      try {
+        const child = execFile(
+          bin,
+          argv,
+          {
+            cwd: workspaceRoot,
+            timeout: 60000,
+            maxBuffer: 128 * 1024 * 1024,
+            env: { ...gitEnvForCwd(), ...evidencePinEnv(argv, pf), ...(pf?.indexEnv ?? {}) },
+            encoding: "buffer",
+          },
+          (err, stdout) => resolve(err ? null : parseCatFileBatchBytes(specs, stdout)),
+        );
+        // The child may exit before the spec list drains (a refused read
+        // or a bad first spec) — EPIPE on stdin must not escape as an
+        // unhandled 'error' event; the batch already resolves null.
+        child.stdin?.on("error", () => {});
+        child.stdin?.end(`${specs.join("\n")}\n`);
+      } catch {
+        resolve(null);
+      }
+    });
   };
   return {
     run: async (args) => {
-      if (!(await surfaceOk())) return null;
+      // Caller argv is judged by the same read table as `verifierGit` — the
+      // origin channel shares the trusted env/preflight but must not become
+      // an unjudged exec side door (a `reflog`/`config --global` argv would
+      // otherwise ride the pinned spawn verbatim).
+      if (!isVerifierGitQuery(args)) return null;
+      const { ok, pf } = await surfaceState();
+      if (!ok) return null;
       return new Promise<string | null>((resolve) => {
         try {
           execFile(
@@ -188,7 +272,7 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
               cwd: workspaceRoot,
               timeout: 15000,
               maxBuffer: 32 * 1024 * 1024,
-              env: gitEnvForCwd(),
+              env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...(pf?.indexEnv ?? {}) },
             },
             (err, stdout) => resolve(err ? null : String(stdout)),
           );
@@ -198,7 +282,9 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       });
     },
     runExit: async (args) => {
-      if (!(await surfaceOk())) return null;
+      if (!isVerifierGitQuery(args)) return null;
+      const { ok, pf } = await surfaceState();
+      if (!ok) return null;
       return new Promise<{ code: number; stdout: string; bytes?: Buffer } | null>((resolve) => {
         try {
           execFile(
@@ -208,7 +294,7 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
               cwd: workspaceRoot,
               timeout: 15000,
               maxBuffer: 32 * 1024 * 1024,
-              env: gitEnvForCwd(),
+              env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...(pf?.indexEnv ?? {}) },
               // Raw bytes — path listings must validate UTF-8 at byte level;
               // the default utf8 decode erases the distinction (CX-72).
               encoding: "buffer",
@@ -230,28 +316,9 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
         }
       });
     },
-    showMany: async (specs) => {
-      if (!(await surfaceOk())) return null;
-      return new Promise<(string | null)[] | null>((resolve) => {
-        try {
-          const child = execFile(
-            bin,
-            ["cat-file", "--batch"],
-            {
-              cwd: workspaceRoot,
-              timeout: 60000,
-              maxBuffer: 64 * 1024 * 1024,
-              env: gitEnvForCwd(),
-              encoding: "buffer",
-            },
-            (err, stdout) => resolve(err ? null : parseCatFileBatch(specs, stdout)),
-          );
-          child.stdin?.end(`${specs.join("\n")}\n`);
-        } catch {
-          resolve(null);
-        }
-      });
-    },
+    showMany: async (specs) =>
+      (await runBatchBytes(specs))?.map((b) => (b === null ? null : b.toString("utf8"))) ?? null,
+    showManyBytes: runBatchBytes,
   };
 }
 

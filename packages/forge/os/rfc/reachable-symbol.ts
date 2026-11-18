@@ -22,13 +22,48 @@ manifest's `reachableVia` edges and unions them with live doc-mention edges
   <item>Mention enumeration is `git ls-files --cached --others --exclude-standard`; a git failure surfaces in the probe detail.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1351: step 1 — command mode unions reachableVia with live doc-mention edges via @warpgogol/forge/reachability (Q-1/A; manifest stays structural-only)</item>
   <item>RFC-1351: review F-1/F-2 — doc-scan fs.glob parity + surfaced scan failure + guarded-initializer note</item>
   <item>RFC-1351: review report persisted + KEY_DECISIONS enumeration note
 
 fo-review REVIEW-CODE-2026-10-20-01 (subagent isolation, blockLevel warning) — F-1/F-2 fixed in the previous commit; reachable-symbol KEY_DECISIONS item now records the doc-mention enumeration contract.</item>
   <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
   <history>RFC-1334</history>
 </CHANGE_SUMMARY>
 */
@@ -37,9 +72,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, normalize, sep } from "node:path";
 import { parse as yamlParse } from "yaml";
 
-import { execFile } from "../../src/utils/sync-fs.ts";
 import { docMentionsInText, isMentionCandidate } from "../../src/reachability/command-mentions.ts";
-import { gitEnvForCwd } from "./verification-origin.ts";
+import { verifierGit } from "../../src/utils/verifier-git.ts";
 
 const SOURCE_EXT_RE = /\.(ts|tsx|mts|astro)$/;
 const EXCLUDED_RE =
@@ -73,37 +107,32 @@ interface ScanIndex {
 
 const indexCache = new Map<string, Promise<ScanIndex>>();
 
-function gitLsFiles(workspaceRoot: string): Promise<string[]> {
-  return new Promise((done) => {
-    execFile(
-      "git",
-      ["ls-files", "-z"],
-      { cwd: workspaceRoot, maxBuffer: 256 * 1024 * 1024, env: gitEnvForCwd() },
-      (err, stdout) => done(err ? [] : String(stdout).split("\0").filter(Boolean)),
-    );
+async function gitLsFiles(workspaceRoot: string): Promise<string[]> {
+  // verifierGit: the tracked set is judged evidence — a session-written
+  // `.git/index` cannot fabricate it (the channel's HEAD-anchored index
+  // answers the committed set), and ambient GIT_* selectors are scrubbed
+  // (CX-121/CX-122).
+  const r = await verifierGit(workspaceRoot, ["ls-files", "-z"], {
+    maxBuffer: 256 * 1024 * 1024,
   });
+  return r.exitCode === 0 ? r.stdout.split("\0").filter(Boolean) : [];
 }
 
 /** Doc-mention candidates: tracked + untracked-non-ignored, for fs.glob parity
  * with the coverage validator's enumeration (RFC-1351 review F-1). Unlike
  * gitLsFiles (symbol mode, tracked-only by contract), a failure is surfaced
  * so the caller cannot silently lose every doc edge. */
-function gitDocMentionCandidates(
+async function gitDocMentionCandidates(
   workspaceRoot: string,
 ): Promise<{ files: string[]; error?: string }> {
-  return new Promise((done) => {
-    execFile(
-      "git",
-      ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-      { cwd: workspaceRoot, maxBuffer: 256 * 1024 * 1024, env: gitEnvForCwd() },
-      (err, stdout) =>
-        done(
-          err
-            ? { files: [], error: err.message }
-            : { files: String(stdout).split("\0").filter(Boolean) },
-        ),
-    );
-  });
+  const r = await verifierGit(
+    workspaceRoot,
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    { maxBuffer: 256 * 1024 * 1024 },
+  );
+  return r.exitCode === 0
+    ? { files: r.stdout.split("\0").filter(Boolean) }
+    : { files: [], error: r.stderr || `git ls-files exited ${r.exitCode}` };
 }
 
 /** Strip comments with a string-aware state machine (globs like "a/*" stay intact). */
@@ -315,21 +344,14 @@ async function buildIndex(workspaceRoot: string): Promise<ScanIndex> {
   return { files, packages };
 }
 
-function gitStateKey(workspaceRoot: string): Promise<string> {
-  return new Promise((done) => {
-    execFile(
-      "git",
-      ["status", "--porcelain=v1", "-z", "--untracked-files=no"],
-      { cwd: workspaceRoot, maxBuffer: 64 * 1024 * 1024, env: gitEnvForCwd() },
-      (_e, status) =>
-        execFile(
-          "git",
-          ["rev-parse", "HEAD"],
-          { cwd: workspaceRoot, env: gitEnvForCwd() },
-          (_e2, head) => done(`${String(head).trim()}:${String(status)}`),
-        ),
-    );
-  });
+async function gitStateKey(workspaceRoot: string): Promise<string> {
+  const [status, head] = await Promise.all([
+    verifierGit(workspaceRoot, ["status", "--porcelain=v1", "-z", "--untracked-files=no"], {
+      maxBuffer: 64 * 1024 * 1024,
+    }),
+    verifierGit(workspaceRoot, ["rev-parse", "HEAD"]),
+  ]);
+  return `${head.stdout.trim()}:${status.stdout}`;
 }
 
 /** Memoized per workspace and git state — edits or commits invalidate the scan. */

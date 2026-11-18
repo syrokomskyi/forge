@@ -12,7 +12,6 @@ overwritten — the scaffold lands once and hands the keys to the repo.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
@@ -89,6 +88,42 @@ evidence channel — this commit closes all root causes.
   form-judged.
 
 The independent r8 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
@@ -414,91 +449,170 @@ function workflowAdopted(body: string): boolean {
    * `<< -` reads `-` as the delimiter, matching bash.
    */
   const HEREDOC_SENTINEL = "forge-heredoc-unarmable";
-  const scanHeredocOpeners = (raw: string): { delim: string; tabStrip: boolean }[] => {
+  /**
+   * Quote state carried across `run:` lines — a `'`/`"` left open at
+   * end-of-line keeps quoting the next line's head for bash, so the
+   * opener scan must too. `null` = scanning starts in command position.
+   */
+  interface HeredocScanState {
+    pendingQuote: "'" | '"' | null;
+  }
+  /**
+   * Quote-aware `<<` scan (CX-119): inside `'…'`/`"…"` the two characters
+   * are string content, never a redirection — `echo '<<A'` opens no
+   * heredoc in bash, but a raw scan armed a fake one whose body then hid
+   * the REAL opener on the next line; the fake terminator freed that
+   * real heredoc's stdin lines to count as invocations (dead CI
+   * adopted). `\` quotes the next char, a `#` at word start opens a
+   * comment (a `<<` after it is text too — `x<#f` keeps `#` literal, so
+   * the boundary set excludes the redirect chars themselves), and quote
+   * state carries across lines: an unclosed quote at EOL swallows the
+   * opener scan on later lines until it closes, and its span is never
+   * command text (`codeStart` is where post-prefix code begins).
+   */
+  const scanHeredocOpeners = (
+    raw: string,
+    state: HeredocScanState,
+  ): { openers: { delim: string; tabStrip: boolean }[]; codeStart: number } => {
     const openers: { delim: string; tabStrip: boolean }[] = [];
     let i = 0;
-    while ((i = raw.indexOf("<<", i)) !== -1) {
-      let j = i + 2;
-      if (raw[j] === "<") {
-        i = j;
-        continue; // <<< herestring — one-line stdin, not a heredoc
-      }
-      let tabStrip = false;
-      if (raw[j] === "-") {
-        tabStrip = true;
-        j++;
-      }
-      while (raw[j] === " " || raw[j] === "\t") j++;
-      let delim = "";
-      let unarmable = false;
-      for (;;) {
-        const c = raw[j];
-        if (c === undefined || c === " " || c === "\t" || ";|&()<>".includes(c)) break;
-        if (c === "'") {
-          const close = raw.indexOf("'", j + 1);
-          if (close === -1) {
-            unarmable = true;
-            break;
-          }
-          delim += raw.slice(j + 1, close);
-          j = close + 1;
+    if (state.pendingQuote !== null) {
+      // Consume the rest of the carried quote as string content.
+      const q = state.pendingQuote;
+      let k = 0;
+      while (k < raw.length) {
+        const c = raw[k]!;
+        if (q === '"' && c === "\\") {
+          k += 2;
           continue;
         }
-        if (c === '"') {
-          const close = raw.indexOf('"', j + 1);
-          if (close === -1) {
-            unarmable = true;
-            break;
-          }
-          // Inside "…": backslash escapes only $ ` " \ and newline — an
-          // unescaped $/backtick expands at runtime, which a static
-          // judge can never predict.
-          for (let k = j + 1; k < close; k++) {
-            const cc = raw[k]!;
-            if (cc === "\\" && k + 1 < close && '$`"\\'.includes(raw[k + 1]!)) {
-              delim += raw[k + 1];
-              k++;
-              continue;
-            }
-            if (cc === "$" || cc === "`") unarmable = true;
-            else delim += cc;
-          }
-          j = close + 1;
-          continue;
-        }
-        if (c === "\\") {
-          if (raw[j + 1] === undefined) {
-            unarmable = true;
-            break;
-          }
-          delim += raw[j + 1];
-          j += 2;
-          continue;
-        }
-        if (c === "$" || c === "`") {
-          unarmable = true;
-          break;
-        }
-        delim += c;
-        j++;
+        if (c === q) break;
+        k++;
       }
-      openers.push({ delim: unarmable || delim === "" ? HEREDOC_SENTINEL : delim, tabStrip });
-      i = Math.max(j, i + 2);
+      if (k >= raw.length) return { openers, codeStart: raw.length }; // whole line is still string
+      state.pendingQuote = null;
+      i = k + 1;
     }
-    return openers;
+    const codeStart = i;
+    let sq = false;
+    let dq = false;
+    while (i < raw.length) {
+      const c = raw[i]!;
+      if (sq) {
+        if (c === "'") sq = false;
+        i++;
+        continue;
+      }
+      if (dq) {
+        // Inside "…": backslash escapes only $ ` " \ and newline.
+        i += c === "\\" ? 2 : 1;
+        if (c === '"') dq = false;
+        continue;
+      }
+      if (c === "'") {
+        sq = true;
+        i++;
+        continue;
+      }
+      if (c === '"') {
+        dq = true;
+        i++;
+        continue;
+      }
+      if (c === "\\") {
+        i += 2;
+        continue;
+      }
+      if (c === "#" && (i === 0 || " \t;|&()".includes(raw[i - 1]!))) break; // comment tail
+      if (c === "<" && raw[i + 1] === "<") {
+        let j = i + 2;
+        if (raw[j] === "<") {
+          i = j;
+          continue; // <<< herestring — one-line stdin, not a heredoc
+        }
+        let tabStrip = false;
+        if (raw[j] === "-") {
+          tabStrip = true;
+          j++;
+        }
+        while (raw[j] === " " || raw[j] === "\t") j++;
+        let delim = "";
+        let unarmable = false;
+        for (;;) {
+          const cc = raw[j];
+          if (cc === undefined || cc === " " || cc === "\t" || ";|&()<>".includes(cc)) break;
+          if (cc === "'") {
+            const close = raw.indexOf("'", j + 1);
+            if (close === -1) {
+              unarmable = true;
+              break;
+            }
+            delim += raw.slice(j + 1, close);
+            j = close + 1;
+            continue;
+          }
+          if (cc === '"') {
+            const close = raw.indexOf('"', j + 1);
+            if (close === -1) {
+              unarmable = true;
+              break;
+            }
+            // Inside "…": backslash escapes only $ ` " \ and newline — an
+            // unescaped $/backtick expands at runtime, which a static
+            // judge can never predict.
+            for (let k = j + 1; k < close; k++) {
+              const cc2 = raw[k]!;
+              if (cc2 === "\\" && k + 1 < close && '$`"\\'.includes(raw[k + 1]!)) {
+                delim += raw[k + 1];
+                k++;
+                continue;
+              }
+              if (cc2 === "$" || cc2 === "`") unarmable = true;
+              else delim += cc2;
+            }
+            j = close + 1;
+            continue;
+          }
+          if (cc === "\\") {
+            if (raw[j + 1] === undefined) {
+              unarmable = true;
+              break;
+            }
+            delim += raw[j + 1];
+            j += 2;
+            continue;
+          }
+          if (cc === "$" || cc === "`") {
+            unarmable = true;
+            break;
+          }
+          delim += cc;
+          j++;
+        }
+        openers.push({ delim: unarmable || delim === "" ? HEREDOC_SENTINEL : delim, tabStrip });
+        i = Math.max(j, i + 2);
+        continue;
+      }
+      i++;
+    }
+    state.pendingQuote = sq ? "'" : dq ? '"' : null;
+    return { openers, codeStart };
   };
   const runInvokes = (run: string, cmd: RegExp, extra?: RegExp): boolean => {
     let dead = false;
     let depth = 0;
     let pipefail = false;
     const heredocs: { delim: string; tabStrip: boolean }[] = [];
+    const scanState: HeredocScanState = { pendingQuote: null };
     for (const raw of run.split("\n")) {
       if (dead) continue;
       if (heredocs.length > 0) {
-        // Inside a heredoc body — nothing runs. The terminator match is
-        // bash-strict: plain `<<` wants the delimiter alone on the line,
-        // `<<-`/`<<~` additionally skip leading TABS only — a
-        // space-indented terminator never ends the body (CX-100).
+        // Inside a heredoc body — nothing runs, and stdin lines carry no
+        // quote state. The terminator match is bash-strict: plain `<<`
+        // wants the delimiter alone on the line, `<<-`/`<<~`
+        // additionally skip leading TABS only — a space-indented
+        // terminator never ends the body (CX-100).
+        scanState.pendingQuote = null;
         const hd = heredocs[0];
         const esc = hd.delim.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const ends = hd.tabStrip
@@ -507,7 +621,15 @@ function workflowAdopted(body: string): boolean {
         if (ends) heredocs.shift();
         continue;
       }
+      // Heredoc openers on THIS line arm the body skip below — including
+      // on masked/compound lines, since the consumer still reads stdin.
+      // The scan is quote-aware: `<<` inside a quoted string is content,
+      // not an operator (CX-119), and `codeStart` skips a leading
+      // still-quoted span so its text is never judged as commands.
+      const scan = scanHeredocOpeners(raw, scanState);
+      for (const hd of scan.openers) heredocs.push(hd);
       const line = raw
+        .slice(scan.codeStart)
         .replace(/\$\{\{[^}]*\}\}/g, "") // ${{ }} exprs run runner-side (CX-66)
         .replace(/#.*$/, "")
         .trim();
@@ -516,9 +638,6 @@ function workflowAdopted(body: string): boolean {
         dead = true;
         continue;
       }
-      // Heredoc openers on THIS line arm the body skip below — including
-      // on masked/compound lines, since the consumer still reads stdin.
-      for (const hd of scanHeredocOpeners(raw)) heredocs.push(hd);
       if (/^set\s+-o\s+pipefail\b/.test(line)) {
         pipefail = true;
         continue;

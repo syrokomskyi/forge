@@ -12,19 +12,54 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
   <item>RFC-1516: bind evidence reuse to the oldest replayed result and harden committed-envelope reads for rfc-1516</item>
-  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391</history>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391, RFC-1453</history>
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
+import { verifierGit } from "../../src/utils/verifier-git.ts";
 
 import { join, relative } from "node:path";
 import { byteHash } from "../../src/utils/hash.ts";
@@ -255,28 +290,19 @@ async function freshnessPrecheck(
   return { warnings };
 }
 
-function execGit(workspaceRoot: string, args: string[]): Promise<string> {
-  return new Promise((resolve) => {
-    execFile("git", args, { cwd: workspaceRoot, timeout: 5000 }, (err, stdout) => {
-      if (err) {
-        resolve("");
-        return;
-      }
-      resolve(stdout.trim());
-    });
-  });
-}
-
 export async function captureGitContext(
   workspaceRoot: string,
 ): Promise<{ commit: string; workingTreeDirty: boolean }> {
-  const [commitOutput, statusOutput] = await Promise.all([
-    execGit(workspaceRoot, ["rev-parse", "HEAD"]),
-    execGit(workspaceRoot, ["status", "--porcelain"]),
+  // verifierGit: the recorded context is judged evidence — ambient GIT_*
+  // selectors and a session-forged `.git/index` cannot bias the dirty
+  // verdict (CX-121/CX-122).
+  const [commit, status] = await Promise.all([
+    verifierGit(workspaceRoot, ["rev-parse", "HEAD"]),
+    verifierGit(workspaceRoot, ["status", "--porcelain"]),
   ]);
   return {
-    commit: commitOutput || "unknown",
-    workingTreeDirty: statusOutput.length > 0,
+    commit: commit.exitCode === 0 ? commit.stdout.trim() : "unknown",
+    workingTreeDirty: status.exitCode === 0 && status.stdout.trim().length > 0,
   };
 }
 

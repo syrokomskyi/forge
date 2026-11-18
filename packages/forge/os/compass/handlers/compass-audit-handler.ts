@@ -10,19 +10,54 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1094: audit work orders now carry the KEY_DECISIONS block alongside MODULE_CONTRACT and CHANGE_SUMMARY.</item>
   <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
   <item>RFC-1143: validate/plan/record apply filterLedgerEligiblePaths — ledger-ineligible authored paths (missions/, gitignored) are skipped with skippedIneligible diagnostics instead of failing COMPASS-AUDIT-01; record warns but still writes.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
-  <history>RFC-0352, RFC-1242</history>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <history>RFC-0352, RFC-0556, RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 
 import { resolve, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-import { execFile, execFileSync } from "../../../src/utils/sync-fs.ts";
-import { promisify } from "node:util";
+import { execFileSync } from "../../../src/utils/sync-fs.ts";
+import { verifierGit, verifierGitEnv, resolveGitBin } from "../../../src/utils/verifier-git.ts";
 import { createCompassInventoryEntries } from "./compass-inventory.ts";
 import { resolveCompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
@@ -41,8 +76,6 @@ import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 // Ambient default for helper fns without a context param — handlers override
 // with `const io = resolveIo(context.io)` inside their own scope.
 const io = ambientIo;
-
-const execFileAsync = promisify(execFile);
 const LEDGER_PATH = "docs/compass-audit-ledger.generated.yaml";
 const DEFAULT_THRESHOLD = 30;
 // RFC-1143: cap the skippedPaths diagnostic list so huge ineligible sets do not
@@ -138,14 +171,11 @@ function extractBlock(source: string, tagName: string): string {
 }
 
 async function getGitUser(workspaceRoot: string): Promise<string> {
-  try {
-    const { stdout } = await execFileAsync("git", ["config", "user.name"], {
-      cwd: workspaceRoot,
-    });
-    return `human:${stdout.trim()}`;
-  } catch {
-    return "human:unknown";
-  }
+  // Audit author attribution rides the trusted channel — ambient GIT_*
+  // selectors or a foreign config store cannot rewrite the recorded name
+  // (CX-122 class).
+  const r = await verifierGit(workspaceRoot, ["config", "--get", "user.name"]);
+  return r.exitCode === 0 && r.stdout.trim() ? `human:${r.stdout.trim()}` : "human:unknown";
 }
 
 function getAuthoredEntries(entries: CompassInventoryEntry[]): CompassInventoryEntry[] {
@@ -167,10 +197,14 @@ async function filterLedgerEligiblePaths(
   let ignored = new Set<string>();
   if (candidates.length > 0) {
     try {
-      const stdout = execFileSync("git", ["check-ignore", "--stdin"], {
+      // verifierGitEnv — GIT_* selectors (GIT_DIR/GIT_WORK_TREE) cannot
+      // redirect the .gitignore lookup into a foreign checkout, and the
+      // resolved binary removes PATH substitution (CX-52/CX-122).
+      const stdout = execFileSync(resolveGitBin(), ["check-ignore", "--stdin"], {
         cwd: workspaceRoot,
         input: candidates.join("\n"),
         encoding: "utf-8",
+        env: verifierGitEnv(),
       });
       ignored = new Set(stdout.split("\n").filter((l: string) => l.length > 0));
     } catch {

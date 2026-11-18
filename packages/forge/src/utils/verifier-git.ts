@@ -18,7 +18,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
@@ -95,6 +94,42 @@ evidence channel — this commit closes all root causes.
   form-judged.
 
 The independent r8 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
@@ -243,10 +278,14 @@ function evidenceHooksDir(): string {
  * exempted); `log.showSignature`, `i18n.logOutputEncoding`,
  * `core.quotepath`, and `color.ui` reshape bytes the parsers match;
  * `core.fsmonitor` executes a repo-config binary on a status read;
- * `credential.helper=` is the documented list reset; `diff.external=cat`
- * and `interactive.diffFilter=cat` replace the driver program with a
- * pass-through (an EMPTY value makes git exec "" and fail 128 — the r5
- * verifier caught that dead `git diff`); `extensions.worktreeConfig=false`
+ * `credential.helper=` is the documented list reset;
+ * `interactive.diffFilter=cat` replaces the driver FILTER with a
+ * pass-through. `diff.external` is NOT here: it names the diff
+ * GENERATOR, not a filter — `-c diff.external=cat` execs `cat` with
+ * diff-driver argv (garbage then "external diff died"), and `-c
+ * diff.external=` execs an empty program — no `-c` value neutralizes it,
+ * so presence refuses the channel like the transport levers below.
+ * `extensions.worktreeConfig=false`
  * keeps `.git/config.worktree` keys from loading; `maintenance.auto` /
  * `gc.auto` stop a pinned fetch from spawning background helpers;
  * `fetch.recurseSubmodules`/`submodule.recurse` keep the read inside the
@@ -265,7 +304,6 @@ const EVIDENCE_CONFIG_PINS = [
   "color.ui=false",
   "core.fsmonitor=false",
   "credential.helper=",
-  "diff.external=cat",
   "interactive.diffFilter=cat",
   "extensions.worktreeConfig=false",
   "maintenance.auto=false",
@@ -283,6 +321,10 @@ const EVIDENCE_CONFIG_PINS = [
   // readers off restores ground truth without touching the files.
   "core.commitGraph=false",
   "core.multiPackIndex=false",
+  // A forged `objects/pack/*.bitmap` is the same class of session-writable
+  // reachability cache — rev-list would trust claimed membership over the
+  // real object graph (CX-113's pack-store sibling).
+  "pack.useBitmapIndex=false",
 ] as const;
 
 /**
@@ -323,6 +365,39 @@ export function evidencePinArgs(
     ...(preflight?.configArgs ?? []),
     ...(onConfigRead ? [] : (preflight?.hookArgs ?? [])),
   ];
+}
+
+/**
+ * The `-c` pin pairs re-encoded as `GIT_CONFIG_*` env — command-scope config
+ * with the same precedence over `.git/config` that argv `-c` carries, but
+ * the spawned argv stays the judged query alone (`[subcommand, ...]`). The
+ * r8 pins-as-argv shifted every argv position: failure-injection seams that
+ * match the subcommand at `$1`/`$2` (the resolved-binary shim contract the
+ * CX-73..81 fixtures arm) silently missed, so an injected read failure
+ * degraded to a pass instead of an `unreadableReads` refusal (CX-115 r9
+ * regression). Pins ride the channel-owned env like `GIT_INDEX_FILE` —
+ * `verifierGitEnv` already strips ambient `GIT_CONFIG_*`, and caller
+ * `extraEnv` cannot re-add GIT_* keys, so the lever stays session-proof.
+ */
+export function evidencePinEnv(
+  args: readonly string[],
+  preflight?: EvidencePreflight | null,
+): Record<string, string> {
+  const argv = evidencePinArgs(args, preflight);
+  const env: Record<string, string> = {};
+  let n = 0;
+  for (let i = 0; i + 1 < argv.length; i += 2) {
+    const kv = argv[i + 1]!;
+    const eq = kv.indexOf("=");
+    env[`GIT_CONFIG_KEY_${n}`] = eq === -1 ? kv : kv.slice(0, eq);
+    // `-c key=` means an empty value; `-c key` (no `=`) means boolean-true,
+    // which env expresses by LEAVING the value unset — never emit an empty
+    // GIT_CONFIG_VALUE for a bare-key pin.
+    if (eq !== -1) env[`GIT_CONFIG_VALUE_${n}`] = kv.slice(eq + 1);
+    n++;
+  }
+  env["GIT_CONFIG_COUNT"] = String(n);
+  return env;
 }
 
 /** Caller extraEnv may keep ONLY these — everything else is a lever (CX-84). */
@@ -395,6 +470,17 @@ export interface EvidencePreflight {
    * answer.
    */
   warnedShape: string[];
+  /**
+   * Channel-owned `GIT_INDEX_FILE` pointing at a verifier-built rebuild
+   * of the session index's claims — `.git/index` is session-writable and
+   * a forged stat tuple answers `status --porcelain` clean on dirty bytes
+   * (CX-121), while a HEAD-anchored index cannot express staged or
+   * unborn-HEAD state. The rebuilt entries carry zero stat, so every
+   * index-consulting read (status/diff/ls-files/grep --cached)
+   * content-hashes the worktree instead of trusting the session's tuples.
+   * Undefined when the session index cannot be enumerated.
+   */
+  indexEnv?: Record<string, string>;
 }
 
 /**
@@ -433,7 +519,6 @@ const EVIDENCE_CONFIG_STATIC = new Set([
   "core.quotepath",
   "color.ui",
   "credential.helper",
-  "diff.external",
   "interactive.difffilter",
   "extensions.worktreeconfig",
   "maintenance.auto",
@@ -448,6 +533,7 @@ const EVIDENCE_CONFIG_STATIC = new Set([
   "core.excludesfile",
   "core.commitgraph",
   "core.multipackindex",
+  "pack.usebitmapindex",
 ]);
 
 /**
@@ -480,6 +566,12 @@ const EVIDENCE_CONFIG_REFUSE: ReadonlyArray<{ key: RegExp; value?: RegExp }> = [
   { key: /^extensions\.(?:partialclone|worktreeconfig)$/i },
   { key: /^credential\..*helper$/i, value: /\S/ },
   { key: /^core\.fsmonitor$/i, value: /^(?!$|true$|false$|yes$|no$|on$|off$|1$|0$)/i },
+  // `diff.external` names the diff GENERATOR — a program `-c` cannot
+  // neutralize (a value execs it; an empty value execs "" — both are a
+  // dead or attacker-shaped diff). Presence refuses the channel so a
+  // session-set driver can never shape `diff` evidence, and the
+  // allowlisted `log -p`/`show`/`diff` internal paths keep working.
+  { key: /^diff\.external$/i },
 ];
 
 /** The stderr prefix a refused evidence call carries — callers treat it as unverifiable, never as an empty answer. */
@@ -518,19 +610,39 @@ export const EVIDENCE_SHAPE_QUERY_PATHS = [
  * Raw trusted-git spawn without the config preflight — the preflight's own
  * probe channel, and the binary-reachability probe callers use to tell a
  * dead resolved path (fail loud) from an unenumerable repo (fail closed).
+ * `extraEnv` is CHANNEL-owned env merged over the scrub — the trusted-index
+ * rebuild uses it to aim `update-index --index-info` at a verifier-created
+ * file and to ride the static pins; it is the body's own contract, never a
+ * caller lever (GIT_* stays session-stripped).
  */
-export function execEvidenceGit(cwd: string, args: string[]): Promise<VerifierGitResult> {
+export function execEvidenceGit(
+  cwd: string,
+  args: string[],
+  opts?: { extraEnv?: Record<string, string>; input?: string | Buffer },
+): Promise<VerifierGitResult> {
   return new Promise((resolve) => {
     try {
-      execFile(
+      const child = execFile(
         resolveGitBin(),
         ["-C", cwd, ...args],
-        { cwd, env: verifierGitEnv(), timeout: 30_000 },
+        {
+          cwd,
+          env: { ...verifierGitEnv(), ...(opts?.extraEnv ?? {}) },
+          timeout: 30_000,
+          // `--index-info` claims round-trips scale with the repo's
+          // tracked set — the 1MB default silently truncates them.
+          maxBuffer: 64 * 1024 * 1024,
+        },
         (err, stdout, stderr) => {
           const code = err === null ? 0 : typeof err.code === "number" ? err.code : -1;
           resolve({ exitCode: code, stdout: String(stdout), stderr: String(stderr) });
         },
       );
+      // A child that exits before stdin drains raises EPIPE on the write —
+      // the read already resolves through `close`, so swallow the stream
+      // error rather than let it escape as an unhandled rejection.
+      child.stdin?.on("error", () => {});
+      child.stdin?.end(opts?.input ?? "");
     } catch (e) {
       resolve({ exitCode: -1, stdout: "", stderr: String(e) });
     }
@@ -726,6 +838,26 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
   { prefix: ["ls-remote"], forbid: ["--upload-pack", "--exec", "-u", "--stdin"] },
   { prefix: ["branch", "--show-current"], maxPositionals: 0 },
   { prefix: ["branch", "--list"], forbid: BRANCH_WRITE_FLAGS },
+  // `git grep` is a read — but `-O`/`--open-files-in-pager` execs the pager
+  // program, `--recurse-submodules` descends into foreign object stores,
+  // `--pathspec-from-file`/`--pathspec-file-nul` reads a session file for the
+  // pattern set (a file could hide entries from the listing), and
+  // `--untracked`/`--no-index`/`--all-objects` move the read off the
+  // committed/index surface the channel proves (CX-115-class: config/exec
+  // levers on a read subcommand).
+  {
+    prefix: ["grep"],
+    forbid: [
+      "-O",
+      "--open-files-in-pager",
+      "--recurse-submodules",
+      "--pathspec-from-file",
+      "--pathspec-file-nul",
+      "--untracked",
+      "--no-index",
+      "--all-objects",
+    ],
+  },
 ];
 
 /**
@@ -898,13 +1030,38 @@ export function isScratchGitQuery(args: readonly string[]): boolean {
 }
 
 /**
- * Verified loose-object files — keyed by absolute path with the stat pair
- * a rewrite would change. Loose objects are write-once for git, so a
- * matching (mtimeMs, size) tuple means the file's hash check still
- * stands; a session rewriting the file in place (`chmod`, new bytes —
- * CX-104's shadow path) changes both and forces a re-hash.
+ * Stat tuple a session cannot restore after a rewrite. `utimes` sets
+ * atime/mtime only — ctime is kernel-managed and changes on every
+ * content or metadata write (CX-114: an equal-size in-place rewrite with
+ * the memoized mtime restored slipped the r8 (mtimeMs,size) memo).
+ * `ino` additionally catches rename-replace: a session swapping the
+ * verified file for a same-size, back-dated sibling lands on a new inode.
  */
-const verifiedLooseFiles = new Map<string, { mtimeMs: number; size: number }>();
+interface VerifiedStat {
+  ino: number;
+  ctimeMs: number;
+  size: number;
+}
+
+function statKeyMatches(memo: VerifiedStat | undefined, st: VerifiedStat): boolean {
+  return (
+    memo !== undefined &&
+    memo.ino === st.ino &&
+    memo.ctimeMs === st.ctimeMs &&
+    memo.size === st.size
+  );
+}
+
+/**
+ * Verified loose-object files — keyed by absolute path with the stat
+ * triple a rewrite cannot preserve. Loose objects are write-once for
+ * git, so a matching (ino, ctimeMs, size) tuple means the file's hash
+ * check still stands; a session rewriting the file in place (`chmod`,
+ * new bytes — CX-104's shadow path) bumps ctime and forces a re-hash,
+ * and a same-stat rewrite is impossible because ctime is not settable
+ * (CX-114).
+ */
+const verifiedLooseFiles = new Map<string, VerifiedStat>();
 const LOOSE_FANOUT_RE = /^[0-9a-f]{2}$/;
 const LOOSE_NAME_RE = /^(?:[0-9a-f]{38}|[0-9a-f]{62})$/;
 
@@ -918,7 +1075,7 @@ const LOOSE_NAME_RE = /^(?:[0-9a-f]{38}|[0-9a-f]{62})$/;
  * git cannot serve it either, so reads touching it fail with git's own
  * error and the per-read "a git read failed" contract stays intact.
  * Returns `objects/…` names for the violation list; the
- * (path, mtime, size) memo keeps the cost at "objects written since the
+ * (ino, ctimeMs, size) memo keeps the cost at "objects written since the
  * last scan" per call.
  */
 function scanLooseObjects(objectsDir: string): string[] {
@@ -948,8 +1105,8 @@ function scanLooseObjects(objectsDir: string): string[] {
         continue;
       }
       if (!st.isFile()) continue;
-      const memo = verifiedLooseFiles.get(abs);
-      if (memo !== undefined && memo.mtimeMs === st.mtimeMs && memo.size === st.size) continue;
+      const stKey: VerifiedStat = { ino: st.ino, ctimeMs: st.ctimeMs, size: st.size };
+      if (statKeyMatches(verifiedLooseFiles.get(abs), stKey)) continue;
       let ok = false;
       let servable = true;
       try {
@@ -965,13 +1122,118 @@ function scanLooseObjects(objectsDir: string): string[] {
       }
       if (ok) {
         if (verifiedLooseFiles.size > 200_000) verifiedLooseFiles.clear();
-        verifiedLooseFiles.set(abs, { mtimeMs: st.mtimeMs, size: st.size });
+        verifiedLooseFiles.set(abs, stKey);
       } else if (servable) {
         forged.push(`objects/${dir}/${name}`);
       }
     }
   }
   return forged;
+}
+
+/**
+ * Verified pack indexes — keyed by absolute `.idx` path on the same
+ * unforgeable (ino, ctimeMs, size) stat triple as the loose memo. A
+ * session-written `pack-*.pack`+`.idx` pair serves inflated bytes for
+ * ANY object name its idx claims — git resolves pack entries by idx
+ * name and never re-hashes on read, so a pack whose objects do not hash
+ * to their claimed names is the CX-104 forgery on the path the loose
+ * sweep cannot see (CX-113). `git verify-pack -s` rebuilds every
+ * object's name from its inflated content and fails the idx when a
+ * claimed name mismatches (empirically confirmed on git 2.53 — a forged
+ * idx+pack pair exits 1, a repacked store exits 0).
+ *
+ * Only `.idx` files whose sibling `.pack` exists are checked: git
+ * iterates pack content through the idx, so an orphaned idx or an
+ * unindexed pack is unservable — the same "git fails its own read"
+ * contract the loose sweep keeps for corrupt entries.
+ */
+const verifiedPackFiles = new Map<string, VerifiedStat>();
+
+export async function scanPackObjects(objectsDir: string): Promise<string[]> {
+  const forged: string[] = [];
+  const packDir = path.join(objectsDir, "pack");
+  let names: string[];
+  try {
+    names = readdirSync(packDir);
+  } catch {
+    return forged;
+  }
+  for (const name of names) {
+    if (!name.endsWith(".idx")) continue;
+    const absIdx = path.join(packDir, name);
+    // A .pack without .idx is unservable (git opens packs via the idx);
+    // an .idx without .pack fails git's own read — same corrupt-store
+    // contract as un-inflatable loose objects, not a refuse violation.
+    if (!existsSync(absIdx.slice(0, -4) + ".pack")) continue;
+    let st: ReturnType<typeof statSync>;
+    try {
+      st = statSync(absIdx);
+    } catch {
+      continue;
+    }
+    if (!st.isFile()) continue;
+    const stKey: VerifiedStat = { ino: st.ino, ctimeMs: st.ctimeMs, size: st.size };
+    if (statKeyMatches(verifiedPackFiles.get(absIdx), stKey)) continue;
+    const r = await execEvidenceGit(path.dirname(packDir), ["verify-pack", "-s", absIdx]);
+    if (r.exitCode === 0) {
+      if (verifiedPackFiles.size > 4_000) verifiedPackFiles.clear();
+      verifiedPackFiles.set(absIdx, stKey);
+    } else {
+      forged.push(`objects/pack/${name}`);
+    }
+  }
+  return forged;
+}
+
+let evidenceIndexDirPath: string | undefined;
+let evidenceIndexSeq = 0;
+function evidenceIndexDir(): string {
+  if (evidenceIndexDirPath === undefined) {
+    evidenceIndexDirPath = mkdtempSync(path.join(os.tmpdir(), "forge-evidence-idx-"));
+  }
+  return evidenceIndexDirPath;
+}
+
+/**
+ * Build the throwaway index index-consulting reads (status/diff/ls-files)
+ * must see — a verifier-owned rebuild of the session index's CLAIMS.
+ * `.git/index` is session-writable in three ways a HEAD-anchored
+ * `read-tree` index both fixes and breaks: it drops forged stat tuples
+ * (CX-121) but also drops the session's real staged entries, and it
+ * cannot exist at all on an unborn HEAD — `status --porcelain -uno` then
+ * hides staged dirt and `ls-files` answers empty on a populated index.
+ * So the verifier index is rebuilt from `ls-files --stage` output: the
+ * listing carries only `mode sha stage path` claims — no stat cache, no
+ * assume-unchanged/skip-worktree flags — and `--index-info` writes the
+ * entries back with ZEROED stat. Every index-vs-worktree column then
+ * content-hashes instead of trusting a tuple the session wrote, while
+ * staged-vs-HEAD columns still show what the session index claims —
+ * a forged claim can only fabricate dirt, never hide it. Each call gets
+ * a fresh file: concurrent preflights in one process must not interleave
+ * writes into a shared index. Returns `{}` when the session index cannot
+ * be enumerated — the ambient index then surfaces git's own error.
+ */
+export async function prepareEvidenceIndex(repoRoot: string): Promise<Record<string, string>> {
+  const indexFile = path.join(evidenceIndexDir(), `index-${++evidenceIndexSeq}`);
+  const env = { GIT_INDEX_FILE: indexFile };
+  // Both spawns carry the static pins via env: `ls-files` consults
+  // `core.fsmonitor` even for a pure --stage dump, and `update-index`
+  // can refresh the fsmonitor token — a session program must not exec
+  // inside the claims enumeration or the rebuild (CX-115 class).
+  const claims = await execEvidenceGit(repoRoot, ["ls-files", "--stage", "-z"], {
+    extraEnv: evidencePinEnv(["ls-files"]),
+  });
+  if (claims.exitCode !== 0) return {};
+  // `-z` claims feed `--index-info` verbatim.
+  const rebuilt = await execEvidenceGit(repoRoot, ["update-index", "-z", "--index-info"], {
+    extraEnv: { ...env, ...evidencePinEnv(["update-index"]) },
+    input: claims.stdout,
+  });
+  if (rebuilt.exitCode !== 0) return {};
+  // An empty claim set leaves no file — GIT_INDEX_FILE aimed at a
+  // nonexistent path is git's own empty-index answer, matching ambient.
+  return env;
 }
 
 /**
@@ -1138,7 +1400,25 @@ export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidenceP
         ? objects.stdout.slice(0, -1)
         : objects.stdout
       : null;
-  return judgeEvidenceRepoSurface(repoRoot, listed.stdout, shapePaths, objectsDir);
+  const preflight = judgeEvidenceRepoSurface(repoRoot, listed.stdout, shapePaths, objectsDir);
+  // Pack-carried objects get the same integrity anchor loose objects
+  // have: `verify-pack -s` rebuilds every object name from inflated
+  // content, so a session-dropped pack+idx pair serving false bytes is
+  // caught before any read trusts the store (CX-113). Skipped when the
+  // objects dir could not be resolved — that failure is already a
+  // shapeViolation.
+  if (objectsDir !== null && objectsDir !== undefined) {
+    const absObjects = path.isAbsolute(objectsDir)
+      ? objectsDir
+      : path.resolve(repoRoot, objectsDir);
+    preflight.shapeViolations.push(...(await scanPackObjects(absObjects)));
+  }
+  // `.git/index` is session-writable — a forged stat tuple answers
+  // status/diff clean on dirty bytes (CX-121). Rebuild the index's claims
+  // into a verifier-owned zero-stat file every index-consulting spawn
+  // redirects to.
+  preflight.indexEnv = await prepareEvidenceIndex(repoRoot);
+  return preflight;
 }
 
 export interface VerifierGitResult {
@@ -1267,6 +1547,10 @@ export async function verifierSpawn(
  * Shared spawn for the trusted-git channels: surface preflight → argv
  * judgment → pinned execFile. `judge` picks the table — the read table
  * for `verifierGit`, the bounded mutation set for `verifierScratchGit`.
+ * `useIndexEnv` applies the preflight's claims-rebuilt throwaway index —
+ * read-table ops only; the scratch channel's mutations (add/commit)
+ * need the clone's real index (CX-121's env is a read-judgment surface,
+ * never a write path).
  */
 async function verifierGitSpawn(
   cwd: string,
@@ -1274,6 +1558,7 @@ async function verifierGitSpawn(
   opts: { timeoutMs?: number; maxBuffer?: number; extraEnv?: Record<string, string> } | undefined,
   judge: (args: readonly string[]) => boolean,
   table: string,
+  useIndexEnv: boolean,
 ): Promise<VerifierGitResult> {
   // The session-writable repo surface is judged before the spawn — a
   // transport/exec lever, a topology file, or a loose object whose bytes
@@ -1309,10 +1594,21 @@ async function verifierGitSpawn(
     try {
       execFile(
         resolveGitBin(),
-        [...evidencePinArgs(args, preflight), ...args],
+        args,
         {
           cwd,
-          env: { ...verifierGitEnv(), ...filterEvidenceExtraEnv(opts?.extraEnv) },
+          env: {
+            ...verifierGitEnv(),
+            // Pins ride the env, not argv — the spawned argv is the judged
+            // query verbatim so positional argv contracts (subcommand at
+            // $1) hold for failure-injection seams.
+            ...evidencePinEnv(args, preflight),
+            // The preflight's claims-rebuilt throwaway index — the
+            // session's `.git/index` is never consulted for a trusted
+            // verdict (CX-121).
+            ...(useIndexEnv ? (preflight?.indexEnv ?? {}) : {}),
+            ...filterEvidenceExtraEnv(opts?.extraEnv),
+          },
           timeout: opts?.timeoutMs ?? 60_000,
           maxBuffer: opts?.maxBuffer ?? 64 * 1024 * 1024,
         },
@@ -1343,7 +1639,7 @@ export async function verifierGit(
   args: string[],
   opts?: { timeoutMs?: number; maxBuffer?: number; extraEnv?: Record<string, string> },
 ): Promise<VerifierGitResult> {
-  return verifierGitSpawn(cwd, args, opts, isVerifierGitQuery, "verifier read table");
+  return verifierGitSpawn(cwd, args, opts, isVerifierGitQuery, "verifier read table", true);
 }
 
 /**
@@ -1360,5 +1656,5 @@ export async function verifierScratchGit(
   args: string[],
   opts?: { timeoutMs?: number; maxBuffer?: number; extraEnv?: Record<string, string> },
 ): Promise<VerifierGitResult> {
-  return verifierGitSpawn(cwd, args, opts, isScratchGitQuery, "scratch table");
+  return verifierGitSpawn(cwd, args, opts, isScratchGitQuery, "scratch table", false);
 }
