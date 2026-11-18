@@ -22,11 +22,12 @@ substituted object, a redirected repository, or a shim binary's output
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
 import { execFile, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { resolveSpawnPlan } from "./spawn.ts";
@@ -125,6 +126,15 @@ export function verifierGitEnv(): NodeJS.ProcessEnv {
   env["GIT_NO_REPLACE_OBJECTS"] = "1";
   env["GIT_CONFIG_GLOBAL"] = process.platform === "win32" ? "NUL" : "/dev/null";
   env["GIT_CONFIG_SYSTEM"] = process.platform === "win32" ? "NUL" : "/dev/null";
+  // ssh:// and scp-style transports exec OpenSSH, which reads the user's
+  // own ~/.ssh/config via getpwuid — outside every git-config surface the
+  // preflight judges, so a session `Match`/`ProxyCommand` block there would
+  // run inside the trusted channel (CX-86). `-F <devnull>` overrides the
+  // per-user config file entirely; the known-hosts file is devnull'd so a
+  // session-planted trust cannot pass either (first-contact hosts still
+  // work TOFU-style — a network MITM is outside the session-config model).
+  env["GIT_SSH_COMMAND"] =
+    `ssh -F ${DEVNULL} -o UserKnownHostsFile=${DEVNULL} -o StrictHostKeyChecking=accept-new`;
   return env;
 }
 
@@ -132,16 +142,17 @@ const DEVNULL = process.platform === "win32" ? "NUL" : "/dev/null";
 
 let evidenceHooksDirPath: string | undefined;
 /**
- * The `core.hooksPath` pin target — a real empty dir under the OS temp
- * root so a repo-config `core.hooksPath` resolves to nothing hookable.
- * `-c` DOES reach the hook resolver (callback-scope config), unlike the
- * transport levers, so pinning works where detection alone would not
- * (CX-74). Created lazily on first evidence spawn.
+ * The `core.hooksPath` pin target — a fresh, uniquely-named empty dir under
+ * the OS temp root so a repo-config `core.hooksPath` resolves to nothing
+ * hookable. `-c` DOES reach the hook resolver (callback-scope config),
+ * unlike the transport levers, so pinning works where detection alone
+ * would not (CX-74). `mkdtempSync` — never a predictable pid-suffixed
+ * name a session could pre-plant hooks into (CX-87). Created lazily on
+ * first evidence spawn.
  */
 function evidenceHooksDir(): string {
   if (evidenceHooksDirPath === undefined) {
-    const dir = path.join(os.tmpdir(), `forge-evidence-hooks-${process.pid}`);
-    mkdirSync(dir, { recursive: true });
+    const dir = mkdtempSync(path.join(os.tmpdir(), "forge-evidence-hooks-"));
     evidenceHooksDirPath = dir;
   }
   return evidenceHooksDirPath;
@@ -189,6 +200,13 @@ const EVIDENCE_CONFIG_PINS = [
   "protocol.rsync.allow=never",
   "protocol.ftp.allow=never",
   "protocol.ftps.allow=never",
+  // Session-writable caches that re-describe stored objects: a forged
+  // `.git/objects/info/commit-graph` overrides committed parent edges so
+  // rev-list/merge-base hide real commits (CX-88), and a forged MIDX can
+  // remap oid→pack bytes. Both are regenerable caches — pinning the
+  // readers off restores ground truth without touching the files.
+  "core.commitGraph=false",
+  "core.multiPackIndex=false",
 ] as const;
 
 /**
@@ -352,6 +370,8 @@ const EVIDENCE_CONFIG_STATIC = new Set([
   "protocol.ftps.allow",
   "core.attributesfile",
   "core.excludesfile",
+  "core.commitgraph",
+  "core.multipackindex",
 ]);
 
 /**
@@ -375,7 +395,9 @@ const EVIDENCE_CONFIG_REFUSE: ReadonlyArray<{ key: RegExp; value?: RegExp }> = [
   { key: /^ssh\./i },
   { key: /^http\./i },
   { key: /^protocol\./i },
-  { key: /^remote\.[^.]+\.(?:proxy|proxyauthmethod|vcs|promisor|partialclonefilter)$/i },
+  {
+    key: /^remote\.[^.]+\.(?:proxy|proxyauthmethod|vcs|promisor|partialclonefilter|uploadpack|receivepack)$/i,
+  },
   { key: /^extensions\.(?:partialclone|worktreeconfig)$/i },
   { key: /^credential\..*helper$/i, value: /\S/ },
   { key: /^core\.fsmonitor$/i, value: /^(?!$|true$|false$|yes$|no$|on$|off$|1$|0$)/i },
@@ -387,13 +409,26 @@ export const EVIDENCE_REFUSED_PREFIX = "EVIDENCE-REFUSED";
 /** `.git` metadata paths whose presence refuses evidence — resolved via `--git-path` so linked worktrees land on the right common/worktree dir. */
 const EVIDENCE_SHAPE_PATHS = ["info/grafts", "objects/info/alternates", "shallow"] as const;
 
-/** Shape paths reported as diagnostics without refusing — they cannot falsify committed-object reads. */
-const EVIDENCE_SHAPE_WARN_PATHS = ["info/exclude"] as const;
+/**
+ * Shape paths reported as diagnostics without refusing — they cannot
+ * falsify committed-object reads once the reader pins hold: `info/exclude`
+ * hides untracked files only; the commit-graph/MIDX caches are ignored
+ * under the `core.commitGraph=false`/`core.multiPackIndex=false` pins
+ * (CX-88: a forged graph DID lie before the pin existed).
+ */
+const EVIDENCE_SHAPE_WARN_PATHS = [
+  "info/exclude",
+  "objects/info/commit-graph",
+  "objects/info/commit-graphs",
+  "objects/pack/multi-pack-index",
+] as const;
 
 /**
  * `--git-path` query order for the topology check — refuse paths first,
- * then warn-only. The os/flow driver's literal argv must enumerate these
- * in this exact order for the judge's positional mapping to hold.
+ * then warn-only. Each path is queried by its own `--git-path` call: a
+ * resolved path may itself CONTAIN a newline (linked-worktree common dir
+ * under a hostile dirname, CX-89), so one multi-query line-split cannot
+ * keep the positional mapping honest.
  */
 export const EVIDENCE_SHAPE_QUERY_PATHS = [
   ...EVIDENCE_SHAPE_PATHS,
@@ -434,11 +469,16 @@ export function execEvidenceGit(cwd: string, args: string[]): Promise<VerifierGi
  * spawn of its own — callers feed it output from their own channel so the
  * only subprocess on the evidence path stays inside the argv-judged body
  * (the read-only scan exempts that body callsite-by-callsite).
+ *
+ * `shapePaths` carries one resolved `--git-path` answer per
+ * EVIDENCE_SHAPE_QUERY_PATHS entry (null = the query failed) — the caller
+ * runs one query per path because a resolved path can itself embed a
+ * newline and silently misalign a positional line map (CX-89).
  */
 export function judgeEvidenceRepoSurface(
   repoRoot: string,
   listedStdout: string,
-  gitPathsStdout: string | null,
+  shapePaths: readonly (string | null)[],
 ): EvidencePreflight {
   const configArgs: string[] = [];
   const hookArgs: string[] = [];
@@ -479,30 +519,28 @@ export function judgeEvidenceRepoSurface(
     if (EVIDENCE_CONFIG_STATIC.has(key)) continue;
     configArgs.push("-c", `${key}=`);
   }
-  if (gitPathsStdout !== null) {
-    const resolved = gitPathsStdout
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-    resolved.forEach((resolvedPath, i) => {
-      // `--git-path` answers relative to the queried repo — resolve against
-      // repoRoot, never the process cwd, or the file check reads nothing.
-      const abs = path.isAbsolute(resolvedPath)
-        ? resolvedPath
-        : path.resolve(repoRoot, resolvedPath);
-      let body = "";
-      try {
-        body = readFileSync(abs, "utf8");
-      } catch {
-        return;
-      }
-      const effective = body.split("\n").some((l) => l.trim().length > 0 && !l.startsWith("#"));
-      if (!effective) return;
-      const name = EVIDENCE_SHAPE_QUERY_PATHS[i] ?? abs;
-      if (i < EVIDENCE_SHAPE_PATHS.length) shapeViolations.push(name);
-      else warnedShape.push(name);
-    });
-  }
+  shapePaths.forEach((resolvedPath, i) => {
+    if (resolvedPath === null) return;
+    // `--git-path` answers relative to the queried repo — resolve against
+    // repoRoot, never the process cwd, or the file check reads nothing.
+    // A newline inside the path itself is preserved (per-path queries,
+    // CX-89) and resolves to the real file location.
+    const abs = path.isAbsolute(resolvedPath) ? resolvedPath : path.resolve(repoRoot, resolvedPath);
+    let body = "";
+    try {
+      body = readFileSync(abs, "utf8");
+    } catch {
+      return;
+    }
+    // Any non-empty non-comment line is content — a whitespace-only line
+    // is a LITERAL path entry (`.git/objects/   ` is a real alternates
+    // target, CX-91), never a blank.
+    const effective = body.split("\n").some((l) => l.length > 0 && !/^\s*#/.test(l));
+    if (!effective) return;
+    const name = EVIDENCE_SHAPE_QUERY_PATHS[i] ?? abs;
+    if (i < EVIDENCE_SHAPE_PATHS.length) shapeViolations.push(name);
+    else warnedShape.push(name);
+  });
   return { configArgs, hookArgs, refusedKeys, shapeViolations, warnedShape };
 }
 
@@ -523,15 +561,16 @@ export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidenceP
     "--null",
   ]);
   if (listed.exitCode !== 0) return null;
-  const gitPaths = await execEvidenceGit(repoRoot, [
-    "rev-parse",
-    ...EVIDENCE_SHAPE_QUERY_PATHS.flatMap((p) => ["--git-path", p]),
-  ]);
-  return judgeEvidenceRepoSurface(
-    repoRoot,
-    listed.stdout,
-    gitPaths.exitCode === 0 ? gitPaths.stdout : null,
+  const shapePaths = await Promise.all(
+    EVIDENCE_SHAPE_QUERY_PATHS.map(async (p) => {
+      const r = await execEvidenceGit(repoRoot, ["rev-parse", "--git-path", p]);
+      if (r.exitCode !== 0) return null;
+      // strip exactly the terminating newline — a newline inside the path
+      // itself is real and must reach the resolver (CX-89)
+      return r.stdout.endsWith("\n") ? r.stdout.slice(0, -1) : r.stdout;
+    }),
   );
+  return judgeEvidenceRepoSurface(repoRoot, listed.stdout, shapePaths);
 }
 
 export interface VerifierGitResult {
