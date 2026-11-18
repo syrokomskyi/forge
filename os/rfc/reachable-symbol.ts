@@ -19,10 +19,9 @@ manifest's `reachableVia` edges and unions them with live doc-mention edges
   <item>Barrel re-exports are followed to depth 5; bare specifiers resolve through workspace package.json exports.</item>
   <item>The tracked-file scan is memoized per workspace so several probes in one run share it.</item>
   <item>Command mode unions manifest edges with live doc-mention edges; mentions under frozen trees never count.</item>
-  <item>Mention enumeration is `git ls-files --cached --others --exclude-standard`; a git failure surfaces in the probe detail.</item>
+  <item>Mention enumeration is `git ls-files --cached --others` — the channel strips `--exclude-standard` from the spawned argv so a session-authored `.gitignore` can never hide files from coverage (CX-142); a git failure surfaces in the probe detail.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1351: step 1 — command mode unions reachableVia with live doc-mention edges via @warpgogol/forge/reachability (Q-1/A; manifest stays structural-only)</item>
   <item>RFC-1351: review F-1/F-2 — doc-scan fs.glob parity + surfaced scan failure + guarded-initializer note</item>
   <item>RFC-1351: review report persisted + KEY_DECISIONS enumeration note
 
@@ -64,7 +63,8 @@ evidence channel — this commit closes all root causes.
 
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
-  <history>RFC-1334</history>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
+  <history>RFC-1334, RFC-1351</history>
 </CHANGE_SUMMARY>
 */
 

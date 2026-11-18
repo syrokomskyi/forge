@@ -18,42 +18,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
-
-Independent clean-context verification (round 9, candidate 4436339db)
-returned REFUTED with ten live counterexamples against the r8-hardened
-evidence channel — this commit closes all root causes.
-
-- Pack-carried objects get the loose-sweep integrity anchor: every
-  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
-  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
-  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
-  reachability cache off.
-- Every trusted-path git call routes through the judged/preflighted
-  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
-  listWorkspaceFiles and the snapshot gitGrep closure now run
-  verifierGit/createOriginGit with structured fail-closed dirty
-  verdicts (CX-115/118/120/122).
-- Export materialization no longer trusts git archive, ambient tar, or
-  committed .gitattributes: exportTree enumerates ls-tree -r -z and
-  materializes committed bytes through the re-hashed cat-file --batch
-  channel, bounding symlink targets to the export root (CX-116/117).
-- Index-consulting reads run on a verifier-owned claims rebuild:
-  prepareEvidenceIndex copies staged object claims into a fresh index
-  with zeroed stat metadata, so status/diff content-hash the worktree
-  instead of trusting a session-written stat tuple (CX-121).
-- The heredoc lexer is quote-aware: a << inside quotes is string
-  content, never an operator (CX-119).
-- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
-  query verbatim; diff.external moved from a broken pin to
-  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
-  the same read table; batch stdin is EPIPE-safe.
-- kernel-source-scan models the two channel files as judged bodies so
-  the channel migration does not read as new unguarded subprocess hits
-  in the werkstatt-site mutation ratchet.
-
-The independent r9 probe file and acceptance report land in the
-follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r10 trust-boundary counterexamples
 
 Independent clean-context verification (round 10, candidate 17c0ec075)
@@ -123,16 +87,19 @@ The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import type { Dirent } from "node:fs";
 import {
   constants as fsConstants,
   closeSync,
   existsSync,
+  fstatSync,
   lstatSync,
   openSync,
   readdirSync,
@@ -664,6 +631,33 @@ export interface EvidenceFingerprint {
     | { kind: "dir"; ino: number; ctimeMs: number }
     | { kind: "file"; bytes: Buffer }
     | { kind: "absent" };
+  /**
+   * The resolution anchors `rev-parse` answered at capture time —
+   * `gitDir` is the directory HEAD/objects live under (a linked
+   * worktree's admin metadir, `<root>/.git` for a primary checkout,
+   * resolved through ANY parent for a subdirectory cwd, CX-143);
+   * `workTree` is `--show-toplevel` (null for bare/unresolved). Every
+   * judged spawn and every internal preflight subprocess pins these
+   * through `GIT_DIR`/`GIT_COMMON_DIR`/`GIT_WORK_TREE` env, so `.git`
+   * indirection files (gitfile, `commondir`) reach NOTHING in a child
+   * — a post-capture plant or rewrite can only register as fingerprint
+   * drift, never redirect a read.
+   */
+  gitDir: string | null;
+  /** `gitDir`'s inode+ctime — a same-path dir swap always reads as drift. */
+  gitDirStat: { ino: number; ctimeMs: number } | null;
+  /**
+   * The shared git dir — derived STRUCTURALLY from `gitDir`'s path
+   * shape (`<common>/worktrees/<id>` → `<common>`, else `gitDir`
+   * itself), NEVER from `commondir` file content: honoring the file
+   * would resolve a same-uid session's forged common dir, and every
+   * child pins `GIT_COMMON_DIR` to this value anyway, so the file is
+   * fingerprint-only — a planted or rewritten `commondir` is drift,
+   * not a redirect (CX-143).
+   */
+  commonDir: string | null;
+  /** `--show-toplevel` at capture — null for bare or unresolved repos. */
+  workTree: string | null;
   /** Indirection files a redirect rewrite touches first — gitfile target, commondir. */
   indirection: readonly { path: string; bytes: Buffer | null }[];
   /** The `.git/config` file the judged dump derived from — resolved path + bytes. */
@@ -752,6 +746,12 @@ export function evidenceSpawnState(
   // scratch channel's mutations keep ambient attr semantics.
   env["GIT_ATTR_SOURCE"] =
     EVIDENCE_EMPTY_TREE[preflight?.objectFormat ?? "sha1"] ?? EVIDENCE_EMPTY_TREE["sha1"]!;
+  // Resolution anchors (CX-143): `GIT_DIR`/`GIT_COMMON_DIR`/
+  // `GIT_WORK_TREE` pin the judged repo inside the child — a post-
+  // capture `.git` indirection rewrite (gitfile, commondir, or a
+  // planted `<subdir>/.git` on a subdirectory cwd) can only read as
+  // fingerprint drift; no child ever consults it again.
+  Object.assign(env, resolutionEnv(preflight?.fingerprint));
   let indexFd: number | undefined;
   let unproven = preflight?.indexUnproven !== undefined;
   const idx = withIndex ? preflight?.index : undefined;
@@ -1087,16 +1087,20 @@ export async function execEvidenceGit(
   args: string[],
   opts?: {
     extraEnv?: Record<string, string>;
+    internalEnv?: Record<string, string>;
     input?: string | Buffer;
   },
 ): Promise<VerifierGitResult> {
   // `spawn` not `execFile`: Node's execFile silently drops `stdio[3+]`,
   // so an inherited claims-index fd requires spawn outright (CX-129).
-  const r = await spawnCaptured(resolveGitBin(), ["-C", cwd, ...withNoExtDiff(args)], {
+  const r = await spawnCaptured(resolveGitBin(), ["-C", cwd, ...evidenceSpawnArgs(args)], {
     cwd,
     env: {
       ...verifierGitEnv(),
       ...(opts?.extraEnv ?? {}),
+      // Resolution pins land last — verifier-owned, never overridable
+      // (CX-143).
+      ...(opts?.internalEnv ?? {}),
     },
     timeoutMs: 30_000,
     maxBuffer: 64 * 1024 * 1024,
@@ -1532,8 +1536,14 @@ function scanLooseObjects(objectsDir: string): string[] {
       if (statKeyMatches(verifiedLooseFiles.get(abs), stKey)) continue;
       let ok = false;
       let servable = true;
+      // safeReadBytes: a FIFO swap-in between the stat check and the
+      // read must not block the verifier (CX-144); a non-regular or
+      // unreadable loose entry is non-servable, the same outcome a
+      // corrupt object gets.
+      const bytes = safeReadBytes(abs);
       try {
-        const inflated = inflateSync(readFileSync(abs));
+        if (bytes === null) throw new Error("unreadable");
+        const inflated = inflateSync(bytes);
         const algo = name.length === 38 ? "sha1" : "sha256";
         ok = createHash(algo).update(inflated).digest("hex") === `${dir}${name}`;
       } catch {
@@ -1573,7 +1583,10 @@ function scanLooseObjects(objectsDir: string): string[] {
  */
 const verifiedPackFiles = new Map<string, VerifiedStat>();
 
-export async function scanPackObjects(objectsDir: string): Promise<string[]> {
+export async function scanPackObjects(
+  objectsDir: string,
+  internalEnv?: Record<string, string>,
+): Promise<string[]> {
   const forged: string[] = [];
   const packDir = path.join(objectsDir, "pack");
   let names: string[];
@@ -1598,7 +1611,9 @@ export async function scanPackObjects(objectsDir: string): Promise<string[]> {
     if (!st.isFile()) continue;
     const stKey: VerifiedStat = { ino: st.ino, ctimeMs: st.ctimeMs, size: st.size };
     if (statKeyMatches(verifiedPackFiles.get(absIdx), stKey)) continue;
-    const r = await execEvidenceGit(path.dirname(packDir), ["verify-pack", "-s", absIdx]);
+    const r = await execEvidenceGit(path.dirname(packDir), ["verify-pack", "-s", absIdx], {
+      internalEnv,
+    });
     if (r.exitCode === 0) {
       if (verifiedPackFiles.size > 4_000) verifiedPackFiles.clear();
       verifiedPackFiles.set(absIdx, stKey);
@@ -1782,11 +1797,8 @@ function createHeldFile(bytes: Buffer, stem: string): number | null {
  */
 export function heldPathProven(held: EvidenceIndex): boolean {
   if (held.path === undefined) return true;
-  try {
-    return readFileSync(held.path).equals(held.bytes);
-  } catch {
-    return false;
-  }
+  const b = safeReadBytes(held.path);
+  return b !== null && b.equals(held.bytes);
 }
 
 /**
@@ -1807,14 +1819,19 @@ export function heldEvidenceFile(bytes: Buffer, stem: string): EvidenceIndex | n
   return { path: p, bytes };
 }
 
-export async function prepareEvidenceIndex(repoRoot: string): Promise<EvidenceIndexPreparation> {
+export async function prepareEvidenceIndex(
+  repoRoot: string,
+  internalEnv?: Record<string, string>,
+): Promise<EvidenceIndexPreparation> {
   // The claims listing spawns with the static pins via env: `ls-files`
   // consults `core.fsmonitor` even for a pure --stage dump — a session
   // program must not exec inside the enumeration (CX-115 class). The
   // static pins are unconditional (R13-D): the live config the spawn
-  // reads cannot arm a lever the pin set does not name.
+  // reads cannot arm a lever the pin set does not name. Resolution pins
+  // anchor it to the same gitdir the fingerprint judged (CX-143).
   const claims = await execEvidenceGit(repoRoot, ["ls-files", "--stage", "-z"], {
     extraEnv: evidencePinEnv(["ls-files"]),
+    internalEnv,
   });
   if (claims.exitCode !== 0) {
     return {
@@ -1864,6 +1881,7 @@ export function judgeEvidenceRepoSurface(
   shapePaths: readonly (string | null)[],
   objectsDir?: string | null,
   headBranch?: string | null,
+  fingerprint?: EvidenceFingerprint,
 ): EvidencePreflight {
   const configArgs: string[] = [];
   const hookArgs: string[] = [];
@@ -1939,12 +1957,34 @@ export function judgeEvidenceRepoSurface(
     // A newline inside the path itself is preserved (per-path queries,
     // CX-89) and resolves to the real file location.
     const abs = path.isAbsolute(resolvedPath) ? resolvedPath : path.resolve(repoRoot, resolvedPath);
-    let body = "";
-    try {
-      body = readFileSync(abs, "utf8");
-    } catch {
+    const buf = safeReadBytes(abs);
+    if (buf === null) {
+      // Classify the non-capturable path: a vanished entry leaves stat
+      // to fail identically (the fingerprint reprove reads drift), a
+      // DIRECTORY is the expected shape for warn paths like
+      // `objects/info/commit-graphs` (and unparseable-as-file on refuse
+      // paths — git ignores a directory-shaped rules file), a regular
+      // file that failed to read is unprovable either way, and a
+      // FIFO/socket/device on a refuse path blocks git's own read —
+      // refuse. Warn-path non-regulars stay warn: the unconditional
+      // reader pins (`core.commitGraph=false`, MIDX off) make the file
+      // unreachable, so it cannot falsify committed-object reads
+      // (CX-144).
+      let lst;
+      try {
+        lst = lstatSync(abs);
+      } catch {
+        return;
+      }
+      if (lst.isDirectory()) return;
+      if (lst.isFile() || i < EVIDENCE_SHAPE_PATHS.length) {
+        shapeViolations.push(name);
+      } else {
+        warnedShape.push(name);
+      }
       return;
     }
+    const body = buf.toString("utf8");
     // Any non-empty non-comment line is content. git's parsers comment
     // col-0 `#` only — a whitespace-only line is a LITERAL path entry
     // (`.git/objects/   `, CX-91) and so is `   # x` (`.git/objects/   # x`,
@@ -2009,6 +2049,42 @@ export function judgeEvidenceRepoSurface(
       if (!wellFormed) shapeViolations.push(`worktrees/${e.name}`);
     }
   }
+  // `commondir`/`gitdir` files belong ONLY inside a worktree metadir
+  // (`<common>/worktrees/<id>/`) — git never writes them into a primary
+  // `.git`, yet it still HONORS a `commondir` file found there: its
+  // content overrides even env-pinned resolution for refs/objects
+  // (empirical, git 2.53 — `GIT_COMMON_DIR` wins `--git-path` answers
+  // but the ref store re-reads the file), so a planted primary
+  // `commondir` is a redirect no env pin can neutralize (CX-143). Its
+  // presence is therefore a violation, never inert: refusal is the only
+  // answer a session's forged common cannot ride. Inside a metadir the
+  // same file is REQUIRED and must resolve back to the structurally
+  // derived common dir — content pointing elsewhere is the same class.
+  if (fingerprint?.gitDir != null && fingerprint.commonDir != null) {
+    const isMetadir = fingerprint.commonDir !== fingerprint.gitDir;
+    for (const entry of fingerprint.indirection) {
+      const name = path.basename(entry.path);
+      if (path.dirname(entry.path) !== fingerprint.gitDir) continue;
+      if (name === "commondir") {
+        if (isMetadir) {
+          const txt = entry.bytes?.toString("utf8").trim();
+          const resolved =
+            txt !== undefined && txt.length > 0
+              ? path.isAbsolute(txt)
+                ? txt
+                : path.resolve(fingerprint.gitDir, txt)
+              : null;
+          if (resolved !== fingerprint.commonDir) {
+            shapeViolations.push(`commondir (${entry.path})`);
+          }
+        } else if (entry.bytes !== null) {
+          shapeViolations.push(`commondir (${entry.path})`);
+        }
+      } else if (name === "gitdir" && !isMetadir && entry.bytes !== null) {
+        shapeViolations.push(`gitdir (${entry.path})`);
+      }
+    }
+  }
   // Upstream-lever neutralization (R13-D): `status`'s long format
   // displays `branch.<cur>.{remote,merge}` claims verbatim — a config
   // flip post-dump could fabricate "ahead of 'session-ref'" tracking
@@ -2030,12 +2106,51 @@ export function judgeEvidenceRepoSurface(
   return { configArgs, hookArgs, refusedKeys, shapeViolations, warnedShape, objectFormat };
 }
 
+/**
+ * Synchronous byte capture that can never block: a FIFO, device node,
+ * or socket planted at a `.git` metadata path hangs `readFileSync` at
+ * open() — the verifier deadlocks instead of refusing (CX-144). The
+ * file is opened O_NONBLOCK (a no-op on regular files) and fstat gates
+ * the read to regular files only; anything else is uncapturable, which
+ * the callers treat as unprovable (fail closed) — never as absent.
+ */
 function safeReadBytes(abs: string): Buffer | null {
+  let fd: number | undefined;
   try {
-    return readFileSync(abs);
+    fd = openSync(abs, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK);
+    if (!fstatSync(fd).isFile()) return null;
+    return readFileSync(fd);
   } catch {
     return null;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* already closed */
+      }
+    }
   }
+}
+
+/**
+ * The `GIT_DIR`/`GIT_COMMON_DIR`/`GIT_WORK_TREE` env pins a fingerprint's
+ * resolution anchors emit — applied to every internal preflight
+ * subprocess (`--git-path`, config dump, claims `ls-files`, verify-pack)
+ * and to every judged spawn, so `.git` indirection files (gitfile,
+ * `commondir`, and a planted `<subdir>/.git`) reach nothing inside a
+ * child: env selectors preempt discovery and indirection files outright
+ * (CX-143). Null members simply emit nothing (bare repos have no
+ * worktree pin).
+ */
+export function resolutionEnv(
+  fp: Partial<Pick<EvidenceFingerprint, "gitDir" | "commonDir" | "workTree">> | null | undefined,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  if (fp?.gitDir != null) env["GIT_DIR"] = fp.gitDir;
+  if (fp?.commonDir != null) env["GIT_COMMON_DIR"] = fp.commonDir;
+  if (fp?.workTree != null) env["GIT_WORK_TREE"] = fp.workTree;
+  return env;
 }
 
 /**
@@ -2106,9 +2221,71 @@ function enumerateTreeFiles(root: string): Map<string, EvidenceSurfaceFile> {
  * contain a newline (CX-89). The returned `*Path` fields are the raw
  * resolves for the judge; the fingerprint pins their absolute forms.
  */
+/**
+ * BEFORE the first spawn: find the `.git` git's own discovery would see
+ * and prove the metadata git opens at startup is regular — a FIFO
+ * `.git/config` (or `HEAD`, a gitfile, `commondir`) blocks open()
+ * forever, deadlocking every child instead of refusing (CX-144). The
+ * scan mirrors git's walk-up so a subdirectory cwd sees the parent's
+ * `.git`; any non-regular member is reported and the caller refuses
+ * WITHOUT spawning — no child ever enters a blocking read.
+ */
+function discoverGitMetaHazards(repoRoot: string): string[] {
+  const hazards: string[] = [];
+  const scanGitdir = (gitdir: string) => {
+    for (const name of ["config", "HEAD", "commondir", "gitdir"]) {
+      const ap = path.join(gitdir, name);
+      try {
+        if (!statSync(ap).isFile()) hazards.push(ap);
+      } catch {
+        /* absent — fine */
+      }
+    }
+  };
+  for (let dir = path.resolve(repoRoot), depth = 0; depth <= 64; depth++) {
+    const p = path.join(dir, ".git");
+    let st: ReturnType<typeof statSync> | null = null;
+    try {
+      st = statSync(p);
+    } catch {
+      /* absent — keep walking */
+    }
+    if (st === null) {
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+      continue;
+    }
+    if (st.isDirectory()) {
+      scanGitdir(p);
+      return hazards;
+    }
+    if (!st.isFile()) {
+      // `.git` as a FIFO/socket/device — discovery blocks reading it.
+      hazards.push(p);
+      return hazards;
+    }
+    // `.git` file: a gitfile redirect. An unreadable one (FIFO swap)
+    // hangs git's own open — hazard; a malformed one fails honestly.
+    const bytes = safeReadBytes(p);
+    if (bytes === null) {
+      hazards.push(p);
+      return hazards;
+    }
+    const m = /^gitdir:\s*(.+)$/m.exec(bytes.toString("utf8").trim());
+    if (m !== null) {
+      const meta = path.isAbsolute(m[1]!.trim()) ? m[1]!.trim() : path.resolve(dir, m[1]!.trim());
+      scanGitdir(meta);
+    }
+    return hazards;
+  }
+  return hazards;
+}
+
 export async function captureEvidenceSurface(
   repoRoot: string,
   runGit: EvidenceGitRunner,
+  prior?: Pick<EvidenceFingerprint, "gitDir" | "commonDir" | "workTree"> | null,
 ): Promise<{
   configPath: string | null;
   indexPath: string | null;
@@ -2118,60 +2295,151 @@ export async function captureEvidenceSurface(
    * upstream-lever pin, or null (detached/absent/failed). */
   headBranch: string | null;
   anyFailed: boolean;
+  /** Non-regular `.git` metadata that would block git's own startup
+   * reads (CX-144) — the caller refuses without spawning. */
+  hazards: string[];
   fingerprint: EvidenceFingerprint;
 }> {
   const dotGitAbs = path.join(repoRoot, ".git");
   const indirection: { path: string; bytes: Buffer | null }[] = [];
   let dotGit: EvidenceFingerprint["dotGit"] = { kind: "absent" };
-  // commonDir — the real shared `.git` the worktree registry and object
-  // store live under (commondir indirection resolved; the meta dir itself
-  // otherwise). `<common>/worktrees` joins the fingerprint so a planted
-  // worktree admin dir post-capture always reads as drift (R13-B).
-  let commonDir: string | null = null;
+  // Non-regular metadata scan runs FIRST — everything after this point
+  // spawns git children that would block on a FIFO read (CX-144).
+  const hazards = discoverGitMetaHazards(repoRoot);
+  if (hazards.length > 0) {
+    try {
+      const st = statSync(dotGitAbs);
+      if (st.isDirectory()) dotGit = { kind: "dir", ino: st.ino, ctimeMs: st.ctimeMs };
+    } catch {
+      /* absent */
+    }
+    return {
+      configPath: null,
+      indexPath: null,
+      objectsDir: null,
+      shapePaths: EVIDENCE_SHAPE_QUERY_PATHS.map(() => null),
+      headBranch: null,
+      anyFailed: true,
+      hazards,
+      fingerprint: {
+        dotGit,
+        gitDir: null,
+        gitDirStat: null,
+        commonDir: null,
+        workTree: null,
+        indirection,
+        configPath: null,
+        configBytes: null,
+        shapeFiles: [],
+        objectsDir: null,
+        objectFiles: new Map(),
+        worktreesDir: null,
+        worktreeFiles: new Map(),
+        indexPath: null,
+        indexBytes: null,
+      },
+    };
+  }
   try {
     const st = statSync(dotGitAbs);
     if (st.isDirectory()) {
       dotGit = { kind: "dir", ino: st.ino, ctimeMs: st.ctimeMs };
       const cdBytes = safeReadBytes(path.join(dotGitAbs, "commondir"));
       indirection.push({ path: path.join(dotGitAbs, "commondir"), bytes: cdBytes });
-      const cdText = cdBytes?.toString("utf8").trim();
-      commonDir =
-        cdText !== undefined && cdText.length > 0
-          ? path.isAbsolute(cdText)
-            ? cdText
-            : path.resolve(dotGitAbs, cdText)
-          : dotGitAbs;
     } else if (st.isFile()) {
-      const bytes = readFileSync(dotGitAbs);
-      dotGit = { kind: "file", bytes };
-      // gitfile → worktree metadir → commondir/gitdir pin the redirect chain.
-      const m = /^gitdir:\s*(.+)$/m.exec(bytes.toString("utf8").trim());
-      if (m !== null) {
-        const meta = path.isAbsolute(m[1]!.trim())
-          ? m[1]!.trim()
-          : path.resolve(repoRoot, m[1]!.trim());
-        indirection.push({
-          path: path.join(meta, "gitdir"),
-          bytes: safeReadBytes(path.join(meta, "gitdir")),
-        });
-        const cdBytes = safeReadBytes(path.join(meta, "commondir"));
-        indirection.push({ path: path.join(meta, "commondir"), bytes: cdBytes });
-        const cdText = cdBytes?.toString("utf8").trim();
-        commonDir =
-          cdText !== undefined && cdText.length > 0
-            ? path.isAbsolute(cdText)
-              ? cdText
-              : path.resolve(meta, cdText)
-            : meta;
+      const bytes = safeReadBytes(dotGitAbs);
+      if (bytes !== null) {
+        dotGit = { kind: "file", bytes };
+        // gitfile → worktree metadir → commondir/gitdir pin the redirect chain.
+        const m = /^gitdir:\s*(.+)$/m.exec(bytes.toString("utf8").trim());
+        if (m !== null) {
+          const meta = path.isAbsolute(m[1]!.trim())
+            ? m[1]!.trim()
+            : path.resolve(repoRoot, m[1]!.trim());
+          indirection.push({
+            path: path.join(meta, "gitdir"),
+            bytes: safeReadBytes(path.join(meta, "gitdir")),
+          });
+          indirection.push({
+            path: path.join(meta, "commondir"),
+            bytes: safeReadBytes(path.join(meta, "commondir")),
+          });
+        }
       }
+      // A non-regular `.git` (FIFO, socket, device) records as absent —
+      // git's own resolution below fails identically, which is the
+      // fail-closed answer (CX-144).
     }
   } catch {
     /* .git absent — the op fails on its own */
   }
+  // Resolution anchors — `rev-parse --absolute-git-dir` is the ONLY
+  // read that consults `.git` indirection, and only on a FRESH capture:
+  // a re-capture after drift (the reprove loop's re-preflight) pins the
+  // prior fingerprint's `GIT_DIR`/`GIT_COMMON_DIR`/`GIT_WORK_TREE` into
+  // the resolve env, so a commondir/gitfile plant between captures
+  // cannot steer the re-resolution into a forged common dir — env pins
+  // preempt indirection files inside children, and the plant still
+  // reads as indirection drift (CX-143). `--show-toplevel` resolves the
+  // worktree the same way (absent for bare repos — no pin is emitted).
+  const resolution = await runGit(repoRoot, ["rev-parse", "--absolute-git-dir"], {
+    preflight: false,
+    internalEnv: resolutionEnv(prior),
+  });
+  let gitDir = resolution.exitCode === 0 ? resolution.stdout.replace(/\r?\n$/, "") || null : null;
+  if (gitDir !== null && !path.isAbsolute(gitDir)) gitDir = path.resolve(repoRoot, gitDir);
+  // commonDir is derived STRUCTURALLY — a gitdir under
+  // `<common>/worktrees/` belongs to `<common>`, anything else is its
+  // own common dir. `commondir` file content is never honored: honoring
+  // it would resolve a session-forged target wholesale, and every child
+  // pins GIT_COMMON_DIR anyway so the file is fingerprint-only (CX-143).
+  const commonDir =
+    gitDir !== null && path.basename(path.dirname(gitDir)) === "worktrees"
+      ? path.dirname(path.dirname(gitDir))
+      : gitDir;
+  const workTreeResult =
+    gitDir === null
+      ? null
+      : await runGit(repoRoot, ["rev-parse", "--show-toplevel"], {
+          preflight: false,
+          internalEnv: resolutionEnv({ gitDir, commonDir }),
+        });
+  const workTree =
+    workTreeResult !== null && workTreeResult.exitCode === 0
+      ? workTreeResult.stdout.replace(/\r?\n$/, "") || null
+      : null;
+  // Every internal spawn below runs pinned to the resolved anchors — a
+  // mid-capture indirection rewrite can no longer re-point a
+  // `--git-path` resolve into fresh fake-land.
+  const internalEnv = resolutionEnv({ gitDir, commonDir, workTree });
+  // Resolved-gitdir indirection — for a subdirectory cwd the parent
+  // `.git` is unreachable through `repoRoot`, so its commondir/gitdir/
+  // HEAD only joins the fingerprint at the resolved anchor (CX-143).
+  // A planted commondir then drifts the fingerprint AND can never be
+  // followed: GIT_COMMON_DIR preempts it in every child.
+  if (gitDir !== null) {
+    const seen = new Set(indirection.map((i) => i.path));
+    for (const name of ["commondir", "gitdir", "HEAD"]) {
+      const ap = path.join(gitDir, name);
+      if (seen.has(ap)) continue;
+      indirection.push({ path: ap, bytes: safeReadBytes(ap) });
+    }
+  }
+  let gitDirStat: EvidenceFingerprint["gitDirStat"] = null;
+  if (gitDir !== null) {
+    try {
+      const st = statSync(gitDir);
+      if (st.isDirectory()) gitDirStat = { ino: st.ino, ctimeMs: st.ctimeMs };
+    } catch {
+      /* vanished mid-capture — reprove reads the stat mismatch as drift */
+    }
+  }
   const queries = ["config", "index", "objects", ...EVIDENCE_SHAPE_QUERY_PATHS];
   const pending: Promise<{ exitCode: number | null; stdout: string; stderr: string }>[] = [];
   for (const p of queries) {
-    pending.push(runGit(repoRoot, ["rev-parse", "--git-path", p], { preflight: false }));
+    pending.push(
+      runGit(repoRoot, ["rev-parse", "--git-path", p], { preflight: false, internalEnv }),
+    );
   }
   // The current branch name feeds the upstream-lever pin — `status`'s
   // long format displays `branch.<cur>.{remote,merge}` claims verbatim,
@@ -2180,6 +2448,7 @@ export async function captureEvidenceSurface(
   // must not count as surface failure.
   const headBranchPending = runGit(repoRoot, ["symbolic-ref", "-q", "--short", "HEAD"], {
     preflight: false,
+    internalEnv,
   });
   const [results, headBranchResult] = await Promise.all([Promise.all(pending), headBranchPending]);
   const headBranch =
@@ -2228,9 +2497,16 @@ export async function captureEvidenceSurface(
       bytes: ap === null || !present ? null : safeReadBytes(ap),
     });
   }
+  // `<common>/worktrees` comes from the structurally derived common
+  // dir — a subdirectory cwd now fingerprints the parent repo's
+  // worktree registry the same way a root cwd does (CX-143).
   const worktreesDir = commonDir === null ? null : path.join(commonDir, "worktrees");
   const fingerprint: EvidenceFingerprint = {
     dotGit,
+    gitDir,
+    gitDirStat,
+    commonDir,
+    workTree,
     indirection,
     configPath: configAbs,
     configBytes: configAbs === null ? null : safeReadBytes(configAbs),
@@ -2242,7 +2518,16 @@ export async function captureEvidenceSurface(
     indexPath: indexAbs,
     indexBytes: indexAbs === null ? null : safeReadBytes(indexAbs),
   };
-  return { configPath, indexPath, objectsDir, shapePaths, headBranch, anyFailed, fingerprint };
+  return {
+    configPath,
+    indexPath,
+    objectsDir,
+    shapePaths,
+    headBranch,
+    anyFailed,
+    hazards,
+    fingerprint,
+  };
 }
 
 /**
@@ -2287,6 +2572,24 @@ export function reproveEvidenceSurface(
   for (const f of fp.indirection) {
     const b = safeReadBytes(f.path);
     if (b === null ? f.bytes !== null : f.bytes === null || !b.equals(f.bytes)) return false;
+  }
+  // The resolved gitdir itself: a same-path directory swap (rename
+  // dance, replanted `.git`) keeps the path but always changes the
+  // inode — same unforgeable stat contract as `dotGit`.
+  if (fp.gitDir !== null) {
+    try {
+      const st = statSync(fp.gitDir);
+      if (
+        !st.isDirectory() ||
+        fp.gitDirStat === null ||
+        st.ino !== fp.gitDirStat.ino ||
+        st.ctimeMs !== fp.gitDirStat.ctimeMs
+      ) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
   }
   if (fp.configPath !== null) {
     const b = safeReadBytes(fp.configPath);
@@ -2350,6 +2653,13 @@ export type EvidenceGitRunner = (
   opts?: {
     timeoutMs?: number;
     extraEnv?: Record<string, string>;
+    /**
+     * Verifier-owned env applied verbatim (never filtered, never
+     * caller-visible): the fingerprint's resolution pins. Internal
+     * preflight subprocesses carry it so `.git` indirection plants
+     * cannot steer their resolution mid-capture (CX-143).
+     */
+    internalEnv?: Record<string, string>;
     input?: string | Buffer;
     preflight?: boolean;
   },
@@ -2363,7 +2673,10 @@ export type EvidenceGitRunner = (
  * the os/flow evidence channel runs its own driver inside `gitEvidence`
  * so every subprocess stays in the argv-judged body.
  */
-export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidencePreflight | null> {
+export async function evidenceRepoPreflight(
+  repoRoot: string,
+  prior?: EvidenceFingerprint | null,
+): Promise<EvidencePreflight | null> {
   // Indirection → resolves → fingerprint, fused so the ordering contract
   // (CX-134/135) cannot be misordered: `.git` gitfile/commondir bytes are
   // captured BEFORE the resolves they govern and the fingerprint freezes
@@ -2372,18 +2685,44 @@ export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidenceP
   // shared for linked worktrees — so the loose-object re-hash judges the
   // same files the reads below would serve (CX-104). A failed resolve
   // feeds the judge `null`, which it counts as a violation — an unproven
-  // object store must refuse, not silently skip the check.
-  const { objectsDir, shapePaths, headBranch, fingerprint } = await captureEvidenceSurface(
+  // object store must refuse, not silently skip the check. `prior` is
+  // the previous capture's fingerprint on a drift re-preflight — its
+  // resolution anchors pin this capture's resolves so a mid-flight
+  // commondir/gitfile plant cannot steer re-resolution (CX-143).
+  const { objectsDir, shapePaths, headBranch, hazards, fingerprint } = await captureEvidenceSurface(
     repoRoot,
     execEvidenceGit,
+    prior,
   );
-  const listed = await execEvidenceGit(repoRoot, [
-    "config",
-    "--local",
-    "--no-includes",
-    "--list",
-    "--null",
-  ]);
+  // Resolution pins for every internal subprocess — the judged surface
+  // and the spawns it enumerates stay anchored to the captured gitdir.
+  const internalEnv = resolutionEnv(fingerprint);
+  // A `.git/config` that exists but could not be byte-captured cannot be
+  // drift-checked by the reprove — refuse every spawn rather than let a
+  // live unjudged file reach it (R13-D). A NON-REGULAR config (FIFO,
+  // socket, device — CX-144) is uncapturable by definition; its dump
+  // would only hang git's own config read, so the dump is skipped and
+  // the unproven flag refuses every read on its own. A `hazards` member
+  // is the same class one level up — git's own STARTUP metadata
+  // (`.git` itself, config, HEAD, gitfile/commondir targets) is
+  // non-regular, so every subprocess blocks at open() and the whole
+  // surface is unprovable before any dump could run.
+  const configUnproven =
+    hazards.length > 0
+      ? `non-regular .git metadata (${hazards.join(", ")}) — git startup reads would block`
+      : fingerprint.configPath !== null &&
+          fingerprint.configBytes === null &&
+          existsSync(fingerprint.configPath)
+        ? ".git/config exists but could not be captured — spawn would read unjudged config"
+        : undefined;
+  const listed =
+    configUnproven === undefined
+      ? await execEvidenceGit(
+          repoRoot,
+          ["config", "--local", "--no-includes", "--list", "--null"],
+          { internalEnv },
+        )
+      : { exitCode: 0, stdout: "", stderr: "" };
   if (listed.exitCode !== 0) {
     return null;
   }
@@ -2393,6 +2732,7 @@ export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidenceP
     shapePaths,
     objectsDir,
     headBranch,
+    fingerprint,
   );
   // Pack-carried objects get the same integrity anchor loose objects
   // have: `verify-pack -s` rebuilds every object name from inflated
@@ -2404,26 +2744,35 @@ export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidenceP
     const absObjects = path.isAbsolute(objectsDir)
       ? objectsDir
       : path.resolve(repoRoot, objectsDir);
-    preflight.shapeViolations.push(...(await scanPackObjects(absObjects)));
+    preflight.shapeViolations.push(...(await scanPackObjects(absObjects, internalEnv)));
   }
   // `.git/index` is session-writable — a forged stat tuple answers
   // status/diff clean on dirty bytes (CX-121). Rebuild the index's claims
   // into a verifier-owned zero-stat index the trusted spawns inherit as
   // an fd, so no same-uid-rewritable path ever holds it (CX-129). A
   // failed rebuild marks the index unproven (CX-124): index-consulting
-  // reads refuse, non-index reads stay trustworthy.
-  const prepared = await prepareEvidenceIndex(repoRoot);
+  // reads refuse, non-index reads stay trustworthy. A non-regular index
+  // (CX-144) skips the spawn — its claims enumeration would only block
+  // git's own open of the FIFO.
+  const indexNonRegular =
+    fingerprint.indexPath !== null &&
+    fingerprint.indexBytes === null &&
+    (() => {
+      try {
+        return !statSync(fingerprint.indexPath!).isFile();
+      } catch {
+        return false;
+      }
+    })();
+  const prepared =
+    hazards.length > 0
+      ? { failure: "non-regular .git metadata — claims enumeration would block" }
+      : indexNonRegular
+        ? { failure: ".git/index is a non-regular file — claims enumeration would block" }
+        : await prepareEvidenceIndex(repoRoot, internalEnv);
   preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
-  // A `.git/config` that exists but could not be byte-captured cannot be
-  // drift-checked by the reprove — refuse every spawn rather than let a
-  // live unjudged file reach it (R13-D).
-  preflight.configUnproven =
-    fingerprint.configPath !== null &&
-    fingerprint.configBytes === null &&
-    existsSync(fingerprint.configPath)
-      ? ".git/config exists but could not be captured — spawn would read unjudged config"
-      : undefined;
+  preflight.configUnproven = configUnproven;
   preflight.fingerprint = fingerprint;
   return preflight;
 }
@@ -2652,8 +3001,12 @@ async function verifierGitSpawn(
   // a config flipper — the loop makes the LAST check always immediate
   // before the spawn).
   for (let attempt = 0; preflight !== null && !reproveEvidenceSurface(cwd, preflight); attempt++) {
+    // The prior fingerprint's resolution anchors pin the re-preflight's
+    // resolves — a commondir/gitfile plant between captures cannot
+    // steer re-resolution into a forged common dir (CX-143).
+    const priorFp = preflight.fingerprint;
     closeEvidenceIndex(preflight);
-    preflight = attempt >= 2 ? null : await evidenceRepoPreflight(cwd);
+    preflight = attempt >= 2 ? null : await evidenceRepoPreflight(cwd, priorFp);
   }
   try {
     // A surface that cannot be enumerated is unverifiable — the read
@@ -2718,7 +3071,7 @@ async function verifierGitSpawn(
         stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven ?? "index bytes rewritten"}): git ${args.join(" ")}`,
       };
     }
-    const r = await spawnCaptured(resolveGitBin(), withNoExtDiff(args), {
+    const r = await spawnCaptured(resolveGitBin(), evidenceSpawnArgs(args), {
       cwd,
       env: {
         ...verifierGitEnv(),
@@ -2758,11 +3111,109 @@ async function verifierGitSpawn(
  * verifierSpawnEnv's allowlist.
  */
 const EXT_DIFF_SUBCOMMANDS = new Set(["diff", "log", "show"]);
-export function withNoExtDiff(args: readonly string[]): string[] {
+function withNoExtDiff(args: readonly string[]): string[] {
   if (!EXT_DIFF_SUBCOMMANDS.has(args[0] ?? "")) return [...args];
   const dd = args.indexOf("--");
   if (dd === -1) return [...args, "--no-ext-diff"];
   return [...args.slice(0, dd), "--no-ext-diff", ...args.slice(dd)];
+}
+
+/**
+ * `ls-files` exclude-rule flags — `--exclude-standard` reads
+ * `.gitignore`/`info/exclude`/`core.excludesFile`, all session-
+ * authored surfaces (CX-142): a planted `*` rule makes an untracked
+ * payload invisible to the enumeration. A trusted enumeration must
+ * answer EVERY untracked file, so the flags are stripped from the
+ * spawned argv — the judged argv keeps them verbatim (the strip is a
+ * strict widening, never a narrowing).
+ */
+const LS_FILES_EXCLUDE_FLAGS = new Set([
+  "--exclude-standard",
+  "--no-exclude-standard",
+  "--ignored",
+]);
+const LS_FILES_EXCLUDE_PREFIXES = ["--exclude=", "--exclude-from=", "--exclude-per-directory="];
+
+/**
+ * Spawn-argv transform applied AFTER argv judgment on every trusted
+ * spawn — the judged caller argv stays verbatim while the spawned body
+ * gains honesty flags no config/env pin can express (CX-141/CX-142):
+ *
+ * - `diff`/`log`/`show` gain `--no-ext-diff` (the `diff.external`
+ *   lever execs even an empty value; presence is REFUSE'd but argv is
+ *   the only airtight neutralizer).
+ * - `status` gains `--ignored` — hidden-by-`.gitignore` files surface
+ *   as `!!` entries instead of disappearing (CX-142). Callers that
+ *   treat ignored files as non-dirt filter `!!` themselves; a session-
+ *   authored `.gitignore` is always dirt via the fs cross-check.
+ * - `ls-files` drops exclude-rule flags before `--` — a trusted
+ *   enumeration answers every untracked file (CX-142).
+ * - `grep --untracked`/`--no-index` gains `--no-exclude-standard` —
+ *   git greps apply exclude rules to untracked files otherwise.
+ */
+export function evidenceSpawnArgs(args: readonly string[]): string[] {
+  const base = withNoExtDiff(args);
+  const op = base[0] ?? "";
+  const dd = base.indexOf("--");
+  let head = dd === -1 ? base : base.slice(0, dd);
+  const tail = dd === -1 ? [] : base.slice(dd);
+  if (op === "status") {
+    if (!head.some((a) => a === "--ignored" || a.startsWith("--ignored="))) {
+      head = [...head, "--ignored"];
+    }
+  } else if (op === "ls-files") {
+    head = head.filter(
+      (a) =>
+        !LS_FILES_EXCLUDE_FLAGS.has(a) && !LS_FILES_EXCLUDE_PREFIXES.some((p) => a.startsWith(p)),
+    );
+  } else if (op === "grep" && (head.includes("--untracked") || head.includes("--no-index"))) {
+    if (!head.includes("--no-exclude-standard")) head = [...head, "--no-exclude-standard"];
+  }
+  return [...head, ...tail];
+}
+
+/**
+ * `.gitignore` files present in the worktree that no commit owns —
+ * session-authored ignore rules. A worktree `.gitignore` can hide
+ * itself AND every sibling path it matches from `status`/`ls-files`
+ * (CX-142): a session plants `*` and dirty content, and the trusted
+ * enumeration answers clean. `--ignored` exposes the hidden entries
+ * as `!!` lines, but the ONLY way to prove an ignore rule is
+ * session-authored rather than committed policy is a filesystem walk
+ * plus a tracked-set check — git's own enumeration is the channel
+ * under attack. Returns every `.gitignore` path NOT in the tracked
+ * set; when `tracked` cannot answer (failed ls-files), every found
+ * rule counts as session-authored — fail closed, never silently clean.
+ * `tracked` maps the found paths to the subset git knows (its index
+ * claims) — `null` on a failed read.
+ */
+export async function sessionIgnoreRulePaths(
+  worktree: string,
+  tracked: (paths: string[]) => Promise<Set<string> | null>,
+): Promise<string[]> {
+  const found: string[] = [];
+  for (const stack = [""]; stack.length > 0;) {
+    const rel = stack.pop()!;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(path.join(worktree, rel), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const er = rel === "" ? e.name : `${rel}/${e.name}`;
+      if (e.isDirectory()) {
+        // `.git` never carries worktree content (a linked-worktree
+        // `.git` is a FILE, which this branch skips anyway).
+        if (e.name !== ".git") stack.push(er);
+      } else if (e.name === ".gitignore") {
+        found.push(er);
+      }
+    }
+  }
+  if (found.length === 0) return [];
+  const trackedSet = await tracked(found);
+  return trackedSet === null ? found : found.filter((p) => !trackedSet.has(p));
 }
 
 /**

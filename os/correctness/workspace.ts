@@ -10,25 +10,6 @@ fallback), and path normalization shared by every reference comparison.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-9 counterexamples (CX-47..55)
-
-sideFrom filters compassDocs elements (CX-47 TypeError crash).
-schemaProbe passes non-plain YAML types through and unwinds seen per
-branch — tagged scalars no longer mask configError and DAG aliases no
-longer fabricate it; a cyclic alias flags cyclic like the loader's
-overflow would (CX-49/CX-50). oracleTimeoutMs must be finite within
-[1, 2^31-1] — setTimeout clamps both Infinity and int32 overflow into a
-~1ms fabricated kill, and a sub-ms value can never bound a run
-(CX-48). The isolation strip drops the RFC-1580 frozen binding subkeys
-in the declared-policy branch too — mutable:[bindings] no longer
-dead-ends every checkRun rebind (CX-51). forge.yaml is excluded from
-policyFiles and judged by the key strip alone — a freezeFiles glob
-matching it neither voids mutable nor whitelists a non-isolated diff
-(CX-52). A !-negation in manifest support: is malformed like a
-freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
-— a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
-(CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
-policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
@@ -104,6 +85,7 @@ r10-remediated channel — this commit closes all of them.
 
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <history>RFC-1578, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -327,11 +309,16 @@ function walk(root: string, rel: string, out: string[]): void {
 }
 
 /**
- * Every workspace file (tracked + untracked-non-ignored), POSIX-relative,
- * sorted. The fs walk ignores .gitignore — a failed `git ls-files` WIDENS the
- * set with ignored files, and a caller judging coverage over it would read
- * fabricated anchors (CX-81): the fallback is disclosed via `onGitFailure`
- * so the gate can flag it like every other failed git read.
+ * Every workspace file (tracked + ALL untracked, ignore-state agnostic),
+ * POSIX-relative, sorted. The channel strips `--exclude-standard` from
+ * the spawned argv (CX-142): a session-authored `.gitignore` must never
+ * hide files from coverage enumeration — the judged argv keeps the flag
+ * verbatim while the spawn answers the honest superset, matching the fs
+ * walk's semantics exactly. The fs walk ignores .gitignore — a failed
+ * `git ls-files` WIDENS the set with ignored files, and a caller judging
+ * coverage over it would read fabricated anchors (CX-81): the fallback
+ * is disclosed via `onGitFailure` so the gate can flag it like every
+ * other failed git read.
  */
 export async function listWorkspaceFiles(
   workspaceRoot: string,

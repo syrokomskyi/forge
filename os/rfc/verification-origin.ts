@@ -21,42 +21,6 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
-
-Independent clean-context verification (round 9, candidate 4436339db)
-returned REFUTED with ten live counterexamples against the r8-hardened
-evidence channel — this commit closes all root causes.
-
-- Pack-carried objects get the loose-sweep integrity anchor: every
-  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
-  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
-  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
-  reachability cache off.
-- Every trusted-path git call routes through the judged/preflighted
-  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
-  listWorkspaceFiles and the snapshot gitGrep closure now run
-  verifierGit/createOriginGit with structured fail-closed dirty
-  verdicts (CX-115/118/120/122).
-- Export materialization no longer trusts git archive, ambient tar, or
-  committed .gitattributes: exportTree enumerates ls-tree -r -z and
-  materializes committed bytes through the re-hashed cat-file --batch
-  channel, bounding symlink targets to the export root (CX-116/117).
-- Index-consulting reads run on a verifier-owned claims rebuild:
-  prepareEvidenceIndex copies staged object claims into a fresh index
-  with zeroed stat metadata, so status/diff content-hash the worktree
-  instead of trusting a session-written stat tuple (CX-121).
-- The heredoc lexer is quote-aware: a << inside quotes is string
-  content, never an operator (CX-119).
-- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
-  query verbatim; diff.external moved from a broken pin to
-  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
-  the same read table; batch stdin is EPIPE-safe.
-- kernel-source-scan models the two channel files as judged bodies so
-  the channel migration does not read as new unguarded subprocess hits
-  in the werkstatt-site mutation ratchet.
-
-The independent r9 probe file and acceptance report land in the
-follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r10 trust-boundary counterexamples
 
 Independent clean-context verification (round 10, candidate 17c0ec075)
@@ -126,6 +90,7 @@ The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -146,7 +111,7 @@ import {
   resolveGitBin,
   spawnCaptured,
   verifierGitEnv,
-  withNoExtDiff,
+  evidenceSpawnArgs,
   type EvidencePreflight,
 } from "../../src/utils/verifier-git.ts";
 import { parseRfcFile } from "./frontmatter-io.ts";
@@ -279,9 +244,13 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       return cached;
     }
     // Stale (or unproven — a null preflight can never be cached): the
-    // stale held fds release before the re-enumeration.
+    // stale held fds release before the re-enumeration. The prior
+    // fingerprint's resolution anchors pin the re-preflight — a
+    // commondir/gitfile plant between captures cannot steer the
+    // re-resolution into a forged common dir (CX-143).
+    const priorFp = cached?.pf?.fingerprint;
     if (cached !== null) closeEvidenceIndex(cached.pf);
-    surface = evidenceRepoPreflight(workspaceRoot).then(async (pf) => {
+    surface = evidenceRepoPreflight(workspaceRoot, priorFp).then(async (pf) => {
       // A fresh judgment is re-proven against the live surface before it
       // is trusted — a failed re-prove means the surface drifted during
       // preflight, so re-enumerate (bounded) instead of spawning off a
@@ -289,8 +258,9 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       // it carries no config judgment, so every read degrades to null
       // rather than spawning unpinned (R13 secondary asymmetry).
       for (let attempt = 0; pf !== null && !reproveEvidenceSurface(workspaceRoot, pf); attempt++) {
+        const innerFp = pf.fingerprint;
         closeEvidenceIndex(pf);
-        pf = attempt >= 2 ? null : await evidenceRepoPreflight(workspaceRoot);
+        pf = attempt >= 2 ? null : await evidenceRepoPreflight(workspaceRoot, innerFp);
       }
       return {
         ok: pf !== null && pf.refusedKeys.length === 0 && pf.shapeViolations.length === 0,
@@ -362,7 +332,7 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
         closeSpawnFds(spawnState);
         return null;
       }
-      const r = await spawnCaptured(bin, withNoExtDiff(args), {
+      const r = await spawnCaptured(bin, evidenceSpawnArgs(args), {
         cwd: workspaceRoot,
         timeoutMs: 15000,
         maxBuffer: 32 * 1024 * 1024,
@@ -380,7 +350,7 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
         closeSpawnFds(spawnState);
         return null;
       }
-      const r = await spawnCaptured(bin, withNoExtDiff(args), {
+      const r = await spawnCaptured(bin, evidenceSpawnArgs(args), {
         cwd: workspaceRoot,
         timeoutMs: 15000,
         maxBuffer: 32 * 1024 * 1024,

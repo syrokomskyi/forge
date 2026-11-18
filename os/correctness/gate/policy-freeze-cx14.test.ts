@@ -12,6 +12,7 @@ anchor-removed) fixes, and record round-13 counterexamples CX-76..CX-81.</purpos
   <item>RFC-1615: round-13 probes (verifier-side).</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -497,7 +498,10 @@ describe("round-13 counterexamples", () => {
     );
     f.commit("bind ghost entry");
 
-    // Control: with `git ls-files` working, the ignored file is invisible — CORR-04 must fire.
+    // Control: under CX-142 the trusted enumeration is ignore-state
+    // agnostic — the ignored file lists, so its anchor satisfies
+    // CORR-04 instead of firing on it (a session-authored `.gitignore`
+    // can never hide evidence).
     const control = await runCorrectnessGate(f.root, {
       base: f.base,
       bundleDir: `${f.root}/.bundles`,
@@ -505,9 +509,9 @@ describe("round-13 counterexamples", () => {
     if (!control.ok) throw new Error(control.usageError);
     expect(
       msgs(control.result, "CORR-GATE-01").some((m) => /INV-ghost-01/.test(m)),
-      "control: the ignored-file anchor must not satisfy CORR-04",
-    ).toBe(true);
-    expect(control.result.status).toBe("fail");
+      "control: under CX-142 the ignored file enumerates — the anchor must satisfy CORR-04",
+    ).toBe(false);
+    expect(control.result.status).toBe("pass");
 
     // Attack: `git ls-files` fails → listWorkspaceFiles falls back to the fs
     // walk which includes the ignored file — the CORR-04 error is masked.

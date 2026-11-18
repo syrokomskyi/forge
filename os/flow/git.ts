@@ -101,7 +101,6 @@ follow-up port commit.</item>
 
 Independent clean-context verification (round 9, candidate 4436339db)
 returned REFUTED with ten live counterexamples against the r8-hardened
-evidence channel — this commit closes all root causes.
 
 - Pack-carried objects get the loose-sweep integrity anchor: every
   .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
@@ -132,7 +131,6 @@ evidence channel — this commit closes all root causes.
   in the werkstatt-site mutation ratchet.
 
 The independent r9 probe file and acceptance report land in the
-follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r10 trust-boundary counterexamples
 
 Independent clean-context verification (round 10, candidate 17c0ec075)
@@ -202,13 +200,14 @@ The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
 import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import {
   resolveGitBin,
@@ -216,6 +215,7 @@ import {
   filterEvidenceExtraEnv,
   evidencePinEnv,
   evidenceSpawnState,
+  evidenceSpawnArgs,
   closeEvidenceIndex,
   closeSpawnFds,
   judgeEvidenceRepoSurface,
@@ -224,11 +224,13 @@ import {
   spawnCaptured,
   captureEvidenceSurface,
   reproveEvidenceSurface,
+  resolutionEnv,
+  sessionIgnoreRulePaths,
+  type EvidenceFingerprint,
   type EvidencePreflight,
   EVIDENCE_REFUSED_PREFIX,
   isEvidenceGitQuery,
   isIndexConsultingRead,
-  withNoExtDiff,
 } from "../../src/utils/verifier-git.ts";
 
 /**
@@ -283,6 +285,7 @@ export async function gitEvidence(
   opts?: {
     timeoutMs?: number;
     extraEnv?: Record<string, string>;
+    internalEnv?: Record<string, string>;
     preflight?: boolean;
   },
 ): Promise<ExecResult> {
@@ -314,8 +317,12 @@ export async function gitEvidence(
     preflight !== null && !reproveEvidenceSurface(repoRoot, preflight);
     attempt++
   ) {
+    // The prior fingerprint's resolution anchors pin the re-preflight's
+    // resolves — a commondir/gitfile plant between captures cannot
+    // steer re-resolution into a forged common dir (CX-143).
+    const priorFp = preflight.fingerprint;
     closeEvidenceIndex(preflight);
-    preflight = attempt >= 2 ? null : await evidencePreflight(repoRoot);
+    preflight = attempt >= 2 ? null : await evidencePreflight(repoRoot, priorFp);
   }
   try {
     if (preflight === null && opts?.preflight !== false) {
@@ -362,7 +369,7 @@ export async function gitEvidence(
         stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven ?? "index bytes rewritten"}): git ${args.join(" ")}`,
       };
     }
-    const r = await spawnCaptured(resolveGitBin(), ["-C", repoRoot, ...withNoExtDiff(args)], {
+    const r = await spawnCaptured(resolveGitBin(), ["-C", repoRoot, ...evidenceSpawnArgs(args)], {
       cwd: repoRoot,
       env: {
         ...verifierGitEnv(),
@@ -376,6 +383,10 @@ export async function gitEvidence(
         // ever engages a config-named program (CX-121/CX-129, R13-D).
         ...spawnState.env,
         ...filterEvidenceExtraEnv(opts?.extraEnv),
+        // Resolution pins land last — verifier-owned internals
+        // (preflight subprocesses) are never caller-overridable
+        // (CX-143).
+        ...(opts?.internalEnv ?? {}),
       },
       // Boundary reads are local and bounded like the runner channel —
       // the transport ops that needed a generous window are refused
@@ -406,16 +417,21 @@ export async function gitEvidence(
  * no verdict may be derived (R4-R2's fail-loud contract) — distinguished
  * from an unenumerable repo by whether a bare `--version` spawns.
  */
-export async function evidencePreflight(repoRoot: string): Promise<EvidencePreflight | null> {
+export async function evidencePreflight(
+  repoRoot: string,
+  prior?: EvidenceFingerprint | null,
+): Promise<EvidencePreflight | null> {
   // Indirection files first (CX-134/135): the `.git` gitfile/commondir
   // state the `--git-path` resolves depend on must be captured BEFORE
   // them, so a redirect rewrite is always later-than-fingerprint.
   // Indirection → resolves → fingerprint, fused so the ordering contract
   // (CX-134/135) cannot be misordered; `config` and `index` join the
   // shape resolves so the fingerprint pins the files the judged
-  // dump/claims derive from.
+  // dump/claims derive from. `prior` is the previous capture on a drift
+  // re-preflight — its resolution anchors pin this capture's resolves
+  // so a mid-flight commondir/gitfile plant cannot steer them (CX-143).
   const { objectsDir, shapePaths, headBranch, anyFailed, fingerprint } =
-    await captureEvidenceSurface(repoRoot, gitEvidence);
+    await captureEvidenceSurface(repoRoot, gitEvidence, prior);
   if (anyFailed) {
     if (!existsSync(repoRoot)) return null;
     const probe = await gitEvidence(repoRoot, ["--version"], { preflight: false });
@@ -426,16 +442,32 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
     }
     return null;
   }
+  // Resolution pins for every internal subprocess — the judged surface
+  // and the spawns it enumerates stay anchored to the captured gitdir
+  // (CX-143).
+  const internalEnv = resolutionEnv(fingerprint);
   // `--git-path objects` resolves the real object store — shared for
   // linked worktrees — so the loose-object re-hash judges the same files
   // the reads below would serve (CX-104). A failed resolve feeds the
   // judge `null`, which it counts as a violation — an unproven object
-  // store must refuse, not silently skip the check.
-  const listed = await gitEvidence(
-    repoRoot,
-    ["config", "--local", "--no-includes", "--list", "--null"],
-    { preflight: false },
-  );
+  // store must refuse, not silently skip the check. A `.git/config`
+  // that exists but could not be byte-captured cannot be drift-checked
+  // (R13-D) — a NON-REGULAR one (FIFO, CX-144) additionally hangs git's
+  // own dump read, so the dump is skipped and the unproven flag refuses
+  // every spawn on its own.
+  const configUnproven =
+    fingerprint.configPath !== null &&
+    fingerprint.configBytes === null &&
+    existsSync(fingerprint.configPath)
+      ? ".git/config exists but could not be captured — spawn would read unjudged config"
+      : undefined;
+  const listed =
+    configUnproven === undefined
+      ? await gitEvidence(repoRoot, ["config", "--local", "--no-includes", "--list", "--null"], {
+          preflight: false,
+          internalEnv,
+        })
+      : { exitCode: 0, stdout: "", stderr: "" };
   if (listed.exitCode !== 0) return null;
   const preflight = judgeEvidenceRepoSurface(
     repoRoot,
@@ -443,32 +475,39 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
     shapePaths,
     objectsDir,
     headBranch,
+    fingerprint,
   );
   // Pack-carried objects get the same integrity anchor loose objects
   // have (CX-113) — skipped when the objects dir could not be resolved,
   // which is already a shapeViolation.
   if (objectsDir !== null && objectsDir !== undefined) {
     const absObjects = isAbsolute(objectsDir) ? objectsDir : resolve(repoRoot, objectsDir);
-    preflight.shapeViolations.push(...(await scanPackObjects(absObjects)));
+    preflight.shapeViolations.push(...(await scanPackObjects(absObjects, internalEnv)));
   }
   // `.git/index` is session-writable — a forged stat tuple answers
   // status/diff clean on dirty bytes (CX-121). Every index-consulting
   // spawn below resolves this verifier-owned zero-stat claims index as
   // an inherited fd — no same-uid-rewritable path ever holds it
   // (CX-129). A failed rebuild marks the index unproven (CX-124):
-  // index-consulting reads refuse, non-index reads stay trustworthy.
-  const prepared = await prepareEvidenceIndex(repoRoot);
+  // index-consulting reads refuse, non-index reads stay trustworthy. A
+  // non-regular index (CX-144) skips the spawn — its claims enumeration
+  // would only block git's own open of the FIFO.
+  const indexNonRegular =
+    fingerprint.indexPath !== null &&
+    fingerprint.indexBytes === null &&
+    (() => {
+      try {
+        return !statSync(fingerprint.indexPath!).isFile();
+      } catch {
+        return false;
+      }
+    })();
+  const prepared = indexNonRegular
+    ? { failure: ".git/index is a non-regular file — claims enumeration would block" }
+    : await prepareEvidenceIndex(repoRoot, internalEnv);
   preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
-  // A `.git/config` that exists but could not be byte-captured cannot be
-  // drift-checked by the reprove — refuse every spawn rather than let a
-  // live unjudged file reach it (R13-D).
-  preflight.configUnproven =
-    fingerprint.configPath !== null &&
-    fingerprint.configBytes === null &&
-    existsSync(fingerprint.configPath)
-      ? ".git/config exists but could not be captured — spawn would read unjudged config"
-      : undefined;
+  preflight.configUnproven = configUnproven;
   preflight.fingerprint = fingerprint;
   return preflight;
 }
@@ -838,13 +877,24 @@ export async function statusTracked(worktree: string, io: WorkspaceIO): Promise<
     await gitEvidence(worktree, ["status", "--porcelain", "--untracked-files=no"]),
     "git status --porcelain",
   );
-  return { entries: porcelainLines(result.stdout), toleratedState: [], vanished: false };
+  // `!!` entries never count: ignored files are not tracked
+  // modifications (the injected `--ignored` makes them visible under
+  // `-uall`; defensively filtered here too, CX-142).
+  return {
+    entries: porcelainLines(result.stdout).filter((l) => !l.startsWith("!! ")),
+    toleratedState: [],
+    vanished: false,
+  };
 }
 
 /**
  * All uncommitted changes — `git status --porcelain -uall` (untracked `??`
- * entries included, ignored files still excluded). This is the dirty
- * definition `git worktree remove` enforces; use it wherever a check predicts
+ * entries included; `--ignored` additionally exposes `!!` entries, which
+ * committed-rule ignores exclude from the verdict — but a `.gitignore` a
+ * commit never owned is session-authored dirt itself: an untracked rule
+ * can hide itself and every path it covers from status outright, so the
+ * verdict is forged without it, CX-142). This is the dirty definition
+ * `git worktree remove` enforces; use it wherever a check predicts
  * worktree-removability or asks "is this checkout dirty". `-uall` expands
  * untracked directories into their member files — the FORGE_STATE_FILES
  * partition must see `.forge/task/x`, never the collapsed `?? .forge/` line
@@ -864,10 +914,38 @@ export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<Di
   const toleratedState: string[] = [];
   for (const line of porcelainLines(result.stdout)) {
     const path = line.slice(3);
+    // `!!` entries are hidden-by-rule files — committed `.gitignore`
+    // policy excludes them from the verdict, while the session-authored
+    // rules below can never silence their own presence (CX-142). A
+    // forge-state path under such a rule is still disposable state:
+    // RFC-1515 deletes toleratedState before `git worktree remove`, and
+    // removing the covering `.gitignore` first would unhide the rest and
+    // wedge the removal (FLOW-INT-04).
+    if (line.startsWith("!! ")) {
+      if (isForgeStatePath(path)) toleratedState.push(path);
+      continue;
+    }
     // Porcelain C-quotes unusual bytes ("dir/na\303\257ve.ts") — a quoted
     // path never matches the allowlist and stays a blocker (fail-closed).
     if (line.startsWith("?? ") && isForgeStatePath(path)) toleratedState.push(path);
     else entries.push(line);
+  }
+  // Session-authored ignore rules: an untracked `.gitignore` can hide
+  // itself from status entirely, so the fs walk + tracked-set check is
+  // the only honest enumeration (CX-142). A failed tracked read counts
+  // every rule as session-authored — fail closed.
+  const sessionRules = await sessionIgnoreRulePaths(worktree, async (paths) => {
+    const r = await gitEvidence(worktree, ["ls-files", "-z", "--", ...paths]);
+    return r.exitCode === 0 ? new Set(r.stdout.split("\0").filter((p) => p.length > 0)) : null;
+  });
+  for (const p of sessionRules) {
+    if (entries.some((e) => e.slice(3) === p) || toleratedState.includes(p)) continue;
+    // A session-authored rule under `.forge/` can only hide paths the
+    // verdict already tolerates (`.gitignore` scope is its own subtree)
+    // — it joins toleratedState like every other forge journal path;
+    // a root or product-tree rule still counts as blocking dirt.
+    if (isForgeStatePath(p)) toleratedState.push(p);
+    else entries.push(`?? ${p}`);
   }
   return { entries, toleratedState, vanished: false };
 }

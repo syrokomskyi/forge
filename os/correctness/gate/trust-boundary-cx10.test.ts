@@ -606,17 +606,22 @@ describe("RFC-1616 r10 — prior-round controls re-verified", () => {
       gitIn(foreign, ["add", "hidden.md"]);
 
       const baseline = await listWorkspaceFiles(root);
-      expect(baseline.includes("hidden.md")).toBe(false);
+      // CX-142: ignore rules never hide files from the trusted
+      // enumeration — `hidden.md` is a worktree file, so it lists.
+      expect(baseline.includes("hidden.md")).toBe(true);
       const prevIdx = process.env["GIT_INDEX_FILE"];
       const prevDir = process.env["GIT_DIR"];
       process.env["GIT_INDEX_FILE"] = path.join(foreign, ".git", "index");
       process.env["GIT_DIR"] = path.join(foreign, ".git");
       try {
         const listed = await listWorkspaceFiles(root);
+        // The ambient env must not move the answer at all: a leaked
+        // GIT_DIR would walk the foreign worktree (losing `a.txt`), a
+        // leaked GIT_INDEX_FILE would answer foreign index claims.
         expect(
-          !listed.includes("hidden.md"),
-          `ambient GIT_* injected a gitignored foreign file into the listing (got ${JSON.stringify(listed)})`,
-        ).toBe(true);
+          listed.sort(),
+          `ambient GIT_* redirected the workspace listing (got ${JSON.stringify(listed)})`,
+        ).toEqual(baseline.sort());
       } finally {
         if (prevIdx === undefined) delete process.env["GIT_INDEX_FILE"];
         else process.env["GIT_INDEX_FILE"] = prevIdx;
