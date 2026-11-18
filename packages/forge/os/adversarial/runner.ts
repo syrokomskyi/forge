@@ -16,7 +16,6 @@ leaves only a tmp dir.</purpose>
   <item>{base} in the invoke template binds the pre-attack HEAD — the same base the integrate step passes.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: initial runner — scratch clone, setup/attack commits, spawned gate, expected-vs-observed rule compare.</item>
   <item>RFC-1616: external verification trust boundary
 
 policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
@@ -27,6 +26,37 @@ scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
+
+Independent clean-context verification (round 8, candidate 9da0bf515)
+returned REFUTED with nine live counterexamples against the r7-hardened
+evidence channel — this commit closes all root causes.
+
+- Committed-object reads carry an integrity anchor: loose objects under
+  .git/objects whose inflated bytes do not hash to their object name
+  refuse the channel — forged loose bytes and loose-over-packed
+  shadowing can no longer serve the anchored base (CX-104a/b).
+- policy.digest --verify --base accepts only concrete immutable commit
+  identifiers — symbolic/message/index/path revspecs (HEAD^{/...},
+  :/..., bare HEAD, branch names) are rejected before verify (CX-103).
+- The heredoc lexer is a bash word-grammar scan: <<~EOF arms literal
+  ~EOF (CX-105), quote removal applies across the whole word so
+  <<'E'OF and <<E"OF" arm EOF (CX-106), and $/command-substitution
+  words arm a never-matching sentinel so body lines stay stdin (CX-107).
+- verifierGit is a subcommand + option allowlist: reflog/stash and
+  write commands (config writes, update-ref) are refused, caller
+  -c/-C/--git-dir/--work-tree/--exec-path are rejected instead of
+  landing after the pins, and -g inside short-option clusters (-ng) is
+  judged (CX-108/109).
+- Every remote.<name>.* class keys the name as greedy .+ so dotted
+  remotes no longer escape the REFUSE table or fetch value-judge —
+  remote.o.r.uploadpack refuses the channel instead of executing inside
+  fetch o.r (CX-110); fetch/ls-remote positional remotes are
+  form-judged.
+
+The independent r8 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
@@ -47,7 +77,11 @@ import type {
   AdversarialScenario,
   AdversarialScenarioResult,
 } from "../../src/adversarial/types.ts";
-import { resolveGitBin, verifierGit, verifierSpawnEnv } from "../../src/utils/verifier-git.ts";
+import {
+  resolveGitBin,
+  verifierScratchGit,
+  verifierSpawnEnv,
+} from "../../src/utils/verifier-git.ts";
 import { packageRoot } from "./catalog.ts";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -73,10 +107,13 @@ export function resolveForgeArgv(explicit?: string[]): string[] {
  * The runner's own git — the scrubbed boundary channel, not the session env:
  * `GIT_CONFIG_*` url rewrites could redirect the scratch clone, and
  * `refs/replace` substitution could hide what the attack commits actually
- * change (CX-50/51). Throws on non-zero like promisified execFile did.
+ * change (CX-50/51). `verifierScratchGit` bounds argv to the mutation ops a
+ * scratch replay needs plus the evidence read table — a scenario-authored
+ * token can never reach reflog/stash/update-ref or a `-c`/`--git-dir`
+ * redirect (CX-108/109). Throws on non-zero like promisified execFile did.
  */
 const git = async (root: string, args: string[]): Promise<string> => {
-  const r = await verifierGit(root, args);
+  const r = await verifierScratchGit(root, args);
   if (r.exitCode !== 0) {
     throw new Error(`git ${args[0]} failed in ${root} (exit ${r.exitCode}): ${r.stderr.trim()}`);
   }
@@ -390,7 +427,7 @@ export async function runScenario(
   const safeName = scenario.name.replace(/[^A-Za-z0-9._-]/g, "_");
   const scratch = mkdtempSync(path.join(os.tmpdir(), `forge-adv-${safeName}-`));
   try {
-    const clone = await verifierGit(scratch, [
+    const clone = await verifierScratchGit(scratch, [
       "clone",
       "-q",
       "--no-hardlinks",

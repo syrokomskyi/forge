@@ -12,7 +12,6 @@ overwritten — the scaffold lands once and hands the keys to the repo.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: keep an unconfigured scaffold owner from rewriting real CODEOWNERS ownership</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
@@ -61,6 +60,36 @@ remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
 EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
 decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
+
+Independent clean-context verification (round 8, candidate 9da0bf515)
+returned REFUTED with nine live counterexamples against the r7-hardened
+evidence channel — this commit closes all root causes.
+
+- Committed-object reads carry an integrity anchor: loose objects under
+  .git/objects whose inflated bytes do not hash to their object name
+  refuse the channel — forged loose bytes and loose-over-packed
+  shadowing can no longer serve the anchored base (CX-104a/b).
+- policy.digest --verify --base accepts only concrete immutable commit
+  identifiers — symbolic/message/index/path revspecs (HEAD^{/...},
+  :/..., bare HEAD, branch names) are rejected before verify (CX-103).
+- The heredoc lexer is a bash word-grammar scan: <<~EOF arms literal
+  ~EOF (CX-105), quote removal applies across the whole word so
+  <<'E'OF and <<E"OF" arm EOF (CX-106), and $/command-substitution
+  words arm a never-matching sentinel so body lines stay stdin (CX-107).
+- verifierGit is a subcommand + option allowlist: reflog/stash and
+  write commands (config writes, update-ref) are refused, caller
+  -c/-C/--git-dir/--work-tree/--exec-path are rejected instead of
+  landing after the pins, and -g inside short-option clusters (-ng) is
+  judged (CX-108/109).
+- Every remote.<name>.* class keys the name as greedy .+ so dotted
+  remotes no longer escape the REFUSE table or fetch value-judge —
+  remote.o.r.uploadpack refuses the channel instead of executing inside
+  fetch o.r (CX-110); fetch/ls-remote positional remotes are
+  form-judged.
+
+The independent r8 probe file and acceptance report land in the
+follow-up port commit.</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -371,7 +400,93 @@ function workflowAdopted(body: string): boolean {
   // runs on the RAW line — a `#` inside a quoted delimiter is not a
   // comment and the strip would eat it (CX-99a), and a digit-leading
   // bare delimiter is legal too (CX-99b).
-  const HEREDOC_OPEN = /<<([-~]?)\s*(?:'([^']+)'|"([^"]+)"|\\?([\w.-]+))/g;
+  /**
+   * Bash-faithful `<<[-]WORD` delimiter scan. WORD is a shell WORD, not a
+   * regex fragment: quote removal applies across the whole word, so
+   * `<<'E'OF` and `<<E"OF"` both arm `EOF` (CX-106); `<<~EOF` arms
+   * `~EOF` — `<<~` is not a bash operator, `~` starts the word (CX-105);
+   * and a word containing `$`/backtick expands at runtime into a
+   * delimiter the judge cannot predict, so it arms a never-matching
+   * sentinel that consumes every later line as stdin (CX-107). `<<<`
+   * herestrings and an empty/unterminated word arm nothing real either —
+   * the sentinel keeps the safe direction (body lines are never counted
+   * as invocations). Only a `-` GLUED to `<<` is the tab-strip flag —
+   * `<< -` reads `-` as the delimiter, matching bash.
+   */
+  const HEREDOC_SENTINEL = "forge-heredoc-unarmable";
+  const scanHeredocOpeners = (raw: string): { delim: string; tabStrip: boolean }[] => {
+    const openers: { delim: string; tabStrip: boolean }[] = [];
+    let i = 0;
+    while ((i = raw.indexOf("<<", i)) !== -1) {
+      let j = i + 2;
+      if (raw[j] === "<") {
+        i = j;
+        continue; // <<< herestring — one-line stdin, not a heredoc
+      }
+      let tabStrip = false;
+      if (raw[j] === "-") {
+        tabStrip = true;
+        j++;
+      }
+      while (raw[j] === " " || raw[j] === "\t") j++;
+      let delim = "";
+      let unarmable = false;
+      for (;;) {
+        const c = raw[j];
+        if (c === undefined || c === " " || c === "\t" || ";|&()<>".includes(c)) break;
+        if (c === "'") {
+          const close = raw.indexOf("'", j + 1);
+          if (close === -1) {
+            unarmable = true;
+            break;
+          }
+          delim += raw.slice(j + 1, close);
+          j = close + 1;
+          continue;
+        }
+        if (c === '"') {
+          const close = raw.indexOf('"', j + 1);
+          if (close === -1) {
+            unarmable = true;
+            break;
+          }
+          // Inside "…": backslash escapes only $ ` " \ and newline — an
+          // unescaped $/backtick expands at runtime, which a static
+          // judge can never predict.
+          for (let k = j + 1; k < close; k++) {
+            const cc = raw[k]!;
+            if (cc === "\\" && k + 1 < close && '$`"\\'.includes(raw[k + 1]!)) {
+              delim += raw[k + 1];
+              k++;
+              continue;
+            }
+            if (cc === "$" || cc === "`") unarmable = true;
+            else delim += cc;
+          }
+          j = close + 1;
+          continue;
+        }
+        if (c === "\\") {
+          if (raw[j + 1] === undefined) {
+            unarmable = true;
+            break;
+          }
+          delim += raw[j + 1];
+          j += 2;
+          continue;
+        }
+        if (c === "$" || c === "`") {
+          unarmable = true;
+          break;
+        }
+        delim += c;
+        j++;
+      }
+      openers.push({ delim: unarmable || delim === "" ? HEREDOC_SENTINEL : delim, tabStrip });
+      i = Math.max(j, i + 2);
+    }
+    return openers;
+  };
   const runInvokes = (run: string, cmd: RegExp, extra?: RegExp): boolean => {
     let dead = false;
     let depth = 0;
@@ -403,10 +518,7 @@ function workflowAdopted(body: string): boolean {
       }
       // Heredoc openers on THIS line arm the body skip below — including
       // on masked/compound lines, since the consumer still reads stdin.
-      for (const m of raw.matchAll(HEREDOC_OPEN)) {
-        const delim = m[2] ?? m[3] ?? m[4];
-        if (delim !== undefined) heredocs.push({ delim, tabStrip: m[1] !== "" });
-      }
+      for (const hd of scanHeredocOpeners(raw)) heredocs.push(hd);
       if (/^set\s+-o\s+pipefail\b/.test(line)) {
         pipefail = true;
         continue;

@@ -19,13 +19,6 @@ advanced.</purpose>
   <item>absent policy: section → exit 1 "no policy surface declared" — the digest anchors the declared surface, nothing declared means nothing to attest.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: external verification trust boundary
-
-policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
-with a 12-scenario catalog replayed through the real gate in a scratch
-clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
-forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
-scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
@@ -74,6 +67,36 @@ remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
 EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
 decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
+
+Independent clean-context verification (round 8, candidate 9da0bf515)
+returned REFUTED with nine live counterexamples against the r7-hardened
+evidence channel — this commit closes all root causes.
+
+- Committed-object reads carry an integrity anchor: loose objects under
+  .git/objects whose inflated bytes do not hash to their object name
+  refuse the channel — forged loose bytes and loose-over-packed
+  shadowing can no longer serve the anchored base (CX-104a/b).
+- policy.digest --verify --base accepts only concrete immutable commit
+  identifiers — symbolic/message/index/path revspecs (HEAD^{/...},
+  :/..., bare HEAD, branch names) are rejected before verify (CX-103).
+- The heredoc lexer is a bash word-grammar scan: <<~EOF arms literal
+  ~EOF (CX-105), quote removal applies across the whole word so
+  <<'E'OF and <<E"OF" arm EOF (CX-106), and $/command-substitution
+  words arm a never-matching sentinel so body lines stay stdin (CX-107).
+- verifierGit is a subcommand + option allowlist: reflog/stash and
+  write commands (config writes, update-ref) are refused, caller
+  -c/-C/--git-dir/--work-tree/--exec-path are rejected instead of
+  landing after the pins, and -g inside short-option clusters (-ng) is
+  judged (CX-108/109).
+- Every remote.<name>.* class keys the name as greedy .+ so dotted
+  remotes no longer escape the REFUSE table or fetch value-judge —
+  remote.o.r.uploadpack refuses the channel instead of executing inside
+  fetch o.r (CX-110); fetch/ls-remote positional remotes are
+  form-judged.
+
+The independent r8 probe file and acceptance report land in the
+follow-up port commit.</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -225,7 +248,9 @@ async function gatherWorktreeSurface(
 async function git(root: string, args: string[]): Promise<string | null> {
   // Boundary evidence channel — session GIT_* variables and refs/replace must
   // not redirect or substitute what the attestation reads (CX-46..CX-50).
-  const result = await verifierGit(root, ["-C", root, ...args]);
+  // cwd carries the repo — a leading `-C` is a global option the r8 argv
+  // table refuses (CX-109).
+  const result = await verifierGit(root, args);
   return result.exitCode === 0 ? result.stdout : null;
 }
 
@@ -357,6 +382,44 @@ export async function runPolicyDigest(
   }
 
   if (base) {
+    // `--base` must name a full commit object id that is a real ancestor
+    // of HEAD below the tip — anything else resolves through session-
+    // controlled state: `master`/`HEAD` re-point at session refs, `^{/…}`
+    // and `:/…` search commit CONTENT for a tip-resolving rev, and the
+    // tip itself makes baseDigest == current so the attestation check is
+    // skipped entirely (CX-103).
+    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(base)) {
+      violations.push(
+        `--base ${JSON.stringify(base)} is not a full commit object id — dynamic revspecs resolve through session-controlled state`,
+      );
+      return fail("unsafe --base revspec", { sha256, covers });
+    }
+    const baseCommit = (
+      await git(workspaceRoot, ["rev-parse", "--verify", "-q", `${base}^{commit}`])
+    )?.trim();
+    if (baseCommit === undefined || baseCommit.length === 0) {
+      violations.push(`--base ${base} does not resolve to a commit`);
+      return fail("unsafe --base revspec", { sha256, covers });
+    }
+    const head = (await git(workspaceRoot, ["rev-parse", "--verify", "-q", "HEAD"]))?.trim();
+    if (head !== undefined && baseCommit === head) {
+      violations.push(
+        `--base ${base} is the HEAD tip — the attestation anchor must sit below the current tip`,
+      );
+      return fail("unsafe --base revspec", { sha256, covers });
+    }
+    const ancestor = await verifierGit(workspaceRoot, [
+      "merge-base",
+      "--is-ancestor",
+      baseCommit,
+      "HEAD",
+    ]);
+    if (ancestor.exitCode !== 0) {
+      violations.push(
+        `--base ${base} is not an ancestor of HEAD — attestation must anchor inside the verified history`,
+      );
+      return fail("unsafe --base revspec", { sha256, covers });
+    }
     const atBase = await gatherBaseSurface(workspaceRoot, base);
     const baseDigest = atBase ? canonicalPolicyDigest(atBase.surface) : null;
     if (atBase === null) {
