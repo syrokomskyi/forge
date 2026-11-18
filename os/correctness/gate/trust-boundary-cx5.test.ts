@@ -790,11 +790,13 @@ describe("RFC-1616 r5 — closed-surface re-verification", () => {
         "+refs/heads/*:refs/remotes/origin/decoy/*",
       ]);
       const digest = await collectDigest(repo, ambientIo, { fetch: true });
-      const realTip = gitIn(origin, ["rev-parse", "develop"]).trim();
-      expect(digest.develop.remote).toBe(realTip);
-      expect(digest.develop.remote).not.toBe(tSha);
+      // CX-94 (r7): the non-default remote.origin.fetch now refuses the
+      // whole evidence channel — stronger than the decoy-only guard.
+      expect(digest.fetched).toBe(false);
+      expect(digest.digestId.startsWith("refused-")).toBe(true);
       const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
-      expect(pushed08(data)).toBe(true);
+      expect(data.pushed).toBe(false);
+      expect(data.diagnostics.some((d) => d.ruleId === "FLOW-PUSH-13")).toBe(true);
       expect(gitIn(origin, ["rev-list", "develop"]).includes(tSha)).toBe(false);
     },
   );

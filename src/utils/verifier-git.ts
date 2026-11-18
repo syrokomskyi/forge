@@ -18,11 +18,56 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: initial verifier-git primitives — env scrub, execFile wrapper, trusted git resolution.</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
+
+Independent clean-context verification (round 7, candidate d2f270ad6)
+returned REFUTED with eleven live counterexamples against the
+r6-hardened evidence channel — this commit closes all nine root causes.
+
+- remote.<name>.fetch is value-judged: only the clone-default
+  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
+  UNIONs configured refspecs with the pinned fetch argv and a session
+  spec writes arbitrary local refs inside the trusted fetch (CX-94).
+  remote.<name>.tagopt|promirror|followremotehead|prunetags|
+  skipfetchall|mirror move to REFUSE for the same reason.
+- Alternates/shape comment lexing is col-0 `#` only — git's parser does
+  not treat whitespace-led `#` as a comment, so `   # forged` is a real
+  alternates path the shape check must count (CX-95).
+- config reads forbid the alternate-source selectors --file/-f, --blob,
+  --worktree (reaches config.worktree even under the disabled-extension
+  pin), --system/--global, --default and --includes, plus the
+  write-action spellings, on both the evidence and shared read-only
+  tables (CX-96).
+- verifierGit judges fabrication argv on the runner/policy channel:
+  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
+  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
+  can no longer verify an unattested advance (CX-97).
+- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
+  both tables — the flag opts the trusted walk into the session-
+  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
+- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
+  on both tables — they block on input the no-stdin spawn never
+  supplies (CX-101).
+- The workflow-adoption heredoc lexer is bash-faithful: openers are
+  scanned on the raw line before the # comment strip (quoted-#
+  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
+  the terminator match is strict — << wants the delimiter alone, <<-/
+  <<~ skip leading tabs only (CX-100).
+- Trailer scans read %e beside %(trailers): a commit declaring a
+  non-UTF-8 encoding header recodes every trusted message read, so the
+  digest trail and the push-time scan flag it as unverifiable and the
+  policy attestation scan skips it (CX-102).
+
+Probe premise updates for the tightened contract: CX-61's decoy
+remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
+EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
+decoy-namespace guard it replaces. The independent r7 probe file and
+acceptance report land in the follow-up port commit.</item>
+  <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
@@ -396,7 +441,7 @@ const EVIDENCE_CONFIG_REFUSE: ReadonlyArray<{ key: RegExp; value?: RegExp }> = [
   { key: /^http\./i },
   { key: /^protocol\./i },
   {
-    key: /^remote\.[^.]+\.(?:proxy|proxyauthmethod|vcs|promisor|partialclonefilter|uploadpack|receivepack)$/i,
+    key: /^remote\.[^.]+\.(?:proxy|proxyauthmethod|vcs|promisor|partialclonefilter|uploadpack|receivepack|tagopt|promirror|followremotehead|prunetags|skipfetchall|mirror)$/i,
   },
   { key: /^extensions\.(?:partialclone|worktreeconfig)$/i },
   { key: /^credential\..*helper$/i, value: /\S/ },
@@ -494,6 +539,23 @@ export function judgeEvidenceRepoSurface(
       if (!refusedKeys.includes(key)) refusedKeys.push(key);
       continue;
     }
+    // `remote.<name>.fetch` UNIONs with the pinned fetch's cmdline
+    // refspec — a configured spec outside the clone-default
+    // `+refs/heads/*:refs/remotes/<name>/*` shape writes arbitrary local
+    // refs inside the trusted fetch (CX-94). Only wildcard-heads into the
+    // remote's own tracking namespace stays KEEP; every other value
+    // refuses (empty values and non-wildcard specs included).
+    const fetchSpec = /^remote\.([^.]+)\.fetch$/i.exec(key);
+    if (
+      fetchSpec !== null &&
+      !new RegExp(
+        `^\\+?refs/heads/\\*:refs/remotes/${fetchSpec[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/\\*$`,
+        "i",
+      ).test(value)
+    ) {
+      if (!refusedKeys.includes(key)) refusedKeys.push(key);
+      continue;
+    }
     if (EVIDENCE_CONFIG_KEEP.test(key)) continue;
     if (key === "core.hookspath") {
       hookArgs.push("-c", `core.hooksPath=${evidenceHooksDir()}`);
@@ -532,10 +594,11 @@ export function judgeEvidenceRepoSurface(
     } catch {
       return;
     }
-    // Any non-empty non-comment line is content — a whitespace-only line
-    // is a LITERAL path entry (`.git/objects/   ` is a real alternates
-    // target, CX-91), never a blank.
-    const effective = body.split("\n").some((l) => l.length > 0 && !/^\s*#/.test(l));
+    // Any non-empty non-comment line is content. git's parsers comment
+    // col-0 `#` only — a whitespace-only line is a LITERAL path entry
+    // (`.git/objects/   `, CX-91) and so is `   # x` (`.git/objects/   # x`,
+    // CX-95); only a bare first-byte `#` is a comment.
+    const effective = body.split("\n").some((l) => l.length > 0 && !l.startsWith("#"));
     if (!effective) return;
     const name = EVIDENCE_SHAPE_QUERY_PATHS[i] ?? abs;
     if (i < EVIDENCE_SHAPE_PATHS.length) shapeViolations.push(name);
@@ -723,6 +786,28 @@ export async function verifierGit(
       exitCode: -1,
       stdout: "",
       stderr: `${EVIDENCE_REFUSED_PREFIX}: ${[...preflight.refusedKeys, ...preflight.shapeViolations].join(", ")}`,
+    };
+  }
+  // Runner/policy argv is caller-built (policy.digest's `--base`, op
+  // names) — `@{…}`/`@{u}` resolve through the session-authored reflog
+  // and upstream config, and `-g`/`--reflog`/`--fork-point` read the same
+  // fabrication store. The read-only tables refuse this argv (CX-92); the
+  // trusted channel must too (CX-97).
+  const fabricatedArg = args.find(
+    (a) =>
+      a.includes("@{") ||
+      a === "-g" ||
+      a === "--reflog" ||
+      a === "--walk-reflogs" ||
+      a === "--fork-point" ||
+      a.startsWith("--reflog=") ||
+      a.startsWith("--fork-point="),
+  );
+  if (fabricatedArg !== undefined) {
+    return {
+      exitCode: -1,
+      stdout: "",
+      stderr: `${EVIDENCE_REFUSED_PREFIX}: reflog/upstream argv ${JSON.stringify(fabricatedArg)}`,
     };
   }
   return new Promise((resolve) => {

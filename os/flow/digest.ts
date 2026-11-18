@@ -18,14 +18,56 @@ flow.push must quote.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: digest trail, manifest review export, operating model and skills
-
-flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
-  <history>RFC-1491, RFC-1498, RFC-1503</history>
+  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
+
+Independent clean-context verification (round 7, candidate d2f270ad6)
+returned REFUTED with eleven live counterexamples against the
+r6-hardened evidence channel — this commit closes all nine root causes.
+
+- remote.<name>.fetch is value-judged: only the clone-default
+  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
+  UNIONs configured refspecs with the pinned fetch argv and a session
+  spec writes arbitrary local refs inside the trusted fetch (CX-94).
+  remote.<name>.tagopt|promirror|followremotehead|prunetags|
+  skipfetchall|mirror move to REFUSE for the same reason.
+- Alternates/shape comment lexing is col-0 `#` only — git's parser does
+  not treat whitespace-led `#` as a comment, so `   # forged` is a real
+  alternates path the shape check must count (CX-95).
+- config reads forbid the alternate-source selectors --file/-f, --blob,
+  --worktree (reaches config.worktree even under the disabled-extension
+  pin), --system/--global, --default and --includes, plus the
+  write-action spellings, on both the evidence and shared read-only
+  tables (CX-96).
+- verifierGit judges fabrication argv on the runner/policy channel:
+  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
+  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
+  can no longer verify an unattested advance (CX-97).
+- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
+  both tables — the flag opts the trusted walk into the session-
+  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
+- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
+  on both tables — they block on input the no-stdin spawn never
+  supplies (CX-101).
+- The workflow-adoption heredoc lexer is bash-faithful: openers are
+  scanned on the raw line before the # comment strip (quoted-#
+  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
+  the terminator match is strict — << wants the delimiter alone, <<-/
+  <<~ skip leading tabs only (CX-100).
+- Trailer scans read %e beside %(trailers): a commit declaring a
+  non-UTF-8 encoding header recodes every trusted message read, so the
+  digest trail and the push-time scan flag it as unverifiable and the
+  policy attestation scan skips it (CX-102).
+
+Probe premise updates for the tightened contract: CX-61's decoy
+remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
+EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
+decoy-namespace guard it replaces. The independent r7 probe file and
+acceptance report land in the follow-up port commit.</item>
+  <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580</history>
 </CHANGE_SUMMARY>
 */
 
@@ -246,15 +288,25 @@ async function correctnessTrailOf(
     // the trailer blob could smuggle a record boundary (CX-33 class).
     const subj = await gitEvidence(repoRoot, ["log", "-1", "--format=%s", sha]);
     if (subj.exitCode !== 0) continue;
+    // `%e` rides along: a declared non-UTF-8 `encoding:` header recodes
+    // %s/%(trailers) output into bytes the scan cannot trust — the header
+    // lives inside the commit object so no -c pin can strip it (CX-102).
+    // Such a commit's provenance is unverifiable — list it flagged.
     const trailers = await gitEvidence(repoRoot, [
       "log",
       "-1",
-      "--format=%(trailers:only,separator=%x00)",
+      "--format=%(trailers:only,separator=%x00)%x00%e",
       sha,
     ]);
     if (trailers.exitCode !== 0) continue;
+    const trailerParts = trailers.stdout.split("\x00");
+    const declaredEncoding = (trailerParts.pop() ?? "").trim();
     const subject = subj.stdout.trim();
-    const entries = parseGitTrailers(trailers.stdout.replaceAll("\x00", "\n"));
+    if (declaredEncoding.length > 0 && !/^utf-?8$/i.test(declaredEncoding)) {
+      trail.verifierCommits.push({ sha, subject, report: null });
+      continue;
+    }
+    const entries = parseGitTrailers(trailerParts.join("\x00").replaceAll("\x00", "\n"));
     const byKey = new Map<string, string>();
     for (const t of entries) if (!byKey.has(t.key)) byKey.set(t.key, t.value);
     const weak = byKey.get("x-correctness-weakening");
