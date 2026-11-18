@@ -18,36 +18,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r10 trust-boundary counterexamples
-
-Independent clean-context verification (round 10, candidate 17c0ec075)
-returned REFUTED with two live counterexamples against the
-r9-remediated channel — this commit closes both root causes.
-
-- The core.hooksPath pin target is the null device, not a plantable
-  temp dir (CX-123): the mkdtemp evidenceHooksDir persisted for the
-  process lifetime under the session-owned OS temp root, so a
-  concurrent same-uid session could poll, discover it, and plant an
-  executable reference-transaction hook that the next pinned fetch
-  executed inside the trusted spawn. The pin now aims at DEVNULL —
-  the ENOTDIR hook stat skips every hook silently and a char device
-  has no plantable entries; no verifier hooks dir exists at all,
-  removing the TMPDIR amplifier too.
-- A failed claims rebuild is fail-closed, scoped to the reads it can
-  poison (CX-124): prepareEvidenceIndex returned {} on a failed
-  update-index --index-info, routing index-consulting reads at the
-  ambient session-writable .git/index — a CX-121 stat-forged index
-  then answered clean on dirty bytes on both channels. The failure
-  now marks the index unproven in the preflight, and
-  isUnprovenIndexRead refuses exactly the index-consulting ops
-  (status/ls-files always; diff unless tree-to-tree; grep unless
-  tree-anchored; ambiguous shapes refuse) on all three channels.
-  Non-index reads proceed, so a corrupt-index fixture degrades
-  per-read (the gate's git-read-failed contract) instead of dying
-  channel-wide.
-
-The independent r10 probe file and acceptance report land in the
-follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
 
 Independent clean-context verification (round 11, candidate 029219ca9)
@@ -88,6 +58,7 @@ the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r15 trust-boundary counterexamples</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -440,18 +411,25 @@ export function evidenceConfigArgs(args?: readonly string[]): string[] {
 
 /**
  * Compose the full pin argv for one evidence call — static pins plus the
- * preflight's dynamic pins, with the hook-path pins held back on `config`
- * reads so the repo's real hooksPath is the answer.
+ * preflight's dynamic pins. `config` reads carry NO pins at all (CX-148):
+ * every pin is command-scope config that shadows the file value, so a
+ * `config --get <pinned-key>` answers the pin — verifier-curated output
+ * where the contract demands file truth (and provably disagrees with
+ * `--local --no-includes --list` on the same channel). Config reads
+ * invoke no levers — no drivers, attrs, index, or pager on a non-tty —
+ * and the scope pins (`GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` → null
+ * device in `verifierGitEnv`) still bound the answer to the local file,
+ * so holding every `-c` pair back loses no protection.
  */
 export function evidencePinArgs(
   args: readonly string[],
   preflight?: EvidencePreflight | null,
 ): string[] {
-  const onConfigRead = args[0] === "config";
+  if (args[0] === "config") return [];
   return [
     ...evidenceConfigArgs(args),
     ...(preflight?.configArgs ?? []),
-    ...(onConfigRead ? [] : (preflight?.hookArgs ?? [])),
+    ...(preflight?.hookArgs ?? []),
   ];
 }
 
@@ -700,6 +678,15 @@ export interface EvidenceSurfaceFile {
   ctimeMs: number;
   size: number;
   link?: string;
+  /**
+   * The symlink resolves to a DIRECTORY — the walk records the link as
+   * one leaf and never descends, so members beneath it are fingerprint-
+   * invisible while git (and the loose/pack scans) DO descend through
+   * it (CX-145). Git never creates symlinked dirs inside `objects/` or
+   * `worktrees/`, so the judge refuses the channel on this marker —
+   * refusal is the only answer an unpinnable member set can get.
+   */
+  linkDir?: true;
 }
 
 /**
@@ -1223,7 +1210,10 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
   // the upstream claim is `branch.<n>.{remote,merge}` config, which a
   // session rewrite can fabricate (R13-D). The long-format equivalent
   // dies by the `branch.<HEAD>.*` pins the judge emits.
-  { prefix: ["status"], forbid: ["--branch", "-b"] },
+  // `--show-stash` prints "Your stash currently has N entries" — N is
+  // a count of `.git/logs/refs/stash` REFLOG lines, session-fabricable
+  // with no real stash objects: the CX-92 exclusion class (CX-146).
+  { prefix: ["status"], forbid: ["--branch", "-b", "--show-stash"] },
   {
     prefix: ["log"],
     forbid: [
@@ -1516,6 +1506,14 @@ function scanLooseObjects(objectsDir: string): string[] {
   for (const dir of fanout) {
     if (!LOOSE_FANOUT_RE.test(dir)) continue;
     const absDir = path.join(objectsDir, dir);
+    // A symlinked fanout is a shape violation the judge refuses — skip
+    // the descent here too so a session-owned target tree is never
+    // walked (CX-145).
+    try {
+      if (lstatSync(absDir).isSymbolicLink()) continue;
+    } catch {
+      continue;
+    }
     let names: string[];
     try {
       names = readdirSync(absDir);
@@ -1589,6 +1587,14 @@ export async function scanPackObjects(
 ): Promise<string[]> {
   const forged: string[] = [];
   const packDir = path.join(objectsDir, "pack");
+  // A symlinked pack dir is a shape violation the judge refuses — skip
+  // the enumeration so a session-owned target tree is never walked
+  // (CX-145).
+  try {
+    if (lstatSync(packDir).isSymbolicLink()) return forged;
+  } catch {
+    return forged;
+  }
   let names: string[];
   try {
     names = readdirSync(packDir);
@@ -2027,6 +2033,21 @@ export function judgeEvidenceRepoSurface(
     } catch {
       wtEntries = [];
     }
+    // Symlinked dirs inside the fingerprinted trees (CX-145): the
+    // fingerprint walk records a symlink as ONE leaf and never
+    // descends, while git and the loose/pack scans DO descend through
+    // it — members beneath are fingerprint-invisible, so an in-place
+    // member rewrite survives the reprove forever and the cached
+    // channel serves the forged bytes under real names. Git never
+    // creates symlinked dirs inside `objects/` or `worktrees/` — the
+    // same asymmetric-hardening bound the `worktrees/<id>` judge below
+    // already enforces on the Dirent level — so presence refuses.
+    for (const [rel, st] of fingerprint?.objectFiles ?? []) {
+      if (st.linkDir === true) shapeViolations.push(`objects/${rel}`);
+    }
+    for (const [rel, st] of fingerprint?.worktreeFiles ?? []) {
+      if (st.linkDir === true) shapeViolations.push(`worktrees/${rel}`);
+    }
     for (const e of wtEntries) {
       const meta = path.join(commonDir, "worktrees", e.name);
       let wellFormed = e.isDirectory();
@@ -2191,7 +2212,16 @@ function enumerateTreeFiles(root: string): Map<string, EvidenceSurfaceFile> {
           } catch {
             st = lstatSync(ap);
           }
-          files.set(er, { ino: st.ino, ctimeMs: st.ctimeMs, size: st.size, link });
+          files.set(er, {
+            ino: st.ino,
+            ctimeMs: st.ctimeMs,
+            size: st.size,
+            link,
+            // A dir target means members beneath the link are never
+            // fingerprinted by this leaf (CX-145) — flagged for the
+            // judge; equal stat+link tuples imply equal flags.
+            ...(st.isDirectory() ? { linkDir: true as const } : {}),
+          });
         } else {
           const st = statSync(ap);
           files.set(er, { ino: st.ino, ctimeMs: st.ctimeMs, size: st.size });
