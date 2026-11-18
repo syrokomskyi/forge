@@ -11,7 +11,6 @@ index and revision blobs come from one `git cat-file --batch` process
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1579: initial snapshot sources.</item>
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
@@ -24,16 +23,50 @@ Measured on werkstatt (rollout step 3): 7 wrangler D1 configs, ~10 s per run, 3 
 
 F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <history>RFC-1579</history>
 </CHANGE_SUMMARY>
 */
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { execFile } from "node:child_process";
-
-import { createOriginGit, gitEnvForCwd } from "../../rfc/verification-origin.ts";
-import { resolveGitBin } from "../../../src/utils/verifier-git.ts";
+import { createOriginGit } from "../../rfc/verification-origin.ts";
 import { listWorkspaceFiles } from "../workspace.ts";
 
 export interface TreeSnapshot {
@@ -143,8 +176,11 @@ export async function loadSnapshot(
   };
   const grep = async (args: string[]): Promise<string[]> => {
     // `git grep` exits 1 on "no match"; any other failure must not read as an
-    // empty tree (that would fail open on the judged side).
-    const { code, stdout } = await gitGrep(workspaceRoot, [
+    // empty tree (that would fail open on the judged side). OriginGit carries
+    // the preflight verdict, -c pins, and the HEAD-anchored index env — a
+    // session lever (fsmonitor/filter/forged index) cannot ride this read
+    // (CX-115/CX-121).
+    const r = await git.runExit?.([
       "grep",
       "-l",
       "-z",
@@ -155,6 +191,8 @@ export async function loadSnapshot(
       "*.mts",
       "*.tsx",
     ]);
+    const code = r?.code ?? null;
+    const stdout = r?.stdout ?? "";
     if (code === 1) return [];
     if (code !== 0) throw new Error(`git grep failed with exit ${code}`);
     const prefix = which.kind === "rev" ? `${which.sha}:` : "";
@@ -175,22 +213,6 @@ export async function loadSnapshot(
     await read(more);
   }
   return { label: which.kind === "rev" ? which.sha : "index", files };
-}
-
-function gitGrep(cwd: string, args: string[]): Promise<{ code: number | null; stdout: string }> {
-  return new Promise((resolve) => {
-    execFile(
-      resolveGitBin(),
-      args,
-      { cwd, timeout: 120_000, maxBuffer: 64 * 1024 * 1024, env: gitEnvForCwd() },
-      (err, stdout) => {
-        const code = err
-          ? (((err as { code?: unknown }).code as number | null | undefined) ?? null)
-          : 0;
-        resolve({ code: typeof code === "number" ? code : null, stdout: String(stdout ?? "") });
-      },
-    );
-  });
 }
 
 /** Resolve a revision to a full sha; null when it does not resolve. */

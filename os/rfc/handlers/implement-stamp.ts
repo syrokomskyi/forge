@@ -12,18 +12,52 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1504: step 4 — shared stamp lock for rfc and adr stamp handlers</item>
   <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
   <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-1391, RFC-1453, RFC-1454, RFC-1483, RFC-IMP-07</history>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-1391, RFC-1453, RFC-1454, RFC-1483, RFC-1504, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "../../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 
 import { join, relative, resolve, sep } from "node:path";
@@ -58,9 +92,9 @@ import {
   createOriginGit,
   createProofEntryResolver,
   deriveProbeOrigins,
-  gitEnvForCwd,
   hasVerifierTrailers,
 } from "../verification-origin.ts";
+import { verifierGit } from "../../../src/utils/verifier-git.ts";
 import {
   ACCEPTANCE_REPORTS_DIR,
   evaluateAcceptanceVerificationGate,
@@ -97,21 +131,17 @@ const VERIFICATION_DIR = join(RFC_DIR, "verification");
 // review/fix/chore commits referencing the same RFC id never claim it.
 const IMPLEMENTATION_SUBJECT_RE = /^(implement|feat)(\([^)]*\))?!?:/i;
 
-function execGit(workspaceRoot: string, args: string[]): Promise<string> {
-  return new Promise((resolve) => {
-    execFile(
-      "git",
-      args,
-      { cwd: workspaceRoot, timeout: 30000, env: gitEnvForCwd() },
-      (err, stdout) => {
-        if (err) {
-          resolve("");
-          return;
-        }
-        resolve(stdout.trim());
-      },
-    );
-  });
+/**
+ * Trusted-path git reads go through `verifierGit` — the argv-judged,
+ * preflighted channel whose `-c` pins neutralize repo-config programs
+ * (`core.fsmonitor`, drivers) and whose HEAD-anchored index defeats
+ * `.git/index` stat forgery (CX-115/CX-121). A refused surface degrades
+ * to "" — the same "no answer" contract the raw spawn had, now
+ * fail-closed instead of fabricated.
+ */
+async function execGit(workspaceRoot: string, args: string[]): Promise<string> {
+  const r = await verifierGit(workspaceRoot, args);
+  return r.exitCode === 0 ? r.stdout.trim() : "";
 }
 
 async function isRfcFileClean(workspaceRoot: string, rfcRelPath: string): Promise<boolean> {
@@ -120,20 +150,9 @@ async function isRfcFileClean(workspaceRoot: string, rfcRelPath: string): Promis
 }
 
 async function commitReachableFromHead(workspaceRoot: string, commitSha: string): Promise<boolean> {
-  const _result = await execGit(workspaceRoot, ["merge-base", "--is-ancestor", commitSha, "HEAD"]);
-  // merge-base --is-ancestor exits 0 if ancestor, 1 if not, >1 on error
-  // execGit returns "" on error (non-zero exit), trimmed stdout on success
-  // So we need a different approach: check exit code directly
-  return new Promise((resolve) => {
-    execFile(
-      "git",
-      ["merge-base", "--is-ancestor", commitSha, "HEAD"],
-      { cwd: workspaceRoot, timeout: 30000, env: gitEnvForCwd() },
-      (err) => {
-        resolve(!err);
-      },
-    );
-  });
+  // merge-base --is-ancestor exits 0 if ancestor, 1 if not, >1 on error.
+  const r = await verifierGit(workspaceRoot, ["merge-base", "--is-ancestor", commitSha, "HEAD"]);
+  return r.exitCode === 0;
 }
 
 async function autoDetectImplementationCommit(
@@ -461,14 +480,8 @@ export async function readAcceptanceReports(
 
 /** RFC-1333: candidate..HEAD may contain only verifier-trailer or docs-only commits. */
 export async function candidateBoundToHead(workspaceRoot: string, sha: string): Promise<boolean> {
-  const isAnc = await new Promise<boolean>((done) =>
-    execFile(
-      "git",
-      ["merge-base", "--is-ancestor", sha, "HEAD"],
-      { cwd: workspaceRoot, env: gitEnvForCwd() },
-      (err) => done(!err),
-    ),
-  );
+  const isAnc =
+    (await verifierGit(workspaceRoot, ["merge-base", "--is-ancestor", sha, "HEAD"])).exitCode === 0;
   if (!isAnc) return false;
   // --first-parent -m: a merge reports its full first-parent diff, so code
   // brought in by a merge cannot pass as an empty "docs-only" commit.

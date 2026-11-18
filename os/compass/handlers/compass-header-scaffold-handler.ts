@@ -14,6 +14,42 @@ dirty-target refusal before any write, and reports census/apply manifests.</purp
   <item>RFC-1318</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
   <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -250,7 +286,16 @@ export async function runCompassHeaderScaffold(
 
   // ── Dirty-target refusal — apply mode only; census never writes ──────────
   if (!census && !force && writes.length > 0) {
-    const rawDirty = listDirtyPaths(baseRoot);
+    const dirtyResult = await listDirtyPaths(baseRoot);
+    if (dirtyResult.refused) {
+      // A refused dirty verdict is not a clean tree — the write guard
+      // holds on exactly the forgery class it exists for (CX-121).
+      context.logger.error(
+        `[compass.header.scaffold] refusing to write — the dirty check could not get a trusted verdict${dirtyResult.reason ? ` (${dirtyResult.reason})` : ""}`,
+      );
+      return { exitCode: 1, summary: "dirty check refused — refused" };
+    }
+    const rawDirty = dirtyResult.paths;
     if (rawDirty && rawDirty.length > 0) {
       // Porcelain paths are repo-top-relative while reports carry
       // workspace-relative paths — rebase through the actual top-level so a
@@ -258,7 +303,7 @@ export async function runCompassHeaderScaffold(
       // --workpiece repo) still sees its dirty targets. Canonicalize BOTH
       // sides: git reports canonical paths while workspaceRoot may be
       // symlinked — or an 8.3 alias under Windows (tmp RUNNER~1 dirs).
-      const topLevel = repoTopLevel(baseRoot);
+      const topLevel = await repoTopLevel(baseRoot);
       const wsRoot = canonicalRepoDir(context.workspaceRoot);
       const gitBase = canonicalRepoDir(topLevel ?? baseRoot);
       const dirty = rawDirty.map((d) => {

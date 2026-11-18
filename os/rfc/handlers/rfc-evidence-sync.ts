@@ -22,6 +22,42 @@ invocation attests "all generated artifacts + RFC evidence are current".
 <CHANGE_SUMMARY>
   <item>RFC-1306: initial — EVIDENCE_SYNC_STEPS chain + runRfcEvidenceSync via the ctx.invoke port; EVIDENCE-SYNC-01 fail-closed without a kernel host, EVIDENCE-SYNC-02 propagates a failed step's diagnostics verbatim; review-r1: try/catch maps thrown invokes into EVIDENCE-SYNC-02, dry-run exposes `planned` in data.</item>
   <item>RFC-1306: review-r1 — io-native writes, cacheable off on chain generators, EVIDENCE-SYNC-02 on invoke throws</item>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
   <item>RFC-1622: preserve single manifest render during archive replay RFC-1622</item>
 </CHANGE_SUMMARY>
 */
@@ -31,9 +67,8 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
-import { execFile } from "../../../src/utils/sync-fs.ts";
 import { parse as yamlParse } from "yaml";
-import { gitEnvForCwd } from "../verification-origin.ts";
+import { verifierGit } from "../../../src/utils/verifier-git.ts";
 import type { VerificationEvidence } from "../types.ts";
 
 /**
@@ -132,16 +167,14 @@ export async function readCommittedEnvelope(
   probeCountMismatch?: boolean;
 }> {
   const rel = relPath.replace(/\\/g, "/");
-  const stdout = await new Promise<string>((resolve) => {
-    execFile(
-      "git",
-      ["show", `HEAD:${rel}`],
-      { cwd: workspaceRoot, timeout: 5000, env: gitEnvForCwd() },
-      (err, out) => {
-        resolve(err ? "" : out);
-      },
-    );
+  // verifierGit: the committed blob is judged evidence — the preflighted,
+  // argv-pinned channel refuses forged object stores (pack/loose/alternates)
+  // a raw spawn would serve verbatim (CX-118/CX-120). A refused or failed
+  // read degrades to absent → full re-execution, never a fabricated reuse.
+  const r = await verifierGit(workspaceRoot, ["show", `HEAD:${rel}`], {
+    timeoutMs: 5000,
   });
+  const stdout = r.exitCode === 0 ? r.stdout : "";
   if (stdout.trim().length === 0) return {};
   let parsed: unknown;
   try {

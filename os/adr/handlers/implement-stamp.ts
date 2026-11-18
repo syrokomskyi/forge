@@ -15,10 +15,46 @@ and atomically mutates ADR frontmatter.
   <item>RFC-0727: initial implementation — mirrors rfc.implement.stamp for ADRs.</item>
   <item>RFC-1504: step 4 — shared stamp lock for rfc and adr stamp handlers</item>
   <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "../../../src/utils/sync-fs.ts";
+import { verifierGit } from "../../../src/utils/verifier-git.ts";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 
 import { join } from "node:path";
@@ -44,16 +80,12 @@ import type {
 
 // ─── Git helpers ─────────────────────────────────────────────────────────────
 
-function execGit(workspaceRoot: string, args: string[]): Promise<string> {
-  return new Promise((resolve) => {
-    execFile("git", args, { cwd: workspaceRoot, timeout: 10000 }, (err, stdout) => {
-      if (err) {
-        resolve("");
-        return;
-      }
-      resolve(stdout.trim());
-    });
-  });
+// ADR stamp reads go through verifierGit: the dirty verdict and the
+// ancestry check are evidence, and ambient GIT_* selectors or a forged
+// `.git/index` must not reshape them (CX-121/CX-122).
+async function execGit(workspaceRoot: string, args: string[]): Promise<string> {
+  const r = await verifierGit(workspaceRoot, args);
+  return r.exitCode === 0 ? r.stdout.trim() : "";
 }
 
 async function isAdrFileClean(workspaceRoot: string, adrRelPath: string): Promise<boolean> {
@@ -62,16 +94,8 @@ async function isAdrFileClean(workspaceRoot: string, adrRelPath: string): Promis
 }
 
 async function commitReachableFromHead(workspaceRoot: string, commitSha: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    execFile(
-      "git",
-      ["merge-base", "--is-ancestor", commitSha, "HEAD"],
-      { cwd: workspaceRoot, timeout: 10000 },
-      (err) => {
-        resolve(!err);
-      },
-    );
-  });
+  const r = await verifierGit(workspaceRoot, ["merge-base", "--is-ancestor", commitSha, "HEAD"]);
+  return r.exitCode === 0;
 }
 
 async function commitReferencesAdr(
@@ -262,8 +286,7 @@ export async function runAdrImplementStamp(
       violations.push({
         rule: "ADR-IMP-03",
         message: `Implementation commit ${implementationCommit} does not reference ${targetId} in its message or changed files.`,
-        fixHint:
-          `The message check is case-sensitive on the uppercase id (${targetId}, not a lowercase scope like "docs(adr-xxxx):"). For post-hoc ADRs whose historic implementation commit never mentions the id, pass the "adr: accept" or "trace:" commit instead — both qualify; a commit whose changed-file list contains the adr-xxxx-* slug also qualifies.`,
+        fixHint: `The message check is case-sensitive on the uppercase id (${targetId}, not a lowercase scope like "docs(adr-xxxx):"). For post-hoc ADRs whose historic implementation commit never mentions the id, pass the "adr: accept" or "trace:" commit instead — both qualify; a commit whose changed-file list contains the adr-xxxx-* slug also qualifies.`,
       });
     }
   }

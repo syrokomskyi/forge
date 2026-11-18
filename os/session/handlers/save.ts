@@ -11,7 +11,6 @@ Deterministic only — no LLM/intelligent annotation (that is fo-session-save sk
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1053: integrate generateSessionMetrics after markdown write (non-fatal, guarded by !dryRun).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -20,13 +19,49 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
-  <history>RFC-0537</history>
+  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
+
+Independent clean-context verification (round 9, candidate 4436339db)
+returned REFUTED with ten live counterexamples against the r8-hardened
+evidence channel — this commit closes all root causes.
+
+- Pack-carried objects get the loose-sweep integrity anchor: every
+  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
+  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
+  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
+  reachability cache off.
+- Every trusted-path git call routes through the judged/preflighted
+  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
+  listWorkspaceFiles and the snapshot gitGrep closure now run
+  verifierGit/createOriginGit with structured fail-closed dirty
+  verdicts (CX-115/118/120/122).
+- Export materialization no longer trusts git archive, ambient tar, or
+  committed .gitattributes: exportTree enumerates ls-tree -r -z and
+  materializes committed bytes through the re-hashed cat-file --batch
+  channel, bounding symlink targets to the export root (CX-116/117).
+- Index-consulting reads run on a verifier-owned claims rebuild:
+  prepareEvidenceIndex copies staged object claims into a fresh index
+  with zeroed stat metadata, so status/diff content-hash the worktree
+  instead of trusting a session-written stat tuple (CX-121).
+- The heredoc lexer is quote-aware: a << inside quotes is string
+  content, never an operator (CX-119).
+- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
+  query verbatim; diff.external moved from a broken pin to
+  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
+  the same read table; batch stdin is EPIPE-safe.
+- kernel-source-scan models the two channel files as judged bodies so
+  the channel migration does not read as new unguarded subprocess hits
+  in the werkstatt-site mutation ratchet.
+
+The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <history>RFC-0537, RFC-1053</history>
 </CHANGE_SUMMARY>
 */
 
 import { ambientIo as fs, resolveIo } from "../../../src/utils/io.ts";
 import { resolveOwningCheckout } from "../../flow/session-checkout.ts";
-import { execFile } from "../../../src/utils/sync-fs.ts";
+import { createOriginGit } from "../../rfc/verification-origin.ts";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import YAML from "yaml";
@@ -50,7 +85,6 @@ const RFC_PATTERN = /\bRFC-\d{4}\b/g;
 const FILE_PATH_PATTERN = /\b(?:packages|docs|services|systems|tools|scripts)\/[^\s"'`<>|]+/g;
 const PATH_EDGE_PUNCTUATION = /[.,;:!?()[\]{}]+$/;
 const COMMIT_HASH_PATTERN = /\b[0-9a-f]{7,40}\b/g;
-const GIT_VERIFY_TIMEOUT_MS = 15_000;
 const COMMAND_PATTERN =
   /\b(?:session|rfc|adr|plan|audit|docs|mission|forge|compass|werkstatt|spec|naming|workflow|bordbuch|sternsystem|release)\.\w+/g;
 
@@ -96,30 +130,18 @@ async function extractCommitHashes(content: string, cwd: string): Promise<string
 
   // A hex token is recorded as a commit only when it resolves to a commit
   // object in the workspace repository — random hex ids (approval ids,
-  // checksums, foreign-repo shas) are dropped rather than claimed.
+  // checksums, foreign-repo shas) are dropped rather than claimed. The
+  // verdict rides the trusted origin channel: a forged object cannot claim
+  // commit-ness on this record (CX-113).
   const verified = new Set<string>();
-  try {
-    const stdout = await new Promise<string>((resolvePromise, rejectPromise) => {
-      const child = execFile(
-        "git",
-        ["cat-file", "--batch-check"],
-        { cwd, timeout: GIT_VERIFY_TIMEOUT_MS, encoding: "utf8" },
-        (err, out) => (err ? rejectPromise(err) : resolvePromise(out)),
-      );
-      // The child may exit before draining stdin (e.g. not a git repo —
-      // cat-file fails fast and the pipe closes mid-write → EPIPE). The
-      // execFile callback carries the real outcome; stdin errors are noise.
-      child.stdin?.on("error", () => {});
-      child.stdin?.end(candidates.map((c) => `${c}^{commit}`).join("\n") + "\n");
-    });
-    // One answer line per input, in order: `<sha> commit <size>` when the
-    // candidate resolves to a commit, `<input>^{commit} missing` otherwise.
-    const lines = stdout.split("\n");
-    candidates.forEach((candidate, i) => {
-      if (lines[i]?.split(/\s+/)[1] === "commit") verified.add(candidate);
-    });
-  } catch {
-    // Not a git repository or git unavailable — no candidate is verifiable.
+  const git = createOriginGit(cwd);
+  if (git.showManyBytes) {
+    const got = await git.showManyBytes(candidates.map((c) => `${c}^{commit}`));
+    if (got !== null) {
+      candidates.forEach((candidate, i) => {
+        if (got[i] !== null && got[i] !== undefined) verified.add(candidate);
+      });
+    }
   }
   return [...verified];
 }
@@ -228,7 +250,9 @@ export async function runSessionSave(
   const writeRoot = owning.checkout.worktreePath ?? workspaceRoot;
   const routedTo = owning.checkout.kind === "worktree" ? writeRoot : null;
   if (routedTo !== null && outputFormat === "pretty") {
-    logger.info(`session.save: routed into worktree ${writeRoot} (branch ${owning.checkout.sessionBranch})`);
+    logger.info(
+      `session.save: routed into worktree ${writeRoot} (branch ${owning.checkout.sessionBranch})`,
+    );
   }
 
   const rawDirPath = path.join(workspaceRoot, SESSION_DIR, SESSION_RAW_SUBDIR);
