@@ -120,6 +120,7 @@ r10-remediated channel — this commit closes all of them.
 
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
+  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -283,7 +284,11 @@ describe("RFC-1616 r4 — remote-tracking ref trust (fetch-side levers)", () => 
       await gitExec(repo, ["config", "remote.origin.pushurl", origin]);
       const digest = await collectDigest(repo, ambientIo, { fetch: true });
       expect(digest.fetched).toBe(false);
-      expect(digest.diagnostics.some((d) => d.ruleId === "FLOW-DIGEST-01")).toBe(true);
+      // CX-132: transports are refused on the trusted channel — remote
+      // state is structurally never consulted, so the "stale remote"
+      // warning class no longer exists; the closed-state evidence is
+      // remoteVerified staying false and the full-branch scan.
+      expect(digest.remoteVerified).toBe(false);
       const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
       expect(
         data.pushed === false ||

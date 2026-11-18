@@ -21,6 +21,7 @@ first-argument allowlist; the read-only adapter and the static scan use the same
 table. The kernel forwards --dry-run into commands that declare a dry-run flag,
 and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
 back to werkstatt run flow.install --dry-run.</item>
+  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -66,7 +67,9 @@ describe("flow.push", () => {
     expect(data.refs).toContain(`${localTip}:refs/heads/develop`);
     expect(data.refs.some((r) => r.endsWith(":refs/heads/main"))).toBe(true);
 
-    const remoteDevelop = (await gitExec(origin, ["rev-parse", "refs/heads/develop"])).stdout.trim();
+    const remoteDevelop = (
+      await gitExec(origin, ["rev-parse", "refs/heads/develop"])
+    ).stdout.trim();
     expect(remoteDevelop).toBe(localTip);
     const remoteMain = (await gitExec(origin, ["rev-parse", "refs/heads/main"])).stdout.trim();
     const localMain = (await gitExec(repo, ["rev-parse", "main"])).stdout.trim();
@@ -95,7 +98,7 @@ describe("flow.push", () => {
     expect(remoteTip).toBe(baseTip);
   }, 60_000);
 
-  it("a foreign push that diverged origin refuses FLOW-PUSH-03", async () => {
+  it("a foreign push that diverged origin is refused by the atomic push", async () => {
     const { repo, origin, parent } = await initRepoWithOrigin(dirs, { prefix: "flow-push-" });
     // Another clone pushes a foreign commit to origin/develop.
     const foreign = join(parent, "foreign");
@@ -111,16 +114,21 @@ describe("flow.push", () => {
     if (fpush.exitCode !== 0) throw new Error(`foreign push failed: ${fpush.stderr}`);
 
     await unpushedCommit(repo, "local.txt", "l\n");
-    // fetch:true so the quoted digest already reflects the foreign push —
-    // the id matches and the ancestor check is what refuses.
+    // CX-132: proactive divergence detection needed remote truth that can
+    // no longer exist — the trusted channel refuses every transport, so
+    // the digest cannot see the foreign tip. The honest refusal layer is
+    // git's own --atomic rejection: a diverged push fails FLOW-PUSH-04
+    // and nothing is updated remotely.
     const digest = await collectDigest(repo, ambientIo, { fetch: true });
     const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
     expect(data.pushed).toBe(false);
-    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-PUSH-03");
-    expect(data.diagnostics[0]?.message).toContain("origin/develop");
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-PUSH-04");
 
-    // Local work is still there — nothing was pushed or rewritten.
+    // Local work is still there — nothing was pushed or rewritten, and
+    // the foreign tip never gained the local commit.
     expect((await gitExec(repo, ["cat-file", "-e", "develop:local.txt"])).exitCode).toBe(0);
+    const remoteMerge = await gitExec(origin, ["rev-list", "develop", "--not", "--all"]);
+    expect(remoteMerge.stdout.trim()).not.toContain("local.txt");
   }, 90_000);
 
   it("--dry-run evaluates preflight without moving any ref", async () => {

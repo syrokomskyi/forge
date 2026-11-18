@@ -200,6 +200,7 @@ r10-remediated channel — this commit closes all of them.
 
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
+  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -220,9 +221,10 @@ import {
   scanPackObjects,
   prepareEvidenceIndex,
   spawnCaptured,
+  captureEvidenceSurface,
+  reproveEvidenceSurface,
   type EvidencePreflight,
   EVIDENCE_REFUSED_PREFIX,
-  EVIDENCE_SHAPE_QUERY_PATHS,
   isEvidenceGitQuery,
   isIndexConsultingRead,
 } from "../../src/utils/verifier-git.ts";
@@ -296,7 +298,15 @@ export async function gitEvidence(
   // preflight enumerates through this same channel (preflight:false
   // breaks the recursion), so every subprocess on the evidence path stays
   // inside this argv-judged body.
-  const preflight = opts?.preflight === false ? null : await evidencePreflight(repoRoot);
+  let preflight = opts?.preflight === false ? null : await evidencePreflight(repoRoot);
+  // Re-prove the fingerprint right before the spawn — a session write
+  // racing the judgment→spawn window reads as drift and re-runs the
+  // whole preflight once (CX-134's cached-channel sibling on the
+  // per-call path).
+  if (preflight !== null && !reproveEvidenceSurface(repoRoot, preflight)) {
+    closeEvidenceIndex(preflight);
+    preflight = await evidencePreflight(repoRoot);
+  }
   try {
     if (preflight === null && opts?.preflight !== false) {
       return {
@@ -343,9 +353,11 @@ export async function gitEvidence(
         ...idx.env,
         ...filterEvidenceExtraEnv(opts?.extraEnv),
       },
-      // Network-shaped ops are routed to git(); boundary reads are local
-      // and still fast — the generous default mirrors io.exec callers.
-      timeoutMs: opts?.timeoutMs ?? 600_000,
+      // Boundary reads are local and bounded like the runner channel —
+      // the transport ops that needed a generous window are refused
+      // outright (CX-132), so no trusted read may stall ten minutes on
+      // a hanging child (r12 hunt note).
+      timeoutMs: opts?.timeoutMs ?? 60_000,
       maxBuffer: 64 * 1024 * 1024,
       indexFd: idx.indexFd,
     });
@@ -371,31 +383,18 @@ export async function gitEvidence(
  * from an unenumerable repo by whether a bare `--version` spawns.
  */
 export async function evidencePreflight(repoRoot: string): Promise<EvidencePreflight | null> {
-  const listed = await gitEvidence(
+  // Indirection files first (CX-134/135): the `.git` gitfile/commondir
+  // state the `--git-path` resolves depend on must be captured BEFORE
+  // them, so a redirect rewrite is always later-than-fingerprint.
+  // Indirection → resolves → fingerprint, fused so the ordering contract
+  // (CX-134/135) cannot be misordered; `config` and `index` join the
+  // shape resolves so the fingerprint pins the files the judged
+  // dump/claims derive from.
+  const { objectsDir, shapePaths, anyFailed, fingerprint } = await captureEvidenceSurface(
     repoRoot,
-    ["config", "--local", "--no-includes", "--list", "--null"],
-    { preflight: false },
+    gitEvidence,
   );
-  let gitPathsFailed = listed.exitCode !== 0;
-  const shapePaths: (string | null)[] = [];
-  for (const p of EVIDENCE_SHAPE_QUERY_PATHS) {
-    if (gitPathsFailed) {
-      shapePaths.push(null);
-      continue;
-    }
-    const r = await gitEvidence(repoRoot, ["rev-parse", "--git-path", p], {
-      preflight: false,
-    });
-    if (r.exitCode !== 0) {
-      gitPathsFailed = true;
-      shapePaths.push(null);
-      continue;
-    }
-    // strip exactly the terminating newline — a newline inside the path
-    // itself is real and must reach the resolver (CX-89)
-    shapePaths.push(r.stdout.endsWith("\n") ? r.stdout.slice(0, -1) : r.stdout);
-  }
-  if (gitPathsFailed) {
+  if (anyFailed) {
     if (!existsSync(repoRoot)) return null;
     const probe = await gitEvidence(repoRoot, ["--version"], { preflight: false });
     if (probe.exitCode !== 0) {
@@ -410,15 +409,12 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
   // the reads below would serve (CX-104). A failed resolve feeds the
   // judge `null`, which it counts as a violation — an unproven object
   // store must refuse, not silently skip the check.
-  const objects = await gitEvidence(repoRoot, ["rev-parse", "--git-path", "objects"], {
-    preflight: false,
-  });
-  const objectsDir =
-    objects.exitCode === 0
-      ? objects.stdout.endsWith("\n")
-        ? objects.stdout.slice(0, -1)
-        : objects.stdout
-      : null;
+  const listed = await gitEvidence(
+    repoRoot,
+    ["config", "--local", "--no-includes", "--list", "--null"],
+    { preflight: false },
+  );
+  if (listed.exitCode !== 0) return null;
   const preflight = judgeEvidenceRepoSurface(repoRoot, listed.stdout, shapePaths, objectsDir);
   // Pack-carried objects get the same integrity anchor loose objects
   // have (CX-113) — skipped when the objects dir could not be resolved,
@@ -436,6 +432,7 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
   const prepared = await prepareEvidenceIndex(repoRoot);
   preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
+  preflight.fingerprint = fingerprint;
   return preflight;
 }
 
@@ -667,39 +664,36 @@ export async function worktreeList(repoRoot: string, _io: WorkspaceIO): Promise<
     "git worktree list",
   );
   const worktrees: FlowWorktree[] = [];
-  let current: { path?: string; head?: string; branch: string | null; bare: boolean } | null = null;
-  const flush = (): void => {
-    if (current?.path) {
+  // Entries are blank-line separated; quoted paths escape real newlines,
+  // so a split on "\n\n" is safe against embedded whitespace.
+  for (const block of result.stdout.split("\n\n")) {
+    if (block === "") continue;
+    let pathField: string | undefined;
+    let head = "";
+    let branch: string | null = null;
+    let bare = false;
+    for (const line of block.split("\n")) {
+      if (line.startsWith("worktree ")) {
+        pathField = unquotePorcelain(line.slice("worktree ".length));
+      } else if (line.startsWith("HEAD ")) {
+        head = line.slice("HEAD ".length);
+      } else if (line.startsWith("branch ")) {
+        branch = unquotePorcelain(line.slice("branch refs/heads/".length));
+      } else if (line === "bare") {
+        bare = true;
+      }
+    }
+    if (pathField !== undefined) {
       worktrees.push({
         // Same canonicalization as topLevel — porcelain paths arrive in
         // git's resolved frame, consumers compare them to Node-side paths.
-        path: canonicalRepoDir(current.path),
-        head: current.head ?? "",
-        branch: current.branch,
-        bare: current.bare,
+        path: canonicalRepoDir(pathField),
+        head,
+        branch,
+        bare,
       });
     }
-    current = null;
-  };
-  for (const line of result.stdout.split("\n")) {
-    if (line.startsWith("worktree ")) {
-      flush();
-      current = {
-        path: unquotePorcelain(line.slice("worktree ".length)),
-        branch: null,
-        bare: false,
-      };
-    } else if (current && line.startsWith("HEAD ")) {
-      current.head = line.slice("HEAD ".length);
-    } else if (current && line.startsWith("branch ")) {
-      current.branch = unquotePorcelain(line.slice("branch refs/heads/".length));
-    } else if (current && line === "detached") {
-      current.branch = null;
-    } else if (current && line === "bare") {
-      current.bare = true;
-    }
   }
-  flush();
   return worktrees;
 }
 

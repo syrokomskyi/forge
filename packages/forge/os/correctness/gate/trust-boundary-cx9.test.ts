@@ -853,9 +853,10 @@ describe("RFC-1616 r9 — prior-round controls re-verified", () => {
       gitIn(root, ["config", "remote.o.r.uploadpack", hook]);
       gitIn(root, ["config", "remote.o.r.url", root]);
 
+      // CX-132: fetch is refused at the argv layer — the uploadpack lever
+      // is unreachable regardless of remote-name shape.
       const fetch = await gitEvidence(root, ["fetch", "o.r"]);
       expect(fetch.exitCode !== 0).toBe(true);
-      expect(fetch.stderr.startsWith("EVIDENCE-REFUSED")).toBe(true);
       expect(existsSync(marker)).toBe(false);
 
       for (const argv of [

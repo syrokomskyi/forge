@@ -379,7 +379,9 @@ describe("RFC-1616 r5 — repo-config program exec on the evidence channel", () 
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
-      expect.soft(fetch.exitCode, "fixture: the pinned fetch argv failed").toBe(0);
+      // CX-132: fetch is refused at the argv layer — the hook lever is
+      // unreachable because no transport op runs at all.
+      expect(fetch.exitCode).not.toBe(0);
       if (existsSync(hookMarker)) fired.push("core.hooksPath reference-transaction");
       // (b) diff.*.textconv — a repo-config program rewriting patch bytes the
       // parser judges. `.git/info/attributes` is itself a shape violation

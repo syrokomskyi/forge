@@ -18,7 +18,6 @@ flow.push must quote.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
@@ -67,7 +66,8 @@ remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
 EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
 decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
-  <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580</history>
+  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
+  <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
@@ -111,14 +111,20 @@ export interface FlowDigestItem {
 export interface FlowDigestData {
   digestId: string;
   remote: "origin";
+  /**
+   * Whether the digest contacted the remote this run. Structurally
+   * `false` since CX-132: the evidence channel refuses every transport
+   * because every remote target is session-authored, so remote-derived
+   * state is never consulted for a judgment.
+   */
   fetched: boolean;
   /**
-   * Whether `develop.remote`/`main.remote` came from a live `ls-remote`
-   * answer this run. `false` means they are session-mutable
-   * `refs/remotes/origin/*` tracking refs — a display-only preview a
-   * planted ref can shape (CX-82). The push-side verifier scan must
-   * widen to the whole local branch instead of trusting them as a
-   * range base.
+   * Whether `develop.remote`/`main.remote` came from a verified remote
+   * answer. Structurally `false` since CX-132 — they are always the
+   * session-mutable `refs/remotes/origin/*` tracking refs (CX-82): a
+   * display-only preview a planted ref can shape, never a judgment
+   * input. The push-side verifier scan always widens to the whole local
+   * branch instead of trusting them as a range base.
    */
   remoteVerified: boolean;
   develop: { local: string; remote: string | null; ahead: number };
@@ -588,44 +594,6 @@ function attributedRecords(journal: FlowJournalEvent[]): AttributedRecord[] {
   return [...byBranch.values()];
 }
 
-/** Remote tag names via ls-remote; null when the remote cannot be queried. */
-async function remoteTagNames(repoRoot: string, _io: WorkspaceIO): Promise<Set<string> | null> {
-  // The tag listing feeds the digest the verifier judges — it must read the
-  // literal remote, not a session url.insteadOf rewrite (CX-50). The cost is
-  // credential-helper-less failure on auth-required remotes: honest null,
-  // never a silently rewritten view.
-  const result = await gitEvidence(repoRoot, ["ls-remote", "--tags", "origin"]);
-  if (result.exitCode !== 0) return null;
-  const names = new Set<string>();
-  for (const line of result.stdout.split("\n")) {
-    const match = line.match(/refs\/tags\/([^\s^]+)$/);
-    if (match?.[1] !== undefined) names.add(match[1]);
-  }
-  return names;
-}
-
-/** Tag is treated as remote-known when its commit is an ancestor of an origin/* tip. */
-async function tagReachableFromRemote(
-  repoRoot: string,
-  io: WorkspaceIO,
-  tag: string,
-): Promise<boolean> {
-  const tips = await gitEvidence(repoRoot, [
-    "for-each-ref",
-    "--format=%(refname)",
-    "refs/remotes/origin",
-  ]);
-  if (tips.exitCode !== 0) return false;
-  for (const tip of tips.stdout
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)) {
-    const ancestor = await gitEvidence(repoRoot, ["merge-base", "--is-ancestor", tag, tip]);
-    if (ancestor.exitCode === 0) return true;
-  }
-  return false;
-}
-
 const WORKFLOWS_DIR = join(".github", "workflows");
 
 /**
@@ -765,14 +733,15 @@ function canonicalJson(value: unknown): string {
 }
 
 /**
- * Collect the outbound digest of repoRoot. `opts.fetch === false` skips the
- * `git fetch origin --prune`; a failed fetch yields `fetched: false` plus a
- * warning — never an error.
+ * Collect the outbound digest of repoRoot. The `fetch` flag is retained for
+ * call-site compatibility but is inert — the trusted channel refuses every
+ * transport (CX-132), so a digest never contacts a remote and `fetched` is
+ * structurally false.
  */
 export async function collectDigest(
   repoRoot: string,
   io: WorkspaceIO,
-  opts: { fetch: boolean },
+  _opts: { fetch: boolean },
 ): Promise<FlowDigestData> {
   const diagnostics: Diagnostic[] = [];
 
@@ -937,94 +906,36 @@ export async function collectDigest(
     }
   }
 
-  let fetched = false;
-  // Remote tips the digest and the push scan judge. When the remote was
-  // contacted they come from `ls-remote` — a live answer from the remote
-  // itself, immune to whatever the session planted into
-  // `refs/remotes/origin/*` (CX-61). Under `--no-fetch` they fall back to
-  // the tracking refs as a display-only preview; a real push always
-  // re-derives through the fetched path.
-  let remoteTips: { develop: string | null; main: string | null } | null = null;
-  if (hasOrigin && opts.fetch) {
-    // The fetched objects become the remote-tracking refs the push scan
-    // judges — a session url.insteadOf rewrite must not steer where they
-    // come from (CX-50). The explicit refspec overrides a rewritten
-    // remote.origin.fetch (CX-61) and --prune removes planted tracking
-    // refs that do not exist on the remote. Auth-required https remotes
-    // lose credential helpers here and fail closed into the stale-ref
-    // diagnostic below, never a poisoned view.
-    const lsRemote = await gitEvidence(repoRoot, [
-      "ls-remote",
-      "origin",
-      "refs/heads/develop",
-      "refs/heads/main",
-    ]);
-    const fetch = await gitEvidence(repoRoot, [
-      "fetch",
-      "--prune",
-      "--no-tags",
-      "origin",
-      "+refs/heads/*:refs/remotes/origin/*",
-    ]);
-    fetched = fetch.exitCode === 0 && lsRemote.exitCode === 0;
-    if (lsRemote.exitCode === 0) {
-      remoteTips = { develop: null, main: null };
-      for (const line of lsRemote.stdout.split("\n")) {
-        const m = /^([0-9a-f]{40})\trefs\/heads\/(develop|main)$/.exec(line.trim());
-        if (m) remoteTips[m[2] as "develop" | "main"] = m[1]!;
-      }
-    }
-    if (!fetched) {
-      const why =
-        fetch.exitCode !== 0 ? fetch.stderr : lsRemote.stderr || "ls-remote returned no answer";
-      diagnostics.push({
-        ruleId: "FLOW-DIGEST-01",
-        severity: "warning",
-        message: `git fetch/ls-remote origin failed — the digest is computed on stale remote-tracking refs: ${why.trim().split("\n").slice(-1)[0] ?? "unknown error"}`,
-      });
-    }
-  }
+  // Remote tips/verified state are structurally absent — untrusted
+  // diagnostics only. Every remote the channel could name
+  // (`remote.origin.url`, `branch.<b>.remote`, a literal positional) is
+  // session-authored under the same-uid threat model, so a transport
+  // answer can never be trusted evidence and the evidence channel
+  // refuses `ls-remote`/`fetch` outright (CX-132) — nothing in the push
+  // decision derives from remote state anymore. `remoteVerified` stays
+  // false and the verifier-trailer scan always covers the full local
+  // branch — the strictly stronger judgment.
+  const fetched = false;
 
   const developLocal = await revParse(repoRoot, io, "develop");
   const mainLocal = await revParse(repoRoot, io, "main");
-  const developRemote =
-    remoteTips !== null
-      ? remoteTips.develop
-      : await revParse(repoRoot, io, "refs/remotes/origin/develop");
-  const mainRemote =
-    remoteTips !== null
-      ? remoteTips.main
-      : await revParse(repoRoot, io, "refs/remotes/origin/main");
-  // The exclusion set for a branch the remote does not carry. On the
-  // fetched path only the other branch's ls-remote-verified tip may
-  // subtract from the tail — tracking refs are session-mutable and a
-  // planted one would hide commits from the scan exactly like a planted
-  // remote tip (CX-61). On the --no-fetch preview path `verifiedExcludes`
-  // stays null so the tail keeps the legacy tracking-ref-relative view —
-  // the push-side verifier scan judges `remoteVerified` separately and
-  // widens instead (CX-82).
+  // The "remote" tips are always the session-mutable tracking refs —
+  // verified remote tips cannot exist (CX-132). A planted
+  // `refs/remotes/origin/*` can hide commits from the tail exactly like
+  // a planted remote tip did (CX-61): the tail/items/ahead fields are
+  // therefore display-only diagnostics, and the push-side verifier scan
+  // widens to the whole local branch rather than trusting them (CX-82).
+  const developRemote = await revParse(repoRoot, io, "refs/remotes/origin/develop");
+  const mainRemote = await revParse(repoRoot, io, "refs/remotes/origin/main");
+  // `verifiedExcludes` stays null on every path — a verified remote tip
+  // set cannot exist once transports are refused (CX-132) — so the tail
+  // keeps the tracking-ref-relative view.
   const developTail =
     developLocal === null
       ? []
-      : await unpushedCommits(
-          repoRoot,
-          io,
-          "develop",
-          developRemote,
-          false,
-          remoteTips === null ? null : remoteTips.main === null ? [] : [remoteTips.main],
-        );
+      : await unpushedCommits(repoRoot, io, "develop", developRemote, false, null);
   const mainTail =
-    mainLocal === null
-      ? []
-      : await unpushedCommits(
-          repoRoot,
-          io,
-          "main",
-          mainRemote,
-          false,
-          remoteTips === null ? null : remoteTips.develop === null ? [] : [remoteTips.develop],
-        );
+    mainLocal === null ? [] : await unpushedCommits(repoRoot, io, "main", mainRemote, false, null);
 
   // --- items: journal-attributed segments of the develop tail ---------------
   // Segments follow develop's first-parent chain: a back-merge brings main's
@@ -1033,14 +944,7 @@ export async function collectDigest(
   const developChain =
     developLocal === null
       ? []
-      : await unpushedCommits(
-          repoRoot,
-          io,
-          "develop",
-          developRemote,
-          true,
-          remoteTips === null ? null : remoteTips.main === null ? [] : [remoteTips.main],
-        );
+      : await unpushedCommits(repoRoot, io, "develop", developRemote, true, null);
   const common = await commonGitDir(io, repoRoot);
   const journal = await readJournal(io, common);
   const tailIndex = new Map(developChain.map((sha, i) => [sha, i]));
@@ -1100,25 +1004,6 @@ export async function collectDigest(
     });
   }
 
-  // --- new release tags ------------------------------------------------------
-  const { lines } = await discoverReleaseLines(repoRoot, io);
-  // The RFC names `git ls-remote --tags origin` — a read-only query, run
-  // whenever origin exists (--no-fetch still allows it). A failed query
-  // degrades to the reachability approximation.
-  const remoteTags = hasOrigin ? await remoteTagNames(repoRoot, io) : null;
-  const tags: string[] = [];
-  const allLocalTags = new Set<string>();
-  for (const line of lines) {
-    const { reachable } = await listLineTags(repoRoot, line, io);
-    for (const tag of reachable) {
-      allLocalTags.add(tag);
-      const remoteKnown =
-        remoteTags !== null ? remoteTags.has(tag) : await tagReachableFromRemote(repoRoot, io, tag);
-      if (!remoteKnown) tags.push(tag);
-    }
-  }
-  tags.sort((a, b) => a.localeCompare(b));
-
   // --- held + pending publications -------------------------------------------
   const registry = await readRegistry(io, common);
   const held = registry.branches
@@ -1151,6 +1036,28 @@ export async function collectDigest(
       retiredTags.add(event.branch);
     }
   }
+
+  // --- new release tags ------------------------------------------------------
+  // "Is the tag on the remote?" has no trusted answer — every remote
+  // target is session-authored and transports are refused (CX-132). The
+  // honest provenance is the flow's own journal: a tag this flow pushed
+  // is remote-known; anything else stays pending so a re-push attempt is
+  // always offered (a duplicate push on an identical remote tag is a
+  // no-op — the withheld direction is the only unsafe one). Session-made
+  // journal entries can hide a tag here — availability only, and the
+  // trailer scan still judges the whole branch before anything ships.
+  const { lines } = await discoverReleaseLines(repoRoot, io);
+  const tags: string[] = [];
+  const allLocalTags = new Set<string>();
+  for (const line of lines) {
+    const { reachable } = await listLineTags(repoRoot, line, io);
+    for (const tag of reachable) {
+      allLocalTags.add(tag);
+      if (!pushedTags.has(tag)) tags.push(tag);
+    }
+  }
+  tags.sort((a, b) => a.localeCompare(b));
+
   const pendingCandidates: PublicationPlanEntry[] = [];
   for (const tag of [...pushedTags].sort((a, b) => a.localeCompare(b))) {
     if (!allLocalTags.has(tag) || publishedTags.has(tag)) continue;
@@ -1214,7 +1121,7 @@ export async function collectDigest(
     digestId,
     remote: "origin",
     fetched,
-    remoteVerified: remoteTips !== null,
+    remoteVerified: false,
     develop: { local: developLocal ?? "", remote: developRemote, ahead: developTail.length },
     main: { local: mainLocal ?? "", remote: mainRemote, ahead: mainTail.length },
     tags,

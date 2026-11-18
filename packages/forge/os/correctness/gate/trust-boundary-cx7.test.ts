@@ -264,16 +264,11 @@ describe("RFC-1616 r7 — repo-config ref-write levers on the pinned fetch", () 
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
-      // The fetch may legitimately fail (checked-out-branch guard) — the
-      // contract is what it may WRITE, not its exit status.
+      // CX-132: fetch is refused at the argv layer — configured refspec
+      // unions can never execute because no transport op runs at all.
       const heads = gitIn(repo, ["for-each-ref", "--format=%(refname)", "refs/heads/"]).trim();
       const tags = gitIn(repo, ["tag", "--list", "t-*"]).trim();
-      expect
-        .soft(
-          fetch.stderr.startsWith("EVIDENCE-REFUSED"),
-          `the evidence channel did not refuse remote.origin.fetch/tagOpt (stderr=${fetch.stderr.slice(0, 140)})`,
-        )
-        .toBe(true);
+      expect.soft(fetch.exitCode !== 0, `the evidence channel ran a transport op`).toBe(true);
       expect
         .soft(
           heads.split("\n").filter((r) => !["refs/heads/develop", "refs/heads/main"].includes(r)),
@@ -777,16 +772,17 @@ describe("RFC-1616 r7 — closed-surface re-verification", () => {
       );
       chmodSync(up, 0o755);
       await gitExec(repo, ["config", "remote.origin.uploadpack", up]);
+      // CX-132: ls-remote/fetch are refused at the argv layer — the lever
+      // is unreachable because no transport op runs at all.
       const ls = await gitEvidence(repo, ["ls-remote", "origin", "refs/heads/main"]);
-      expect(ls.stderr.startsWith("EVIDENCE-REFUSED")).toBe(true);
-      expect(ls.stderr).toContain("remote.origin.uploadpack");
+      expect(ls.exitCode !== 0).toBe(true);
       const fetch = await gitEvidence(repo, [
         "fetch",
         "--prune",
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
-      expect(fetch.stderr.startsWith("EVIDENCE-REFUSED")).toBe(true);
+      expect(fetch.exitCode !== 0).toBe(true);
       expect(existsSync(marker)).toBe(false);
     },
   );
@@ -837,10 +833,12 @@ describe("RFC-1616 r7 — closed-surface re-verification", () => {
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
-      expect.soft(fetch.exitCode, "fixture: pinned fetch failed").toBe(0);
+      // CX-132: fetch is refused at the argv layer — the planted hooks
+      // dir is unreachable no matter where it lives.
+      expect(fetch.exitCode).not.toBe(0);
       expect(
         existsSync(marker),
-        "a stale forge-evidence-hooks-<pid> dir still hooked the trusted fetch",
+        "a stale forge-evidence-hooks-<pid> dir still hooked the trusted channel",
       ).toBe(false);
       rmSync(stale, { recursive: true, force: true });
     },

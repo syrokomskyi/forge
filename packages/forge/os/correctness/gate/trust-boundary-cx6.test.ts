@@ -215,17 +215,14 @@ describe("RFC-1616 r6 — repo-config transport programs inside evidence", () =>
       );
       chmodSync(up, 0o755);
       await gitExec(repo, ["config", "remote.origin.uploadpack", up]);
+      // CX-132: ls-remote/fetch are refused at the argv layer — the config
+      // lever is unreachable because no transport op runs at all.
       const ls = await gitEvidence(repo, ["ls-remote", "origin", "refs/heads/main"]);
-      expect
-        .soft(
-          ls.stderr.startsWith("EVIDENCE-REFUSED"),
-          `the evidence channel did not refuse remote.origin.uploadpack (stderr=${ls.stderr.slice(0, 120)})`,
-        )
-        .toBe(true);
+      expect.soft(ls.exitCode !== 0, "the evidence channel ran a transport op").toBe(true);
       expect
         .soft(
           existsSync(marker),
-          "a repo-config transport program executed inside the trusted ls-remote",
+          "a repo-config transport program executed inside the trusted channel",
         )
         .toBe(false);
       const marker2 = path.join(parent, "up2.marker");
@@ -239,14 +236,9 @@ describe("RFC-1616 r6 — repo-config transport programs inside evidence", () =>
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
+      expect.soft(fetch.exitCode !== 0, "fetch ran despite remote.origin.uploadpack").toBe(true);
       expect
-        .soft(
-          fetch.stderr.startsWith("EVIDENCE-REFUSED"),
-          `fetch also accepted remote.origin.uploadpack (stderr=${fetch.stderr.slice(0, 120)})`,
-        )
-        .toBe(true);
-      expect
-        .soft(existsSync(marker2), "the pinned fetch exec'd the session upload-pack program")
+        .soft(existsSync(marker2), "the fetch exec'd the session upload-pack program")
         .toBe(false);
     },
   );
@@ -302,7 +294,7 @@ describe("RFC-1616 r6 — repo-config transport programs inside evidence", () =>
         `#!/bin/sh\necho HOOK-FIRED "$1" >> ${JSON.stringify(marker)}\n`,
       );
       chmodSync(path.join(hooksDir, "reference-transaction"), 0o755);
-      // Force one tracking-ref update so the hook must fire on the pinned fetch.
+      // Force one tracking-ref update so the hook must fire on any fetch.
       await gitExec(repo, ["update-ref", "-d", "refs/remotes/origin/main"]);
       const fetch = await gitEvidence(repo, [
         "fetch",
@@ -310,11 +302,14 @@ describe("RFC-1616 r6 — repo-config transport programs inside evidence", () =>
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
-      expect.soft(fetch.exitCode, "fixture: the pinned fetch argv failed").toBe(0);
+      // CX-132: fetch is refused at the argv layer — no hooks dir content
+      // can ever be reached by a transport op (the r10 fix already pinned
+      // core.hooksPath to /dev/null for every spawn; this lever is now
+      // dead at two layers).
+      expect(fetch.exitCode).not.toBe(0);
       expect(
         existsSync(marker),
-        "a pre-planted hook in forge-evidence-hooks-<pid> executed inside the trusted fetch — " +
-          "the lazy hooks dir is predictable and never verified",
+        "a pre-planted hook in forge-evidence-hooks-<pid> executed inside the trusted channel",
       ).toBe(false);
       rmSync(hooksDir, { recursive: true, force: true });
     },

@@ -362,15 +362,15 @@ describe("RFC-1616 r10 — the hooks pin target is dead, not a persistent planta
         // could only have come from the configured path.
         expect(existsSync(path.join(root, ".git/hooks/reference-transaction"))).toBe(false);
 
+        // CX-132: fetch is refused at the argv layer — the configured
+        // hooksPath is unreachable through a transport op (the /dev/null
+        // pin already covered every spawn; this lever is dead at two
+        // layers now).
         const f = await gitEvidence(root, ["fetch", "origin"]);
-        expect(
-          f.exitCode,
-          `the pinned fetch must still run (stderr=${JSON.stringify(f.stderr.slice(0, 120))})`,
-        ).toBe(0);
-        expect(gitIn(root, ["rev-parse", "refs/remotes/origin/master"]).trim().length).toBe(40);
+        expect(f.exitCode !== 0, "the evidence channel ran a transport op").toBe(true);
         expect(
           !existsSync(marker),
-          "the session-configured hook executed inside the trusted fetch — the pin did not override core.hooksPath",
+          "the session-configured hook executed inside the trusted channel",
         ).toBe(true);
       } finally {
         daemon.kill();
