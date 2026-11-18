@@ -17,7 +17,6 @@ a manual push path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
   <item>RFC-1616: external verification trust boundary
 
 policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
@@ -28,6 +27,7 @@ scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <history>RFC-1491, RFC-1501, RFC-1503</history>
 </CHANGE_SUMMARY>
 */
@@ -45,6 +45,7 @@ import { resolveIo } from "../../../src/utils/io.ts";
 import { parse as parseYaml } from "yaml";
 import { collectDigest, lineForTag, versionOfTag } from "../digest.ts";
 import { git, gitEvidence, parseGitTrailers, requireGit, verifierTopLevel } from "../git.ts";
+import { EVIDENCE_REFUSED_PREFIX } from "../../../src/utils/verifier-git.ts";
 import { markerIsValid } from "../markers.ts";
 import { publishTag, tagAnnotationLevel, type PublicationRow } from "../publish.ts";
 import { planPublications, type PublicationPlanEntry } from "../publication-order.ts";
@@ -155,8 +156,26 @@ export async function pushFlow(
   io: WorkspaceIO,
   opts: { digest: string; dryRun: boolean; now?: Date; acceptVerifierTrailers?: string },
 ): Promise<FlowPushData> {
-  const common = await commonGitDir(io, repoRoot);
-  const primary = await primaryWorktree(io, repoRoot);
+  // These two reads go through gitEvidence — a refused channel (transport
+  // lever or shape file in .git) throws here before the digest's own
+  // diagnostic refuse can answer (CX-72/CX-76). Translate the throw into
+  // the refusal it is.
+  let common: Awaited<ReturnType<typeof commonGitDir>>;
+  let primary: string;
+  try {
+    common = await commonGitDir(io, repoRoot);
+    primary = await primaryWorktree(io, repoRoot);
+  } catch (e) {
+    // Only a refused repo surface converts to a refuse — a dead resolved
+    // binary is a channel break, which must still reject loudly (R4-R2).
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!msg.includes(EVIDENCE_REFUSED_PREFIX)) throw e;
+    return refuse(
+      "FLOW-PUSH-13",
+      `the evidence channel refused the repository surface — ${msg}`,
+      "remove the transport/exec config lever or the .git shape file and re-run flow.push",
+    );
+  }
 
   // --- preflight -------------------------------------------------------------
   // RFC-1501: a dry-run never fetches — `git fetch origin --prune` rewrites
@@ -220,7 +239,12 @@ export async function pushFlow(
     [digest.develop.local, digest.develop.remote],
     [digest.main.local, digest.main.remote],
   ] as const) {
-    const range = remote === null ? local : `${remote}..${local}`;
+    // An unverified remote tip is a session-mutable tracking ref — planting
+    // it at a trailer commit would take the commit out of the scan range
+    // (CX-82: --dry-run's fetch:false path reported a false-clean preview).
+    // The strictest honest range scans the whole local branch when the
+    // remote was never contacted.
+    const range = remote === null || !digest.remoteVerified ? local : `${remote}..${local}`;
     if (scannedRanges.includes(range)) continue;
     scannedRanges.push(range);
     for (const hit of await scanVerifierTrailers(repoRoot, io, range)) {

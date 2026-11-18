@@ -20,6 +20,7 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>RFC-1531: worktreeAdd for --reattach; isForgeStatePath exported for the shared dirty classifier</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <history>RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
@@ -27,11 +28,15 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
 import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   resolveGitBin,
   verifierGitEnv,
   filterEvidenceExtraEnv,
-  EVIDENCE_CONFIG_ARGS,
+  evidencePinArgs,
+  judgeEvidenceRepoSurface,
+  type EvidencePreflight,
+  EVIDENCE_REFUSED_PREFIX,
 } from "../../src/utils/verifier-git.ts";
 
 export const MIN_GIT_VERSION = "2.33";
@@ -68,40 +73,108 @@ const BRANCH_WRITE_FLAGS = [
   "--edit-description",
 ] as const;
 
+/** Flags on `cat-file` that reach a repo-config program or bytes outside the object store. */
+const CAT_FILE_LEVER_FLAGS = [
+  "--filters",
+  "--filter",
+  "--textconv",
+  "--path",
+  "--follow-symlinks",
+  "--batch",
+  "--batch-check",
+  "--batch-command",
+  "--batch-all-objects",
+  "--buffer",
+  "--unordered",
+] as const;
+
+/** Flags the pinned fetch form may carry — every other flag is a transport or ref lever. */
+const EVIDENCE_FETCH_FLAGS = new Set([
+  "--prune",
+  "-p",
+  "--verbose",
+  "-v",
+  "--quiet",
+  "-q",
+  "--progress",
+  "--no-tags",
+  "--atomic",
+]);
+
+/**
+ * The one refspec shape evidence fetches may carry: heads into
+ * `refs/remotes/origin/*` — never a local integration branch (CX-81: an
+ * admitted `+refs/heads/develop:refs/heads/main` force-rewrote `main`
+ * on the read-only-plus-pinned-fetch channel).
+ */
+const EVIDENCE_FETCH_REFSPEC = /^\+?refs\/heads\/[\w.*\/-]+:refs\/remotes\/origin\/[\w.*\/-]+$/;
+
+/**
+ * The pinned fetch form: flags from the allowlist, exactly one remote
+ * (name or URL) as the first positional, and only heads→origin-tracking
+ * refspecs after it. `--upload-pack`, `--depth`, `--refmap`,
+ * `--recurse-submodules`, `--stdin`, `-o`, `--filter`, `--update-head-ok`,
+ * `--tags` and friends stay out — each reaches a transport lever or
+ * writes refs outside the tracking namespace.
+ */
+function isEvidenceFetchTail(tail: readonly string[]): boolean {
+  let remoteSeen = false;
+  for (const a of tail) {
+    if (a.startsWith("-")) {
+      if (!EVIDENCE_FETCH_FLAGS.has(a)) return false;
+      continue;
+    }
+    if (!remoteSeen) {
+      remoteSeen = true;
+      continue;
+    }
+    if (!EVIDENCE_FETCH_REFSPEC.test(a)) return false;
+  }
+  return remoteSeen;
+}
+
 /**
  * The argv space `gitEvidence` may spawn — a mirror of the shared
  * READ_ONLY_GIT_QUERIES table plus `fetch`, the one mutating op the
- * channel legitimately runs (it refreshes remote-tracking refs; the
+ * channel legitimately runs (it refreshes remote-tracking refs through
+ * the single pinned refspec shape `isEvidenceFetchTail` admits —
+ * `+refs/heads/*:refs/remotes/origin/*`, never a local branch; the
  * `--upload-pack`/`--exec` levers that exec a repo-config program on the
  * remote side stay forbidden). `config` is admitted only in its
  * `config --get*` forms — a bare `config` argv could write repo state on
- * the trusted channel.
+ * the trusted channel. `diff --no-index` is out (CX-75: an admitted
+ * arbitrary-file diff leaked `/etc/passwd` bytes into evidence stdout),
+ * and `cat-file`'s `--filters`/`--textconv`/`--path` flags are out —
+ * each reaches a repo-config program (CX-74).
  */
 const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
   { prefix: ["--version"], maxPositionals: 0 },
   { prefix: ["rev-parse"] },
   { prefix: ["worktree", "list"] },
-  { prefix: ["ls-files"] },
+  { prefix: ["ls-files"], forbid: ["--recurse-submodules"] },
   { prefix: ["ls-tree"] },
-  { prefix: ["cat-file"] },
-  { prefix: ["rev-list"], forbid: ["--output"] },
+  { prefix: ["cat-file"], forbid: CAT_FILE_LEVER_FLAGS },
+  { prefix: ["rev-list"], forbid: ["--output", "--walk-reflogs"] },
   { prefix: ["merge-base"] },
   { prefix: ["for-each-ref"] },
   { prefix: ["show-ref"] },
   { prefix: ["describe"] },
   { prefix: ["status"] },
-  { prefix: ["log"], forbid: ["--output", "--ext-diff"] },
-  { prefix: ["diff"], forbid: ["--output", "--ext-diff"] },
-  { prefix: ["show"], forbid: ["--output", "--ext-diff"] },
+  { prefix: ["log"], forbid: ["--output", "--ext-diff", "--textconv", "--walk-reflogs"] },
+  { prefix: ["diff"], forbid: ["--output", "--ext-diff", "--textconv", "--no-index"] },
+  { prefix: ["show"], forbid: ["--output", "--ext-diff", "--textconv"] },
   { prefix: ["symbolic-ref"], forbid: ["-d", "--delete", "-m"], maxPositionals: 1 },
   { prefix: ["config", "--get"] },
   { prefix: ["config", "--get-all"] },
   { prefix: ["config", "--get-regexp"] },
+  // The preflight's own enumeration of the local config — a list is a
+  // read; --no-includes keeps the dump to .git/config so include.path
+  // keys surface as refusable levers instead of silently expanding.
+  { prefix: ["config", "--local", "--no-includes", "--list"] },
   { prefix: ["remote", "get-url"] },
   { prefix: ["ls-remote"], forbid: ["--upload-pack", "--exec", "-u"] },
   { prefix: ["branch", "--show-current"], maxPositionals: 0 },
   { prefix: ["branch", "--list"], forbid: BRANCH_WRITE_FLAGS },
-  { prefix: ["fetch"], forbid: ["--upload-pack", "--exec", "-u"] },
 ];
 
 /**
@@ -133,6 +206,10 @@ function isForbiddenEvidenceArg(arg: string, forbid: readonly string[]): boolean
  */
 export function isEvidenceGitQuery(args: readonly string[]): boolean {
   if (args.length === 0) return false;
+  // The one mutating op — fetch — is held to the single pinned refspec
+  // shape rather than the prefix/forbid form (CX-81: an arbitrary admitted
+  // refspec force-rewrote a local integration branch).
+  if (args[0] === "fetch") return isEvidenceFetchTail(args.slice(1));
   return EVIDENCE_GIT_QUERIES.some((query) => {
     if (!query.prefix.every((part, i) => args[i] === part)) return false;
     const tail = args.slice(query.prefix.length);
@@ -185,7 +262,7 @@ export async function git(
 export async function gitEvidence(
   repoRoot: string,
   args: string[],
-  opts?: { timeoutMs?: number; extraEnv?: Record<string, string> },
+  opts?: { timeoutMs?: number; extraEnv?: Record<string, string>; preflight?: boolean },
 ): Promise<ExecResult> {
   // Runtime argv judgment — the evidence channel spawns a trusted git, so
   // nothing beyond the read-only + pinned-fetch table may reach it, even
@@ -197,11 +274,37 @@ export async function gitEvidence(
       stderr: `gitEvidence refused argv outside the evidence allowlist: git ${args.join(" ")}`,
     };
   }
+  // The session-writable repo surface is judged before every spawn —
+  // transport/exec config keys `-c` cannot reach and .git metadata files
+  // that rewrite what a read resolves make any answer fabricable, so the
+  // channel refuses rather than trusting it (CX-72..CX-79). A repo that
+  // cannot even be enumerated is unverifiable — fail closed. The
+  // preflight enumerates through this same channel (preflight:false
+  // breaks the recursion), so every subprocess on the evidence path stays
+  // inside this argv-judged body.
+  const preflight = opts?.preflight === false ? null : await evidencePreflight(repoRoot);
+  if (preflight === null && opts?.preflight !== false) {
+    return {
+      exitCode: -1,
+      stdout: "",
+      stderr: `${EVIDENCE_REFUSED_PREFIX}: repo config could not be enumerated — evidence would be unverifiable`,
+    };
+  }
+  if (
+    preflight !== null &&
+    (preflight.refusedKeys.length > 0 || preflight.shapeViolations.length > 0)
+  ) {
+    return {
+      exitCode: -1,
+      stdout: "",
+      stderr: `${EVIDENCE_REFUSED_PREFIX}: ${[...preflight.refusedKeys, ...preflight.shapeViolations].join(", ")}`,
+    };
+  }
   return new Promise((resolve) => {
     try {
       execFile(
         resolveGitBin(),
-        ["-C", repoRoot, ...EVIDENCE_CONFIG_ARGS, ...args],
+        ["-C", repoRoot, ...evidencePinArgs(args, preflight), ...args],
         {
           cwd: repoRoot,
           env: { ...verifierGitEnv(), ...filterEvidenceExtraEnv(opts?.extraEnv) },
@@ -219,6 +322,52 @@ export async function gitEvidence(
       resolve({ exitCode: -1, stdout: "", stderr: String(e) });
     }
   });
+}
+
+/**
+ * Enumerate the session-writable repo surface for the evidence channel —
+ * the two capture reads ride `gitEvidence` itself (`preflight:false`
+ * skips the recursion) so their subprocesses stay inside the argv-judged
+ * body and their argv stays allowlist-literal. The `--git-path` order is
+ * the judge's positional contract: EVIDENCE_SHAPE_QUERY_PATHS
+ * (grafts → alternates → shallow, then warn-only exclude). `null` when
+ * the surface cannot be enumerated — the caller fails closed. A dead
+ * resolved binary throws instead: the channel itself is broken and no
+ * verdict may be derived (R4-R2's fail-loud contract) — distinguished
+ * from an unenumerable repo by whether a bare `--version` spawns.
+ */
+export async function evidencePreflight(repoRoot: string): Promise<EvidencePreflight | null> {
+  const listed = await gitEvidence(
+    repoRoot,
+    ["config", "--local", "--no-includes", "--list", "--null"],
+    { preflight: false },
+  );
+  const gitPaths = await gitEvidence(
+    repoRoot,
+    [
+      "rev-parse",
+      "--git-path",
+      "info/grafts",
+      "--git-path",
+      "objects/info/alternates",
+      "--git-path",
+      "shallow",
+      "--git-path",
+      "info/exclude",
+    ],
+    { preflight: false },
+  );
+  if (listed.exitCode !== 0 || gitPaths.exitCode !== 0) {
+    if (!existsSync(repoRoot)) return null;
+    const probe = await gitEvidence(repoRoot, ["--version"], { preflight: false });
+    if (probe.exitCode !== 0) {
+      throw new Error(
+        `resolved git is unreachable — evidence reads cannot be judged (${probe.stderr.trim() || `exit ${probe.exitCode}`})`,
+      );
+    }
+    return null;
+  }
+  return judgeEvidenceRepoSurface(repoRoot, listed.stdout, gitPaths.stdout);
 }
 
 /** `topLevel` over the scrubbed boundary channel — same canonicalization. */

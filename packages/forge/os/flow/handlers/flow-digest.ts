@@ -8,7 +8,6 @@ flow.push must quote; --no-fetch skips the git fetch for offline review.</purpos
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
 
@@ -17,6 +16,7 @@ flow.digest now reads .github/workflows on the primary checkout and reports tagT
   <item>RFC-1580: digest trail, manifest review export, operating model and skills
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -41,6 +41,7 @@ function emptyDigestData(diagnostics: Diagnostic[]): FlowDigestData {
     digestId: "",
     remote: "origin",
     fetched: false,
+    remoteVerified: false,
     develop: { local: "", remote: null, ahead: 0 },
     main: { local: "", remote: null, ahead: 0 },
     tags: [],

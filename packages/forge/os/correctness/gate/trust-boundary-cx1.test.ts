@@ -26,6 +26,7 @@ were closed in e9add1cd5/8c9e1688a.</item>
 A concurrent adversarial run (verifier rounds, catalog replay) creates
 forge-adv-* dirs in the same tmpdir — compare only the cx-control prefix.</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -818,12 +819,13 @@ describe("RFC-1616 flow.push trailer scan", () => {
     { timeout: 60_000 },
     async () => {
       // a) schema-invalid push.requireVerifierReview value → whole doc fails
-      //    validation → default required.
-      const { repo } = await initRepoWithOrigin(dirs, { prefix: "cx1-push-" });
+      //    validation → default required. The remote anchor stays declared —
+      //    the malformed key is only the review flag.
+      const { repo, origin } = await initRepoWithOrigin(dirs, { prefix: "cx1-push-" });
       const { writeFile } = await import("node:fs/promises");
       await writeFile(
         path.join(repo, "forge.yaml"),
-        "schema: forge/config@1\nproject:\n  name: x\npaths: {}\npush:\n  requireVerifierReview: banana\n",
+        `schema: forge/config@1\nproject:\n  name: x\npaths: {}\npush:\n  requireVerifierReview: banana\n  expectedRemote: ${JSON.stringify(origin)}\n`,
       );
       await gitExec(repo, ["add", "forge.yaml"]);
       await gitExec(repo, ["commit", "-qm", "malformed opt-out"]);
@@ -831,7 +833,9 @@ describe("RFC-1616 flow.push trailer scan", () => {
       let digest = await collectDigest(repo, ambientIo, { fetch: false });
       let data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
       expect(data.diagnostics[0]?.ruleId).toBe("FLOW-PUSH-08");
-      // b) unparseable YAML → loader throws → default required.
+      // b) unparseable YAML → loader throws → the remote anchor is
+      //    unverifiable too, so the refusal lands on the fail-closed
+      //    digest block (FLOW-PUSH-14 wrapped as -10), still pushed:false.
       const { repo: repo2 } = await initRepoWithOrigin(dirs, { prefix: "cx1-push-" });
       await writeFile(path.join(repo2, "forge.yaml"), "schema: [\n");
       await gitExec(repo2, ["add", "forge.yaml"]);
@@ -839,7 +843,8 @@ describe("RFC-1616 flow.push trailer scan", () => {
       await trailerCommit(repo2, "t.txt", "X-Policy-Digest: abc");
       digest = await collectDigest(repo2, ambientIo, { fetch: false });
       data = await pushFlow(repo2, ambientIo, { digest: digest.digestId, dryRun: false });
-      expect(data.diagnostics[0]?.ruleId).toBe("FLOW-PUSH-08");
+      expect(data.pushed).toBe(false);
+      expect(data.diagnostics[0]?.severity).toBe("error");
     },
   );
 

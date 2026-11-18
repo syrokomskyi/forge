@@ -16,6 +16,7 @@ commit, new-tag detection versus origin, and FLOW-PUSH-01 without origin.</purpo
   <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
 
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -59,6 +60,14 @@ async function repoWithOrigin(): Promise<{ repo: string; origin: string }> {
   if (bare.exitCode !== 0) throw new Error(`bare init failed: ${bare.stderr}`);
   await gitExec(repo, ["remote", "add", "origin", origin]);
   await gitExec(repo, ["switch", "develop"]);
+  // The trusted-remote anchor is judged from the COMMITTED forge.yaml —
+  // declare it against the real origin or flow.digest refuses unanchored.
+  await writeFile(
+    join(repo, "forge.yaml"),
+    `schema: "forge/workspace@1"\npush:\n  expectedRemote: ${JSON.stringify(origin)}\n`,
+  );
+  await gitExec(repo, ["add", "forge.yaml"]);
+  await gitExec(repo, ["commit", "-m", "anchor remote"]);
   const push = await gitExec(repo, ["push", "-u", "origin", "develop", "main"]);
   if (push.exitCode !== 0) throw new Error(`initial push failed: ${push.stderr}`);
   return { repo, origin };

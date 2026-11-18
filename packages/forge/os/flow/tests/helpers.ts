@@ -14,14 +14,14 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
   <item>Fixtures exclude docs/.index/ via info/exclude like .gitignore — unignored it would ride the flow.open sweep and collide merges.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1606: deterministic flow and gate test foundations (RFC-1606)</item>
   <item>RFC-1603: key the artifact cache on the copied tree and end mission.close with a converging tail sync</item>
   <item>RFC-1603: record the sweep/journal collision friction and the fixture-ignore decision</item>
-  <history>RFC-1486, RFC-1490, RFC-1491</history>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
+  <history>RFC-1486, RFC-1490, RFC-1491, RFC-1502</history>
 </CHANGE_SUMMARY>
 */
 
@@ -198,7 +198,10 @@ export async function initRepoWithOrigin(
   await gitExec(repo, ["config", "user.email", "flow-test@example.invalid"]);
   await gitExec(repo, ["config", "user.name", "flow-test"]);
   await gitExec(repo, ["config", "commit.gpgsign", "false"]);
-  await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
+  await writeFile(
+    join(repo, "forge.yaml"),
+    `schema: "forge/workspace@1"\npush:\n  expectedRemote: ${JSON.stringify(origin)}\n`,
+  );
   await writeFile(join(repo, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
   await writeFile(join(repo, "seed.txt"), "seed\n");
   await gitExec(repo, ["add", "-A"]);

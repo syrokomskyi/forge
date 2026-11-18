@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close acceptance-verification counterexamples CX-1..CX-5
-
-Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <item>RFC-1616: external verification trust boundary
 
@@ -19,6 +16,7 @@ forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
   <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580, RFC-1591, RFC-1596, RFC-1615</history>
 </CHANGE_SUMMARY>
@@ -466,6 +464,13 @@ export const forgeConfigSchema = z
     push: z
       .object({
         requireVerifierReview: z.boolean().optional(),
+        /**
+         * RFC-1616 r5 (CX-80): the declared trusted remote — the anchor
+         * outside session-writable config that `flow.push` parity checks
+         * compare `remote.origin.url` against. Undeclared means remote
+         * identity is consistency, not provenance; the digest refuses.
+         */
+        expectedRemote: z.string().optional(),
       })
       .optional(),
     /**
@@ -533,8 +538,8 @@ export interface ForgeConfig {
   loopMetrics: { id: string; description?: string; source?: string }[];
   /** RFC-1578: raw `correctness:` section — validated by correctness.manifest.validate (CORR-02). */
   correctness?: Record<string, unknown>;
-  /** RFC-1616 (Q-5): push-time trust-boundary controls — `requireVerifierReview` defaults to true. */
-  push?: { requireVerifierReview?: boolean };
+  /** RFC-1616 (Q-5): push-time trust-boundary controls — `requireVerifierReview` defaults to true; `expectedRemote` anchors the trusted remote. */
+  push?: { requireVerifierReview?: boolean; expectedRemote?: string };
   /** RFC-1615: the declared policy surface — judged frozen by correctness.gate. */
   policy?: ForgePolicy;
 }

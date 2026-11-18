@@ -18,13 +18,13 @@ flow.push must quote.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
   <item>RFC-1580: digest trail, manifest review export, operating model and skills
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <history>RFC-1491, RFC-1498, RFC-1503</history>
 </CHANGE_SUMMARY>
 */
@@ -36,7 +36,8 @@ import { parse as parseYaml } from "yaml";
 
 import { listRfcFiles, readRfcFrontmatter, rfcFileMatchesId } from "../rfc/frontmatter-io.ts";
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
-import { git, gitEvidence, parseGitTrailers } from "./git.ts";
+import { EVIDENCE_REFUSED_PREFIX } from "../../src/utils/verifier-git.ts";
+import { git, gitEvidence, evidencePreflight, parseGitTrailers } from "./git.ts";
 import {
   commonGitDir,
   readJournal,
@@ -69,6 +70,15 @@ export interface FlowDigestData {
   digestId: string;
   remote: "origin";
   fetched: boolean;
+  /**
+   * Whether `develop.remote`/`main.remote` came from a live `ls-remote`
+   * answer this run. `false` means they are session-mutable
+   * `refs/remotes/origin/*` tracking refs — a display-only preview a
+   * planted ref can shape (CX-82). The push-side verifier scan must
+   * widen to the whole local branch instead of trusting them as a
+   * range base.
+   */
+  remoteVerified: boolean;
   develop: { local: string; remote: string | null; ahead: number };
   main: { local: string; remote: string | null; ahead: number };
   tags: string[];
@@ -195,6 +205,25 @@ async function readPathConfig(
     };
   } catch {
     return { specsDir: DEFAULT_SPECS_DIR, invariantsFile: DEFAULT_INVARIANTS_FILE };
+  }
+}
+
+/**
+ * The `push.*` declarations the remote-identity anchor trusts — read from
+ * the COMMITTED `HEAD:forge.yaml` on the evidence channel, the way
+ * `push.requireVerifierReview` already is (CX-34): a worktree edit is
+ * session state, and a session able to rewrite `push.expectedRemote`
+ * could anchor the anchor itself to its own remote (CX-80).
+ */
+async function readCommittedPushConfig(repoRoot: string): Promise<{ expectedRemote?: string }> {
+  const show = await gitEvidence(repoRoot, ["show", "HEAD:forge.yaml"]);
+  if (show.exitCode !== 0) return {};
+  try {
+    const doc = parseYaml(show.stdout) as { push?: { expectedRemote?: unknown } } | null;
+    const v = doc?.push?.expectedRemote;
+    return typeof v === "string" && v.length > 0 ? { expectedRemote: v } : {};
+  } catch {
+    return {};
   }
 }
 
@@ -695,8 +724,84 @@ export async function collectDigest(
 ): Promise<FlowDigestData> {
   const diagnostics: Diagnostic[] = [];
 
-  const hasOrigin = (await gitEvidence(repoRoot, ["remote", "get-url", "origin"])).exitCode === 0;
-  if (!hasOrigin) {
+  // --- trust-boundary preflight ------------------------------------------
+  // The evidence channel refuses when the session-writable repo surface
+  // carries an unverifiable lever — a transport/exec config key `-c` never
+  // reaches (CX-72/CX-76) or a `.git` metadata file that rewrites what a
+  // read resolves (CX-79). Emitting the reasons here keeps the digest's
+  // diagnostics honest instead of cascading "no origin"/"fetch failed"
+  // secondaries on top of the refused channel.
+  const preflight = await evidencePreflight(repoRoot);
+  if (preflight === null) {
+    diagnostics.push({
+      ruleId: "FLOW-PUSH-13",
+      severity: "error",
+      message: `repo surface could not be enumerated through the evidence channel — remote identity and history reads are unverifiable`,
+      fixHint: `check the repository's .git/config is readable and re-run flow.digest`,
+    });
+  }
+  for (const rel of preflight?.shapeViolations ?? []) {
+    diagnostics.push({
+      ruleId: "FLOW-PUSH-12",
+      severity: "error",
+      message: `session-writable .git/${rel} is non-empty — it rewrites what rev-list/merge-base/object reads resolve and no env or config switch disables it`,
+      fixHint: `remove .git/${rel} (a graft converts via 'git replace --convert-graft-file') and re-run flow.digest`,
+    });
+  }
+  for (const key of preflight?.refusedKeys ?? []) {
+    diagnostics.push({
+      ruleId: "FLOW-PUSH-13",
+      severity: "error",
+      message: `repo config key '${key}' is a transport/exec lever the evidence channel cannot neutralize — remote identity and history reads are unverifiable`,
+      fixHint: `remove '${key}' from this repository's .git/config and re-run flow.digest`,
+    });
+  }
+  // A refused channel answers NOTHING — every downstream read would cascade
+  // through the same refusal (and commonGitDir throws on it). The digest
+  // degrades to a diagnostic-only report; pushFlow's error-diagnostic
+  // refuse keeps it from ever shipping (CX-72/CX-76).
+  const channelRefused =
+    preflight === null || preflight.refusedKeys.length > 0 || preflight.shapeViolations.length > 0;
+  if (channelRefused) {
+    const refusedId = createHash("sha256")
+      .update(
+        canonicalJson({
+          refused: [...(preflight?.refusedKeys ?? []), ...(preflight?.shapeViolations ?? [])],
+        }),
+      )
+      .digest("hex")
+      .slice(0, 12);
+    return {
+      digestId: `refused-${refusedId}`,
+      remote: "origin",
+      fetched: false,
+      remoteVerified: false,
+      develop: { local: "", remote: null, ahead: 0 },
+      main: { local: "", remote: null, ahead: 0 },
+      tags: [],
+      items: [],
+      byCategory: Object.fromEntries(RISK_CATEGORIES.map((c) => [c, [] as string[]])) as Record<
+        RiskCategory,
+        string[]
+      >,
+      held: [],
+      pendingPublications: [],
+      supersededPublications: [],
+      tagTriggers: [],
+      correctnessTrail: { weakenings: [], verifierCommits: [] },
+      diagnostics,
+    };
+  }
+
+  /** An evidence call refused because the repo surface is unverifiable — callers must not misread it as an empty answer. */
+  const refused = (r: { exitCode: number | null; stderr: string }) =>
+    r.exitCode !== 0 && r.stderr.startsWith(EVIDENCE_REFUSED_PREFIX);
+
+  const { expectedRemote } = await readCommittedPushConfig(repoRoot);
+
+  const originProbe = await gitEvidence(repoRoot, ["remote", "get-url", "origin"]);
+  const hasOrigin = originProbe.exitCode === 0;
+  if (!hasOrigin && !refused(originProbe)) {
     diagnostics.push({
       ruleId: "FLOW-PUSH-01",
       severity: "error",
@@ -708,41 +813,75 @@ export async function collectDigest(
   // Repo config is session-writable: `url.<x>.insteadOf` rewrites the fetch
   // target, `url.<x>.pushInsteadOf`/`remote.origin.pushurl` split the push
   // target away from it — then the judged remote is not the pushed remote
-  // (CX-62/CX-63). `git config --get` reads the raw configured URL;
-  // `remote get-url` resolves it through insteadOf the way a fetch does;
-  // the session channel's `remote get-url --push` resolves what
-  // `git push origin` will actually hit — including pushurl and rewrite
-  // rules the scrubbed env cannot see. Any disagreement is an error — the
-  // remote identity is unprovable, so the push must refuse.
+  // (CX-62/CX-63). `git config --get-all` reads the raw configured URLs;
+  // `remote get-url --all` resolves them through insteadOf the way a fetch
+  // does; the session channel's `remote get-url --push --all` resolves what
+  // `git push origin` will actually hit — INCLUDING a second pushurl that
+  // `--push` without `--all` silently drops (CX-73: the trailer commit
+  // shipped to the unlisted pushurl unflagged). Any disagreement between
+  // the three sets is an error — remote identity is then unprovable.
   if (hasOrigin) {
-    const configured = await gitEvidence(repoRoot, ["config", "--get", "remote.origin.url"]);
-    const fetchUrl = await gitEvidence(repoRoot, ["remote", "get-url", "origin"]);
-    const pushUrl = await git(repoRoot, io, ["remote", "get-url", "--push", "origin"]);
-    if (
-      configured.exitCode === 0 &&
-      fetchUrl.exitCode === 0 &&
-      fetchUrl.stdout.trim() !== configured.stdout.trim()
-    ) {
+    const urlSet = (r: { exitCode: number | null; stdout: string }) =>
+      r.exitCode === 0
+        ? new Set(
+            r.stdout
+              .split("\n")
+              .map((l) => l.trim())
+              .filter((l) => l.length > 0),
+          )
+        : null;
+    const configured = urlSet(
+      await gitEvidence(repoRoot, ["config", "--get-all", "remote.origin.url"]),
+    );
+    const fetchUrls = urlSet(await gitEvidence(repoRoot, ["remote", "get-url", "--all", "origin"]));
+    const pushUrls = urlSet(
+      await git(repoRoot, io, ["remote", "get-url", "--push", "--all", "origin"]),
+    );
+    const sameSet = (a: Set<string> | null, b: Set<string> | null) =>
+      a !== null && b !== null && a.size === b.size && [...a].every((x) => b.has(x));
+    if (configured !== null && fetchUrls !== null && !sameSet(configured, fetchUrls)) {
       diagnostics.push({
         ruleId: "FLOW-PUSH-09",
         severity: "error",
-        message: `the fetch URL for 'origin' is rewritten — 'remote.origin.url' is '${configured.stdout.trim()}' but a fetch would contact '${fetchUrl.stdout.trim()}' (a url.insteadOf rule in session-writable config is steering the evidence channel)`,
+        message: `the fetch URLs for 'origin' are rewritten — 'remote.origin.url' configures ${JSON.stringify([...configured])} but a fetch would contact ${JSON.stringify([...fetchUrls])} (a url.insteadOf rule in session-writable config is steering the evidence channel)`,
         fixHint:
           "remove the url.<base>.insteadOf rewrite from this repository's config and re-run flow.digest",
       });
     }
-    if (
-      fetchUrl.exitCode === 0 &&
-      pushUrl.exitCode === 0 &&
-      pushUrl.stdout.trim() !== fetchUrl.stdout.trim()
-    ) {
+    if (fetchUrls !== null && pushUrls !== null && !sameSet(fetchUrls, pushUrls)) {
       diagnostics.push({
         ruleId: "FLOW-PUSH-09",
         severity: "error",
-        message: `the push resolves to a different remote than the judged fetch — a push would contact '${pushUrl.stdout.trim()}' while the digest's evidence came from '${fetchUrl.stdout.trim()}'`,
+        message: `the push resolves to different remotes than the judged fetch — a push would contact ${JSON.stringify([...pushUrls])} while the digest's evidence came from ${JSON.stringify([...fetchUrls])}`,
         fixHint:
-          "reconcile remote.origin.pushurl and the url.*.(push)insteadOf rules so push and fetch resolve to the same remote",
+          "reconcile remote.origin.pushurl and the url.*.(push)insteadOf rules so push and fetch resolve to the same remote set",
       });
+    }
+    // --- remote-identity ANCHOR (CX-80) -----------------------------------
+    // Parity alone proves consistency, never provenance: a wholesale
+    // `remote.origin.url` repoint keeps configured == fetch == push while
+    // the pushed remote is one the session chose. `push.expectedRemote` is
+    // the declared anchor — a forge.yaml key, frozen by the RFC-1615 policy
+    // surface and CODEOWNERS review-gated, outside session-writable config.
+    if (configured !== null && configured.size > 0) {
+      if (expectedRemote === undefined) {
+        diagnostics.push({
+          ruleId: "FLOW-PUSH-14",
+          severity: "error",
+          message:
+            "push.expectedRemote is not declared in forge.yaml — the trusted remote is unanchored: a session repoint cannot be distinguished from the operator's remote",
+          fixHint:
+            'declare `push.expectedRemote: "<canonical url>"` in forge.yaml — the frozen declaration anchors which remote flow.push may ship to',
+        });
+      } else if (![...configured].every((u) => u === expectedRemote)) {
+        diagnostics.push({
+          ruleId: "FLOW-PUSH-14",
+          severity: "error",
+          message: `the configured remote ${JSON.stringify([...configured])} does not match the declared 'push.expectedRemote' '${expectedRemote}' — the anchor is outside session-writable config`,
+          fixHint:
+            "repoint remote.origin back at the declared remote, or amend push.expectedRemote through an operator change (CODEOWNERS review-gated)",
+        });
+      }
     }
   }
 
@@ -771,6 +910,7 @@ export async function collectDigest(
     const fetch = await gitEvidence(repoRoot, [
       "fetch",
       "--prune",
+      "--no-tags",
       "origin",
       "+refs/heads/*:refs/remotes/origin/*",
     ]);
@@ -807,7 +947,10 @@ export async function collectDigest(
   // fetched path only the other branch's ls-remote-verified tip may
   // subtract from the tail — tracking refs are session-mutable and a
   // planted one would hide commits from the scan exactly like a planted
-  // remote tip (CX-61).
+  // remote tip (CX-61). On the --no-fetch preview path `verifiedExcludes`
+  // stays null so the tail keeps the legacy tracking-ref-relative view —
+  // the push-side verifier scan judges `remoteVerified` separately and
+  // widens instead (CX-82).
   const developTail =
     developLocal === null
       ? []
@@ -1019,6 +1162,7 @@ export async function collectDigest(
     digestId,
     remote: "origin",
     fetched,
+    remoteVerified: remoteTips !== null,
     develop: { local: developLocal ?? "", remote: developRemote, ahead: developTail.length },
     main: { local: mainLocal ?? "", remote: mainRemote, ahead: mainTail.length },
     tags,
