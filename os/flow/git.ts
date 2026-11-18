@@ -133,6 +133,36 @@ evidence channel — this commit closes all root causes.
 
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r10 trust-boundary counterexamples
+
+Independent clean-context verification (round 10, candidate 17c0ec075)
+returned REFUTED with two live counterexamples against the
+r9-remediated channel — this commit closes both root causes.
+
+- The core.hooksPath pin target is the null device, not a plantable
+  temp dir (CX-123): the mkdtemp evidenceHooksDir persisted for the
+  process lifetime under the session-owned OS temp root, so a
+  concurrent same-uid session could poll, discover it, and plant an
+  executable reference-transaction hook that the next pinned fetch
+  executed inside the trusted spawn. The pin now aims at DEVNULL —
+  the ENOTDIR hook stat skips every hook silently and a char device
+  has no plantable entries; no verifier hooks dir exists at all,
+  removing the TMPDIR amplifier too.
+- A failed claims rebuild is fail-closed, scoped to the reads it can
+  poison (CX-124): prepareEvidenceIndex returned {} on a failed
+  update-index --index-info, routing index-consulting reads at the
+  ambient session-writable .git/index — a CX-121 stat-forged index
+  then answered clean on dirty bytes on both channels. The failure
+  now marks the index unproven in the preflight, and
+  isUnprovenIndexRead refuses exactly the index-consulting ops
+  (status/ls-files always; diff unless tree-to-tree; grep unless
+  tree-anchored; ambiguous shapes refuse) on all three channels.
+  Non-index reads proceed, so a corrupt-index fixture degrades
+  per-read (the gate's git-read-failed contract) instead of dying
+  channel-wide.
+
+The independent r10 probe file and acceptance report land in the
+follow-up port commit.</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -154,6 +184,7 @@ import {
   EVIDENCE_REFUSED_PREFIX,
   EVIDENCE_SHAPE_QUERY_PATHS,
   isEvidenceGitQuery,
+  isUnprovenIndexRead,
 } from "../../src/utils/verifier-git.ts";
 
 /**
@@ -241,6 +272,18 @@ export async function gitEvidence(
       exitCode: -1,
       stdout: "",
       stderr: `${EVIDENCE_REFUSED_PREFIX}: ${[...preflight.refusedKeys, ...preflight.shapeViolations].join(", ")}`,
+    };
+  }
+  // An unproven claims rebuild (CX-124) leaves no GIT_INDEX_FILE redirect —
+  // an index-consulting op would answer from the session-writable ambient
+  // index, the exact CX-121 forgery surface. Non-index ops never consult
+  // the index and proceed (a corrupt-index fixture degrades per-read, not
+  // channel-wide).
+  if (isUnprovenIndexRead(args, preflight)) {
+    return {
+      exitCode: -1,
+      stdout: "",
+      stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven}): git ${args.join(" ")}`,
     };
   }
   return new Promise((resolve) => {
@@ -352,7 +395,11 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
   // `.git/index` is session-writable — a forged stat tuple answers
   // status/diff clean on dirty bytes (CX-121). Every index-consulting
   // spawn below redirects to this verifier-owned zero-stat claims rebuild.
-  preflight.indexEnv = await prepareEvidenceIndex(repoRoot);
+  // A failed rebuild marks the index unproven (CX-124): index-consulting
+  // reads refuse, non-index reads stay trustworthy.
+  const prepared = await prepareEvidenceIndex(repoRoot);
+  preflight.indexEnv = prepared.env;
+  preflight.indexUnproven = prepared.failure;
   return preflight;
 }
 

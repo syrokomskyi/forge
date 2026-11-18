@@ -18,7 +18,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
 
@@ -130,6 +129,36 @@ evidence channel — this commit closes all root causes.
   in the werkstatt-site mutation ratchet.
 
 The independent r9 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r10 trust-boundary counterexamples
+
+Independent clean-context verification (round 10, candidate 17c0ec075)
+returned REFUTED with two live counterexamples against the
+r9-remediated channel — this commit closes both root causes.
+
+- The core.hooksPath pin target is the null device, not a plantable
+  temp dir (CX-123): the mkdtemp evidenceHooksDir persisted for the
+  process lifetime under the session-owned OS temp root, so a
+  concurrent same-uid session could poll, discover it, and plant an
+  executable reference-transaction hook that the next pinned fetch
+  executed inside the trusted spawn. The pin now aims at DEVNULL —
+  the ENOTDIR hook stat skips every hook silently and a char device
+  has no plantable entries; no verifier hooks dir exists at all,
+  removing the TMPDIR amplifier too.
+- A failed claims rebuild is fail-closed, scoped to the reads it can
+  poison (CX-124): prepareEvidenceIndex returned {} on a failed
+  update-index --index-info, routing index-consulting reads at the
+  ambient session-writable .git/index — a CX-121 stat-forged index
+  then answered clean on dirty bytes on both channels. The failure
+  now marks the index unproven in the preflight, and
+  isUnprovenIndexRead refuses exactly the index-consulting ops
+  (status/ls-files always; diff unless tree-to-tree; grep unless
+  tree-anchored; ambiguous shapes refuse) on all three channels.
+  Non-index reads proceed, so a corrupt-index fixture degrades
+  per-read (the gate's git-read-failed contract) instead of dying
+  channel-wide.
+
+The independent r10 probe file and acceptance report land in the
 follow-up port commit.</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
@@ -251,24 +280,6 @@ export function verifierGitEnv(): NodeJS.ProcessEnv {
 
 const DEVNULL = process.platform === "win32" ? "NUL" : "/dev/null";
 
-let evidenceHooksDirPath: string | undefined;
-/**
- * The `core.hooksPath` pin target — a fresh, uniquely-named empty dir under
- * the OS temp root so a repo-config `core.hooksPath` resolves to nothing
- * hookable. `-c` DOES reach the hook resolver (callback-scope config),
- * unlike the transport levers, so pinning works where detection alone
- * would not (CX-74). `mkdtempSync` — never a predictable pid-suffixed
- * name a session could pre-plant hooks into (CX-87). Created lazily on
- * first evidence spawn.
- */
-function evidenceHooksDir(): string {
-  if (evidenceHooksDirPath === undefined) {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "forge-evidence-hooks-"));
-    evidenceHooksDirPath = dir;
-  }
-  return evidenceHooksDirPath;
-}
-
 /**
  * `-c` pins forced into every evidence-channel spawn — repo config is
  * session-writable, so any setting that reshapes what a read resolves or
@@ -338,11 +349,19 @@ export function evidenceConfigArgs(args?: readonly string[]): string[] {
   // a `config --get core.hooksPath` evidence read must answer the repo's
   // real value (the install/check surface judges drift through it), and
   // no non-config command can observe the pin as output. Hook-invoking
-  // reads (fetch → reference-transaction, CX-74) still get the dead dir.
+  // reads (fetch → reference-transaction, CX-74) still get the dead path.
+  // The pin target is the null device, not a verifier-owned temp dir
+  // (CX-123): git joins `<hooksPath>/<hookname>` and the ENOTDIR stat
+  // skips every hook silently (verified: fetch/status/commit exit 0, a
+  // planted reference-transaction never fires) — and a char device has
+  // no directory entries, so a concurrent same-uid session cannot plant
+  // a hook into the pin target no matter how long it polls. A mkdtemp
+  // dir under the session-owned OS temp root was plantable post-creation
+  // (CX-123), and `TMPDIR` survives the env allowlists.
   const onConfigRead = args?.[0] === "config";
   return [
     ...EVIDENCE_CONFIG_PINS.flatMap((kv) => ["-c", kv]),
-    ...(onConfigRead ? [] : ["-c", `core.hooksPath=${evidenceHooksDir()}`]),
+    ...(onConfigRead ? [] : ["-c", `core.hooksPath=${DEVNULL}`]),
     "-c",
     `core.attributesFile=${DEVNULL}`,
     "-c",
@@ -478,9 +497,73 @@ export interface EvidencePreflight {
    * unborn-HEAD state. The rebuilt entries carry zero stat, so every
    * index-consulting read (status/diff/ls-files/grep --cached)
    * content-hashes the worktree instead of trusting the session's tuples.
-   * Undefined when the session index cannot be enumerated.
+   * Empty when the session index cannot be enumerated.
    */
   indexEnv?: Record<string, string>;
+  /**
+   * Set when the claims rebuild could not be proven (CX-124): the
+   * `GIT_INDEX_FILE` redirect is absent, so index-consulting spawns would
+   * consult the session-writable ambient index — exactly the CX-121
+   * forgery surface. Index-consulting argv (INDEX_CONSULTING_OPS) must
+   * refuse; non-index reads (rev-parse/cat-file/log/ls-tree/…) never
+   * consult the index and stay trustworthy — refusing them wholesale
+   * would turn a corrupt-index fixture into a dead channel instead of
+   * the per-read degradation the gate contract records.
+   */
+  indexUnproven?: string;
+}
+
+/**
+ * Read-table ops whose answer consults `.git/index` (directly or as the
+ * worktree-enumeration/stat source). When the preflight could not prove
+ * a verifier-owned index view (`indexUnproven`), these ops must refuse —
+ * every other op never reads the index and proceeds.
+ */
+const INDEX_CONSULTING_OPS = new Set(["status", "diff", "ls-files", "grep"]);
+
+/**
+ * True when `args` is an index-consulting read and the preflight could
+ * not prove the verifier-owned index view — the spawn would answer from
+ * the session-writable ambient index (CX-124's fail-open).
+ *
+ * The judgment is per-argv, not per-subcommand: a tree-anchored read
+ * (`git grep <sha>`, `git diff A..B`) never consults the index and must
+ * still work when the index is unproven (the audit's tree prefilter and
+ * the gate's range diffs degrade per-read, not channel-wide), while
+ * `status`/`ls-files` and index- or worktree-anchored `diff`/`grep` read
+ * the session-writable index directly. Ambiguous shapes refuse — a
+ * refused read is recorded as unreadable, a served forgery is not.
+ */
+export function isUnprovenIndexRead(
+  args: readonly string[],
+  preflight?: EvidencePreflight | null,
+): boolean {
+  if (preflight?.indexUnproven === undefined) return false;
+  const op = args[0] ?? "";
+  if (!INDEX_CONSULTING_OPS.has(op)) return false;
+  if (op === "status" || op === "ls-files") return true;
+  const dd = args.indexOf("--");
+  const head = dd === -1 ? args.slice(1) : args.slice(1, dd);
+  if (op === "diff") {
+    let revs = 0;
+    for (const a of head) {
+      if (a.startsWith("-")) {
+        if (a === "--cached" || a === "--index") return true;
+        continue;
+      }
+      revs += a.includes("..") ? 2 : 1;
+    }
+    return revs < 2;
+  }
+  // grep: `-e <pattern>` carries the pattern as an option value, so every
+  // non-option token before `--` is a rev — a tree-anchored grep reads
+  // tree objects only. The tree-anchored shape requires an explicit `--`
+  // with a non-option, non-`-e`-value token in front of it; anything else
+  // (worktree grep, `--cached`, no separator) consults the index.
+  if (args.includes("--cached")) return true;
+  if (dd === -1) return true;
+  const beforeSep = head[head.length - 1];
+  return beforeSep === undefined || beforeSep.startsWith("-") || head[head.length - 2] === "-e";
 }
 
 /**
@@ -1211,10 +1294,23 @@ function evidenceIndexDir(): string {
  * staged-vs-HEAD columns still show what the session index claims —
  * a forged claim can only fabricate dirt, never hide it. Each call gets
  * a fresh file: concurrent preflights in one process must not interleave
- * writes into a shared index. Returns `{}` when the session index cannot
- * be enumerated — the ambient index then surfaces git's own error.
+ * writes into a shared index.
+ *
+ * A failed enumeration or rebuild is FAIL-CLOSED (CX-124): `failure`
+ * carries a shape-violation string the caller pushes into the preflight,
+ * so every index-consulting read refuses outright. Falling back to the
+ * ambient index would route the verdict at the session-writable
+ * `.git/index` — exactly the CX-121 forgery surface — so an unprovable
+ * index must refuse, never degrade.
  */
-export async function prepareEvidenceIndex(repoRoot: string): Promise<Record<string, string>> {
+export interface EvidenceIndexPreparation {
+  /** `GIT_INDEX_FILE` env for index-consulting spawns; empty on failure. */
+  env: Record<string, string>;
+  /** Shape-violation string when the rebuild could not be proven. */
+  failure?: string;
+}
+
+export async function prepareEvidenceIndex(repoRoot: string): Promise<EvidenceIndexPreparation> {
   const indexFile = path.join(evidenceIndexDir(), `index-${++evidenceIndexSeq}`);
   const env = { GIT_INDEX_FILE: indexFile };
   // Both spawns carry the static pins via env: `ls-files` consults
@@ -1224,16 +1320,26 @@ export async function prepareEvidenceIndex(repoRoot: string): Promise<Record<str
   const claims = await execEvidenceGit(repoRoot, ["ls-files", "--stage", "-z"], {
     extraEnv: evidencePinEnv(["ls-files"]),
   });
-  if (claims.exitCode !== 0) return {};
+  if (claims.exitCode !== 0) {
+    return {
+      env: {},
+      failure: `.git/index claims enumeration failed (git ls-files --stage, exit ${claims.exitCode})`,
+    };
+  }
   // `-z` claims feed `--index-info` verbatim.
   const rebuilt = await execEvidenceGit(repoRoot, ["update-index", "-z", "--index-info"], {
     extraEnv: { ...env, ...evidencePinEnv(["update-index"]) },
     input: claims.stdout,
   });
-  if (rebuilt.exitCode !== 0) return {};
+  if (rebuilt.exitCode !== 0) {
+    return {
+      env: {},
+      failure: `.git/index claims rebuild failed (git update-index --index-info, exit ${rebuilt.exitCode})`,
+    };
+  }
   // An empty claim set leaves no file — GIT_INDEX_FILE aimed at a
   // nonexistent path is git's own empty-index answer, matching ambient.
-  return env;
+  return { env };
 }
 
 /**
@@ -1300,7 +1406,7 @@ export function judgeEvidenceRepoSurface(
     }
     if (EVIDENCE_CONFIG_KEEP.test(key)) continue;
     if (key === "core.hookspath") {
-      hookArgs.push("-c", `core.hooksPath=${evidenceHooksDir()}`);
+      hookArgs.push("-c", `core.hooksPath=${DEVNULL}`);
       continue;
     }
     if (EVIDENCE_CONFIG_REINJECT.test(key)) {
@@ -1416,8 +1522,11 @@ export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidenceP
   // `.git/index` is session-writable — a forged stat tuple answers
   // status/diff clean on dirty bytes (CX-121). Rebuild the index's claims
   // into a verifier-owned zero-stat file every index-consulting spawn
-  // redirects to.
-  preflight.indexEnv = await prepareEvidenceIndex(repoRoot);
+  // redirects to. A failed rebuild marks the index unproven (CX-124):
+  // index-consulting reads refuse, non-index reads stay trustworthy.
+  const prepared = await prepareEvidenceIndex(repoRoot);
+  preflight.indexEnv = prepared.env;
+  preflight.indexUnproven = prepared.failure;
   return preflight;
 }
 
@@ -1588,6 +1697,18 @@ async function verifierGitSpawn(
       exitCode: -1,
       stdout: "",
       stderr: `${EVIDENCE_REFUSED_PREFIX}: argv outside the ${table}: git ${args.join(" ")}`,
+    };
+  }
+  // An unproven claims rebuild (CX-124) leaves no GIT_INDEX_FILE redirect —
+  // an index-consulting op would answer from the session-writable ambient
+  // index, the exact CX-121 forgery surface. Non-index ops never consult
+  // the index and proceed (a corrupt-index fixture degrades per-read, not
+  // channel-wide).
+  if (useIndexEnv && isUnprovenIndexRead(args, preflight)) {
+    return {
+      exitCode: -1,
+      stdout: "",
+      stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven}): git ${args.join(" ")}`,
     };
   }
   return new Promise((resolve) => {
