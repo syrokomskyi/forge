@@ -202,6 +202,7 @@ the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
+  <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -225,8 +226,10 @@ import {
   spawnCaptured,
   captureEvidenceSurface,
   reproveEvidenceSurface,
+  armEvidenceWindowWatch,
   resolutionEnv,
   sessionIgnoreRulePaths,
+  unprovenIgnoredPaths,
   type EvidenceFingerprint,
   type EvidencePreflight,
   EVIDENCE_REFUSED_PREFIX,
@@ -289,6 +292,8 @@ export async function gitEvidence(
     extraEnv?: Record<string, string>;
     internalEnv?: Record<string, string>;
     preflight?: boolean;
+    /** Extra file inodes folded into the spawn-window watch (see `verifierGit`). */
+    extraWatchPaths?: readonly string[];
   },
 ): Promise<ExecResult> {
   // Runtime argv judgment — the evidence channel spawns a trusted git, so
@@ -325,6 +330,27 @@ export async function gitEvidence(
     const priorFp = preflight.fingerprint;
     closeEvidenceIndex(preflight);
     preflight = attempt >= 2 ? null : await evidencePreflight(repoRoot, priorFp);
+  }
+  // The spawn-window watch (CX-r22): the judged child opens `.git`
+  // metadata inside ITS lifetime — the reprove ends at spawn, not at
+  // the child's reads. Arming before the last check and draining after
+  // `close` turns a mid-window plant+unlink (shallow/exclude/
+  // alternates, loose objects, config/index rewrites, the held claims
+  // index via `/proc/<pid>/fd/3`) into a deterministic refusal.
+  let windowWatch: ReturnType<typeof armEvidenceWindowWatch> = null;
+  if (preflight !== null) {
+    for (let armAttempt = 0; preflight !== null; armAttempt++) {
+      windowWatch = armEvidenceWindowWatch(repoRoot, preflight, undefined, opts?.extraWatchPaths);
+      if (windowWatch === null) {
+        preflight = null;
+        break;
+      }
+      if (reproveEvidenceSurface(repoRoot, preflight)) break;
+      await windowWatch.settle();
+      windowWatch = null;
+      closeEvidenceIndex(preflight);
+      preflight = armAttempt >= 1 ? null : await evidencePreflight(repoRoot, preflight.fingerprint);
+    }
   }
   try {
     if (preflight === null && opts?.preflight !== false) {
@@ -398,10 +424,26 @@ export async function gitEvidence(
       maxBuffer: 64 * 1024 * 1024,
       indexFd: spawnState.indexFd,
     });
+    // Any `.git` event inside the armed window means the child may
+    // have read an unjudged surface — refuse the verdict regardless of
+    // what it printed (CX-r22).
+    if (windowWatch !== null) {
+      const events = await windowWatch.settle();
+      windowWatch = null;
+      if (events.length > 0) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: repository surface mutated during the judged read (${events[0]}${events.length > 1 ? ` +${events.length - 1}` : ""})`,
+        };
+      }
+    }
     return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
   } finally {
     // The per-call preflight owns its held fds — cached preflights
-    // (OriginGit) keep them for the instance's lifetime instead.
+    // (OriginGit) keep them for the instance's lifetime instead. The
+    // watch is per-spawn — always released.
+    if (windowWatch !== null) await windowWatch.settle();
     closeEvidenceIndex(preflight);
   }
 }
@@ -967,6 +1009,7 @@ export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<Di
   );
   const entries: string[] = [];
   const toleratedState: string[] = [];
+  const ignoredClaims: string[] = [];
   for (const line of porcelainLines(result.stdout)) {
     const path = line.slice(3);
     // `!!` entries are hidden-by-rule files — committed `.gitignore`
@@ -975,8 +1018,12 @@ export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<Di
     // forge-state path under such a rule is still disposable state:
     // RFC-1515 deletes toleratedState before `git worktree remove`, and
     // removing the covering `.gitignore` first would unhide the rest and
-    // wedge the removal (FLOW-INT-04).
+    // wedge the removal (FLOW-INT-04). Every `!!` is collected for the
+    // rule-source proof below — a `.gitignore` planted inside the
+    // child's own lifetime reclassifies `??` payloads as `!!` while the
+    // rule source walks/never sees it (CX-r22 worktree side).
     if (line.startsWith("!! ")) {
+      ignoredClaims.push(path);
       if (isForgeStatePath(path)) toleratedState.push(path);
       continue;
     }
@@ -1009,6 +1056,27 @@ export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<Di
     // a root or product-tree rule still counts as blocking dirt.
     if (isForgeStatePath(p)) toleratedState.push(p);
     else entries.push(`?? ${p}`);
+  }
+  // `!!` provenance (CX-r22): each ignored claim must trace to a
+  // TRACKED `.gitignore` — a mid-child plant's source is untracked or
+  // gone, so its hidden paths rejoin the verdict as honest `??` dirt.
+  // `null` = the provenance channel refused — the dirty set is
+  // unverifiable, never a clean-ish list.
+  if (ignoredClaims.length > 0) {
+    const unproven = await unprovenIgnoredPaths(worktree, ignoredClaims);
+    if (unproven === null) {
+      throw new Error(
+        "git status --porcelain succeeded but ignored-path rule provenance is unverifiable",
+      );
+    }
+    for (const p of unproven) {
+      if (entries.some((e) => e.slice(3) === p) || toleratedState.includes(p)) continue;
+      // An unproven `.forge/` hidden path can only be covered by a
+      // `.forge/`-scoped rule — same tolerated partition as session
+      // rules and `??` forge-state paths above.
+      if (isForgeStatePath(p)) toleratedState.push(p);
+      else entries.push(`?? ${p}`);
+    }
   }
   return { entries, toleratedState, vanished: false };
 }

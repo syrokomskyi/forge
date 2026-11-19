@@ -10,7 +10,6 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1143: validate/plan/record apply filterLedgerEligiblePaths — ledger-ineligible authored paths (missions/, gitignored) are skipped with skippedIneligible diagnostics instead of failing COMPASS-AUDIT-01; record warns but still writes.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
 
@@ -50,7 +49,8 @@ The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
-  <history>RFC-0352, RFC-0556, RFC-1094, RFC-1139, RFC-1242</history>
+  <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
+  <history>RFC-0352, RFC-0556, RFC-1094, RFC-1139, RFC-1143, RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 
@@ -236,13 +236,36 @@ export async function filterLedgerEligiblePaths(
   // rule source. `check-ignore` exits 1 when nothing matches; a refused
   // (-1) or failed read means the exclusion set is unverifiable →
   // exclude NOTHING (over-inclusive, visible).
-  const checked = await verifierGit(proven, ["check-ignore", "--stdin"], {
+  //
+  // `-v` rule-source provenance (CX-r22 worktree side): a `.gitignore`
+  // planted inside the check-ignore child's own lifetime answers
+  // "ignored" for its covered paths while the source walk above saw
+  // nothing — every ignored verdict must cite a TRACKED `.gitignore`
+  // (claims index, proven), so a transient/untracked source leaves the
+  // path eligible instead of letting a plant shrink the audit set.
+  const trackedReq = await verifierGit(proven, ["ls-files", "-z", "--", "*.gitignore"]);
+  if (trackedReq.exitCode !== 0) {
+    return new Set(candidates);
+  }
+  const trackedSources = new Set(trackedReq.stdout.split("\0").filter((p: string) => p.length > 0));
+  // The tracked sources' own bytes back the verdict — a transient
+  // rewrite inside THIS child's window would still cite the tracked
+  // path while serving forged rules, so their inodes join the watch.
+  const checked = await verifierGit(proven, ["check-ignore", "-v", "--stdin"], {
     input: rebased.map((r) => r.rel).join("\n"),
+    extraWatchPaths: [...trackedSources].map((s) => join(proven, s)),
   });
-  const ignored =
-    checked.exitCode === 0
-      ? new Set(checked.stdout.split("\n").filter((l: string) => l.length > 0))
-      : new Set<string>();
+  // `source:line:pattern\tpathname` — the source column is the rule
+  // file git consulted; only a tracked `.gitignore` backs an exclusion.
+  const ignored = new Set<string>();
+  if (checked.exitCode === 0) {
+    for (const line of checked.stdout.split("\n")) {
+      const tab = line.lastIndexOf("\t");
+      if (tab === -1) continue;
+      const src = line.slice(0, line.indexOf(":"));
+      if (trackedSources.has(src)) ignored.add(line.slice(tab + 1));
+    }
+  }
   for (const r of rebased) {
     if (!ignored.has(r.rel)) eligible.add(r.orig);
   }

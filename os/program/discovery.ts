@@ -11,13 +11,18 @@ against schemas, and computes normative source hashes.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial program/packet discovery and parsing.</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
 </CHANGE_SUMMARY>
 */
 
 import * as fs from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { sessionIgnoreRulePaths, verifierGit } from "../../src/utils/verifier-git.ts";
+import {
+  sessionIgnoreRulePaths,
+  unprovenIgnoredPaths,
+  verifierGit,
+} from "../../src/utils/verifier-git.ts";
 import { parse as parseYaml } from "yaml";
 import {
   programManifestSchema,
@@ -199,9 +204,23 @@ export async function gitIsClean(workspaceRoot: string): Promise<boolean> {
     const t = await verifierGit(root, ["ls-files", "-z", "--", ...paths]);
     return t.exitCode === 0 ? new Set(t.stdout.split("\0").filter((p) => p.length > 0)) : null;
   });
+  // `!!` provenance (CX-r22): every ignored claim must trace to a
+  // TRACKED `.gitignore` — a `.gitignore` planted inside the child's own
+  // lifetime reclassifies `??` payloads as `!!` while its rule source
+  // never existed at any checkable moment, so an unproven `!!` is the
+  // fabricated-clean class itself. `null` = provenance unverifiable.
+  const unproven = await unprovenIgnoredPaths(
+    workspaceRoot,
+    r.stdout
+      .split("\n")
+      .filter((line) => line.startsWith("!! "))
+      .map((line) => line.slice(3)),
+  );
   // `null` = toplevel unresolvable right after status answered — the
   // clean verdict is unverifiable, never "clean" (CX-167).
-  return sessionRules !== null && sessionRules.length === 0;
+  return (
+    sessionRules !== null && sessionRules.length === 0 && unproven !== null && unproven.size === 0
+  );
 }
 
 export async function gitAncestorOf(
