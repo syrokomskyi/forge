@@ -21,7 +21,6 @@ at cleanup without moving develop again.</purpose>
   <item>docs.archive's deferral clears only when every deferred owner ran — a skipped owner keeps .git/forge/deferred-regen.json.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1598: generated-conflict auto-resolve runs the owner generator inside a detached checked-out side (theirs → ours → take-theirs deferral), never the mixed mid-rebase index (RFC-1598)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
 
@@ -36,6 +35,7 @@ post-staging sweep surfaces MM residue with the git show : remediation.
 RFC-1602</item>
   <item>RFC-1602: document the deferred-regen fold contract in the guide and compass decisions</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1619: bind the integration-gate manifests step to post-rebase regen provenance (RFC-1619)</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
   <item>RFC-1622: record RFC-1622 integration phase timings</item>
@@ -1968,19 +1968,26 @@ async function integrateFlowBranchAttempt(
       if (attempt >= MAX_PRELOCK_ATTEMPTS) {
         mode = "locked-full";
       } else {
-        const delta =
+        const deltaRead =
           b1 !== s.rebaseBase ? await deltaChangedPaths(io, primary, s.rebaseBase, b1) : [];
-        deltaSelection =
-          opts.deltaGateSelector !== undefined
-            ? await opts.deltaGateSelector(delta)
-            : selectDeltaGateSteps(delta, await resolveDeltaStepDomains(io, primary));
-        if (deltaSelection.selected.length * 2 > deltaSelection.total) {
-          opts.onProgress?.(
-            `pre-lock attempt ${attempt}: develop delta selects ${deltaSelection.selected.length}/${deltaSelection.total} gate steps — discarding and restarting Phase A against ${b1.slice(0, 9)}`,
-          );
-          return { kind: "restart" };
+        if (deltaRead === null) {
+          // The delta enumeration is unverifiable — a narrower locked
+          // gate would run on fabricated dirt; run the full gate
+          // (CX-174).
+          mode = "locked-full";
+        } else {
+          deltaSelection =
+            opts.deltaGateSelector !== undefined
+              ? await opts.deltaGateSelector(deltaRead)
+              : selectDeltaGateSteps(deltaRead, await resolveDeltaStepDomains(io, primary));
+          if (deltaSelection.selected.length * 2 > deltaSelection.total) {
+            opts.onProgress?.(
+              `pre-lock attempt ${attempt}: develop delta selects ${deltaSelection.selected.length}/${deltaSelection.total} gate steps — discarding and restarting Phase A against ${b1.slice(0, 9)}`,
+            );
+            return { kind: "restart" };
+          }
+          mode = "locked-delta";
         }
-        mode = "locked-delta";
       }
       // Under the lock the gate runs with FLOW_BASE_SHA = the recorded B0:
       // on the judged worktree the gate's own RFC-1582 selection runs over

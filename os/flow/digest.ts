@@ -20,7 +20,6 @@ stay empty by construction.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
 
 Independent clean-context verification (round 7, candidate d2f270ad6)
@@ -69,6 +68,7 @@ acceptance report land in the follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
+  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -178,6 +178,16 @@ const DEFAULT_INVARIANTS_FILE = "docs/architecture-dna.md";
 
 async function revParse(repoRoot: string, io: WorkspaceIO, ref: string): Promise<string | null> {
   const result = await gitEvidence(repoRoot, ["rev-parse", "--verify", "--quiet", ref]);
+  // exit -1 means the channel produced no git answer at all (refusal,
+  // timeout, spawn failure) — "ref absent" is a fabrication from that
+  // (CX-174: a null developLocal empties the tail AND the trailer
+  // scan). git's own non-zero answers (missing ref, non-repo) stay the
+  // honest null.
+  if (result.exitCode === -1) {
+    throw new Error(
+      `git rev-parse --verify ${ref} produced no answer — the ref is unverifiable: ${result.stderr.trim()}`,
+    );
+  }
   return result.exitCode === 0 ? result.stdout.trim() || null : null;
 }
 
@@ -192,7 +202,10 @@ async function revParse(repoRoot: string, io: WorkspaceIO, ref: string): Promise
  * --remotes=origin` would hide commits the same way a planted branch tip
  * does (CX-61). A failed range read widens to the whole branch rather
  * than returning an empty tail: `[]` would skip the verifier scan, so the
- * only safe failure is scanning more, never less.
+ * only safe failure is scanning more, never less. When even the widened
+ * read fails the tail is UNPROVABLE — `null`, never `[]`, or a surgical
+ * refusal between preflight and spawn could empty the scan on demand
+ * (CX-174).
  */
 async function unpushedCommits(
   repoRoot: string,
@@ -201,7 +214,7 @@ async function unpushedCommits(
   remoteTip: string | null,
   firstParent = false,
   verifiedExcludes: string[] | null = null,
-): Promise<string[]> {
+): Promise<string[] | null> {
   const order = firstParent ? ["--reverse", "--first-parent"] : ["--reverse"];
   const lines = (stdout: string) =>
     stdout
@@ -214,7 +227,7 @@ async function unpushedCommits(
     // The verified tip could not serve as the range base — widen to the
     // whole branch. Excluding nothing is the strictest honest answer.
     const widened = await gitEvidence(repoRoot, ["rev-list", ...order, branch]);
-    return widened.exitCode === 0 ? lines(widened.stdout) : [];
+    return widened.exitCode === 0 ? lines(widened.stdout) : null;
   }
   const args =
     verifiedExcludes !== null
@@ -223,7 +236,7 @@ async function unpushedCommits(
         : ["rev-list", ...order, branch]
       : ["rev-list", ...order, branch, "--not", "--remotes=origin"];
   const result = await gitEvidence(repoRoot, args);
-  if (result.exitCode !== 0) return [];
+  if (result.exitCode !== 0) return null;
   return lines(result.stdout);
 }
 
@@ -264,9 +277,18 @@ async function readPathConfig(
  * session state, and a session able to rewrite `push.expectedRemote`
  * could anchor the anchor itself to its own remote (CX-80).
  */
-async function readCommittedPushConfig(repoRoot: string): Promise<{ expectedRemote?: string }> {
+async function readCommittedPushConfig(
+  repoRoot: string,
+): Promise<{ expectedRemote?: string } | null> {
   const show = await gitEvidence(repoRoot, ["show", "HEAD:forge.yaml"]);
-  if (show.exitCode !== 0) return {};
+  if (show.exitCode !== 0) {
+    // A channel refusal (-1) means the committed anchor is UNPROVABLE —
+    // `{}` would misreport "not declared" and skip the anchor as absent
+    // rather than unverifiable (CX-174). git's own failure (file absent,
+    // no HEAD) stays the honest empty config.
+    if (show.exitCode === -1) return null;
+    return {};
+  }
   try {
     const doc = parseYaml(show.stdout) as { push?: { expectedRemote?: unknown } } | null;
     const v = doc?.push?.expectedRemote;
@@ -292,9 +314,16 @@ async function correctnessTrailOf(
   const trail: FlowDigestData["correctnessTrail"] = { weakenings: [], verifierCommits: [] };
   for (const sha of shas) {
     // Two reads per commit — any delimiter byte shared between subject and
-    // the trailer blob could smuggle a record boundary (CX-33 class).
+    // the trailer blob could smuggle a record boundary (CX-33 class). A
+    // FAILED read on an enumerated commit is unverifiable, never skippable
+    // — `continue` would drop its weakening/verifier trailers under a
+    // surgical refusal between spawns (CX-174). List the sha flagged like
+    // the non-UTF-8 encoding case: provenance unprovable.
     const subj = await gitEvidence(repoRoot, ["log", "-1", "--format=%s", sha]);
-    if (subj.exitCode !== 0) continue;
+    if (subj.exitCode !== 0) {
+      trail.verifierCommits.push({ sha, subject: "(unverifiable commit)", report: null });
+      continue;
+    }
     // `%e` rides along: a declared non-UTF-8 `encoding:` header recodes
     // %s/%(trailers) output into bytes the scan cannot trust — the header
     // lives inside the commit object so no -c pin can strip it (CX-102).
@@ -305,7 +334,10 @@ async function correctnessTrailOf(
       "--format=%(trailers:only,separator=%x00)%x00%e",
       sha,
     ]);
-    if (trailers.exitCode !== 0) continue;
+    if (trailers.exitCode !== 0) {
+      trail.verifierCommits.push({ sha, subject: subj.stdout.trim(), report: null });
+      continue;
+    }
     const trailerParts = trailers.stdout.split("\x00");
     const declaredEncoding = (trailerParts.pop() ?? "").trim();
     const subject = subj.stdout.trim();
@@ -348,13 +380,16 @@ async function commitMeta(
   io: WorkspaceIO,
   base: string,
   tip: string,
-): Promise<{ subjects: string[]; rfcs: string[] }> {
+): Promise<{ subjects: string[]; rfcs: string[] } | null> {
   const result = await gitEvidence(repoRoot, [
     "log",
     "--reverse",
     "--format=%s%x00%(trailers:key=X-RFC,valueonly,separator=%x20)",
     `${base}..${tip}`,
   ]);
+  // Unverifiable, not empty — a surgical refusal must not present a
+  // commit range with zero subjects/rfc trailers (CX-174).
+  if (result.exitCode === -1) return null;
   if (result.exitCode !== 0) return { subjects: [], rfcs: [] };
   const subjects: string[] = [];
   const rfcs = new Set<string>();
@@ -870,7 +905,16 @@ export async function collectDigest(
   const refused = (r: { exitCode: number | null; stderr: string }) =>
     r.exitCode !== 0 && r.stderr.startsWith(EVIDENCE_REFUSED_PREFIX);
 
-  const { expectedRemote } = await readCommittedPushConfig(repoRoot);
+  const pushConfig = await readCommittedPushConfig(repoRoot);
+  const { expectedRemote } = pushConfig ?? {};
+  if (pushConfig === null) {
+    diagnostics.push({
+      ruleId: "FLOW-PUSH-13",
+      severity: "error",
+      message:
+        "the committed forge.yaml is unverifiable — push.expectedRemote cannot anchor the trusted remote",
+    });
+  }
 
   const originProbe = await gitEvidence(repoRoot, ["remote", "get-url", "origin"]);
   const hasOrigin = originProbe.exitCode === 0;
@@ -879,6 +923,17 @@ export async function collectDigest(
       ruleId: "FLOW-PUSH-01",
       severity: "error",
       message: "no 'origin' remote — flow.push has nothing to push to",
+    });
+  }
+  // A refused probe is NOT "no origin" — it would silently skip the
+  // whole remote-identity parity and anchor block below, then a push
+  // resolves session config unchecked (CX-174).
+  if (refused(originProbe)) {
+    diagnostics.push({
+      ruleId: "FLOW-PUSH-13",
+      severity: "error",
+      message:
+        "'git remote get-url origin' is unverifiable — remote identity cannot be judged; parity and anchor checks skipped",
     });
   }
 
@@ -912,6 +967,17 @@ export async function collectDigest(
     );
     const sameSet = (a: Set<string> | null, b: Set<string> | null) =>
       a !== null && b !== null && a.size === b.size && [...a].every((x) => b.has(x));
+    // A null set on a proven origin is an unverifiable read — skipping
+    // the parity/anchor checks silently is exactly the collapse a
+    // surgical refusal produces (CX-174).
+    if (configured === null || fetchUrls === null || pushUrls === null) {
+      diagnostics.push({
+        ruleId: "FLOW-PUSH-13",
+        severity: "error",
+        message:
+          "the remote URL sets are unverifiable — the insteadOf-parity and expectedRemote anchor checks cannot run",
+      });
+    }
     if (configured !== null && fetchUrls !== null && !sameSet(configured, fetchUrls)) {
       diagnostics.push({
         ruleId: "FLOW-PUSH-09",
@@ -982,21 +1048,36 @@ export async function collectDigest(
   // `verifiedExcludes` stays null on every path — a verified remote tip
   // set cannot exist once transports are refused (CX-132) — so the tail
   // keeps the tracking-ref-relative view.
-  const developTail =
+  const developTailRead =
     developLocal === null
       ? []
       : await unpushedCommits(repoRoot, io, "develop", developRemote, false, null);
-  const mainTail =
+  const mainTailRead =
     mainLocal === null ? [] : await unpushedCommits(repoRoot, io, "main", mainRemote, false, null);
 
   // --- items: journal-attributed segments of the develop tail ---------------
   // Segments follow develop's first-parent chain: a back-merge brings main's
   // commits in through its second parent, and a fix cut's range lives on
   // main — index spans over the full (date-ordered) list would misattribute.
-  const developChain =
+  const developChainRead =
     developLocal === null
       ? []
       : await unpushedCommits(repoRoot, io, "develop", developRemote, true, null);
+  // A null tail/chain means the enumeration itself is unverifiable —
+  // degrading to [] would run the verifier trailer scan over NOTHING
+  // (CX-174). Fail the digest as unverifiable; the lists stay empty so
+  // downstream loops degrade visibly.
+  if (developTailRead === null || mainTailRead === null || developChainRead === null) {
+    diagnostics.push({
+      ruleId: "FLOW-PUSH-13",
+      severity: "error",
+      message:
+        "the commit tail enumeration is unverifiable — the evidence channel refused a rev-list; the verifier-trailer scan cannot be trusted to cover the pushed commits",
+    });
+  }
+  const developTail = developTailRead ?? [];
+  const mainTail = mainTailRead ?? [];
+  const developChain = developChainRead ?? [];
   const common = await commonGitDir(io, repoRoot);
   const journal = await readJournal(io, common);
   const tailIndex = new Map(developChain.map((sha, i) => [sha, i]));
@@ -1040,7 +1121,15 @@ export async function collectDigest(
         ? (boundary ?? "4b825dc642cb6eb9a060e54bf8d69288fbee4904")
         : developChain[segment.from - 1]!;
     const tip = developChain[segment.to]!;
-    const meta = await commitMeta(repoRoot, io, base, tip);
+    const metaRead = await commitMeta(repoRoot, io, base, tip);
+    if (metaRead === null) {
+      diagnostics.push({
+        ruleId: "FLOW-PUSH-13",
+        severity: "error",
+        message: `commit metadata for ${base.slice(0, 9)}..${tip.slice(0, 9)} is unverifiable — the item's subjects/rfc trailers cannot be proven`,
+      });
+    }
+    const meta = metaRead ?? { subjects: [], rfcs: [] };
     const cls = await classifyItem(
       repoRoot,
       io,

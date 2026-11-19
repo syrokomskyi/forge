@@ -19,6 +19,7 @@ that repository from the flow guard.</purpose>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1498: step 2 — network-only marker source + rejectedOrigin reporting</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
 </CHANGE_SUMMARY>
 */
 
@@ -77,6 +78,15 @@ export async function markerSource(
   _io: WorkspaceIO,
 ): Promise<{ source: string; rejectedOrigin: RejectedOriginKind | null }> {
   const url = await gitEvidence(repoRoot, ["remote", "get-url", "origin"]);
+  // exit -1 is "no git answer" — the basename fallback would then write a
+  // fabricated `source` into the marker while the real origin was simply
+  // unverifiable (CX-174). git's own nonzero (no origin configured) stays
+  // the honest fallback.
+  if (url.exitCode === -1) {
+    throw new Error(
+      `git remote get-url origin produced no answer — the marker source is unverifiable: ${url.stderr.trim()}`,
+    );
+  }
   const raw = url.exitCode === 0 ? url.stdout.trim() : "";
   if (raw.length === 0) {
     return { source: basename(repoRoot), rejectedOrigin: null };

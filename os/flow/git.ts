@@ -201,6 +201,7 @@ the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -614,12 +615,32 @@ export async function isBare(repoRoot: string, _io: WorkspaceIO): Promise<boolea
 /** Current branch short name; null on detached HEAD (symbolic-ref fails). */
 export async function currentBranch(repoRoot: string, _io: WorkspaceIO): Promise<string | null> {
   const result = await gitEvidence(repoRoot, ["symbolic-ref", "--short", "-q", "HEAD"]);
+  // exit -1 is "no git answer" — null would misread an unverifiable repo
+  // as detached HEAD (CX-174). On a plain non-repo the channel refuses
+  // the same way, and "no branch" is the honest answer there — the
+  // repoShaped discriminator separates the two (isBare's pattern).
+  if (result.exitCode === -1) {
+    if (!repoShaped(repoRoot)) return null;
+    throw new Error(
+      `git symbolic-ref HEAD produced no answer — the branch is unverifiable: ${result.stderr.trim()}`,
+    );
+  }
   return result.exitCode === 0 ? result.stdout.trim() : null;
 }
 
 /** True when HEAD has no commit yet (unborn branch). */
 export async function isUnborn(repoRoot: string, _io: WorkspaceIO): Promise<boolean> {
   const result = await gitEvidence(repoRoot, ["rev-parse", "--verify", "-q", "HEAD"]);
+  // exit -1 is "no git answer" — `true` would present an unverifiable
+  // repo as historyless (CX-174). A non-repo honestly has no history —
+  // repoShaped separates it (isBare's pattern). git's own nonzero
+  // (--verify -q exits 1 on unborn) stays the honest answer.
+  if (result.exitCode === -1) {
+    if (!repoShaped(repoRoot)) return true;
+    throw new Error(
+      `git rev-parse --verify -q HEAD produced no answer — the repo's history is unverifiable: ${result.stderr.trim()}`,
+    );
+  }
   return result.exitCode !== 0;
 }
 
@@ -668,6 +689,15 @@ export async function lastCommitAt(
   ref: string,
 ): Promise<string | null> {
   const result = await gitEvidence(repoRoot, ["log", "-1", "--format=%cI", ref]);
+  // exit -1 is "no git answer" — null would present an unverifiable ref
+  // as missing (CX-174). On a non-repo "missing" is honest — repoShaped
+  // separates it.
+  if (result.exitCode === -1) {
+    if (!repoShaped(repoRoot)) return null;
+    throw new Error(
+      `git log -1 ${ref} produced no answer — the ref is unverifiable: ${result.stderr.trim()}`,
+    );
+  }
   return result.exitCode === 0 && result.stdout.trim().length > 0 ? result.stdout.trim() : null;
 }
 
@@ -677,6 +707,16 @@ export async function branchExists(
   name: string,
 ): Promise<boolean> {
   const result = await gitEvidence(repoRoot, ["rev-parse", "--verify", "-q", `refs/heads/${name}`]);
+  // exit -1 is "no git answer" — `false` would present an unverifiable
+  // ref as absent (CX-174). On a non-repo "absent" is honest — repoShaped
+  // separates it. --verify -q exits 1 on a missing branch — that stays
+  // the honest false.
+  if (result.exitCode === -1) {
+    if (!repoShaped(repoRoot)) return false;
+    throw new Error(
+      `git rev-parse --verify -q refs/heads/${name} produced no answer — the branch is unverifiable: ${result.stderr.trim()}`,
+    );
+  }
   return result.exitCode === 0;
 }
 
