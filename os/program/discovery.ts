@@ -10,6 +10,7 @@ against schemas, and computes normative source hashes.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial program/packet discovery and parsing.</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
 </CHANGE_SUMMARY>
 */
 
@@ -194,11 +195,13 @@ export async function gitIsClean(workspaceRoot: string): Promise<boolean> {
   if (r.stdout.split("\n").some((line) => line.length > 0 && !line.startsWith("!! "))) {
     return false;
   }
-  const sessionRules = await sessionIgnoreRulePaths(workspaceRoot, async (paths) => {
-    const t = await verifierGit(workspaceRoot, ["ls-files", "-z", "--", ...paths]);
+  const sessionRules = await sessionIgnoreRulePaths(workspaceRoot, async (paths, root) => {
+    const t = await verifierGit(root, ["ls-files", "-z", "--", ...paths]);
     return t.exitCode === 0 ? new Set(t.stdout.split("\0").filter((p) => p.length > 0)) : null;
   });
-  return sessionRules.length === 0;
+  // `null` = toplevel unresolvable right after status answered — the
+  // clean verdict is unverifiable, never "clean" (CX-167).
+  return sessionRules !== null && sessionRules.length === 0;
 }
 
 export async function gitAncestorOf(

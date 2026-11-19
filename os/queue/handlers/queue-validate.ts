@@ -11,9 +11,6 @@ queued batch.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
-
-Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
   <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
 
 REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
@@ -29,12 +26,14 @@ gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
   <item>RFC-1350: review follow-ups — QUEUE-09 touched-set edge cases (empty window, quoted paths, rename source, malformed entries), strict baseline, manifest template/scope wording, generated artifacts resync</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <history>RFC-1140, RFC-1250</history>
 </CHANGE_SUMMARY>
 */
 
-import { execFileSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
+
+import { verifierGit } from "../../../src/utils/verifier-git.ts";
 
 import type {
   ForgeCommandInput,
@@ -139,13 +138,20 @@ const EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
  * Returns null on any git failure — the caller degrades to absence-only
  * warnings.
  */
-function touchedPackageRoots(workspaceRoot: string, manifestRelPath: string): Set<string> | null {
-  const git = (args: string[]): string =>
-    execFileSync("git", ["-C", workspaceRoot, ...args], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 15000,
-    });
+async function touchedPackageRoots(
+  workspaceRoot: string,
+  manifestRelPath: string,
+): Promise<Set<string> | null> {
+  // Judged channel — ambient execFileSync inherits session GIT_* selectors
+  // (GIT_DIR/GIT_INDEX_FILE would narrow or redirect the touched set and
+  // the QUEUE-09 stale-scope check would judge a forged window, CX-170).
+  const git = async (args: string[]): Promise<string> => {
+    const r = await verifierGit(workspaceRoot, args, { timeoutMs: 15_000 });
+    if (r.exitCode !== 0) {
+      throw new Error(r.stderr.trim() || `git ${args[0]} exited ${r.exitCode}`);
+    }
+    return r.stdout;
+  };
   const collect = (paths: Iterable<string>, into: Set<string>): void => {
     for (const p of paths) {
       // Git quotes paths containing specials ('?? "dir/fö"') — strip the
@@ -157,14 +163,9 @@ function touchedPackageRoots(workspaceRoot: string, manifestRelPath: string): Se
   try {
     // --diff-filter=A lists newest-first — the introduction commit is the
     // tail. --follow keeps the trail across manifest renames.
-    const introductions = git([
-      "log",
-      "--diff-filter=A",
-      "--follow",
-      "--format=%H",
-      "--",
-      manifestRelPath,
-    ])
+    const introductions = (
+      await git(["log", "--diff-filter=A", "--follow", "--format=%H", "--", manifestRelPath])
+    )
       .split("\n")
       .filter((l) => l.trim().length > 0);
     const since = introductions[introductions.length - 1]?.trim();
@@ -174,11 +175,11 @@ function touchedPackageRoots(workspaceRoot: string, manifestRelPath: string): Se
       // commit has no parent — fall back to the empty tree.
       let base = EMPTY_TREE_SHA;
       try {
-        base = git(["rev-parse", `${since}~1`]).trim() || EMPTY_TREE_SHA;
+        base = (await git(["rev-parse", `${since}~1`])).trim() || EMPTY_TREE_SHA;
       } catch {
         // root commit — diff against the empty tree
       }
-      const committed = git(["diff", "--name-status", `${base}..HEAD`]);
+      const committed = await git(["diff", "--name-status", `${base}..HEAD`]);
       for (const line of committed.split("\n")) {
         // R100/Cxx lines carry <status>\t<src>\t<dst>; others <status>\t<path>.
         collect(line.split("\t").slice(1), roots);
@@ -186,7 +187,7 @@ function touchedPackageRoots(workspaceRoot: string, manifestRelPath: string): Se
     }
     // --untracked-files=all: default porcelain collapses untracked dirs to
     // their top level ("?? packages/"), losing the package-root segment.
-    const uncommitted = git(["status", "--porcelain", "--untracked-files=all"]);
+    const uncommitted = await git(["status", "--porcelain", "--untracked-files=all"]);
     for (const line of uncommitted.split("\n")) {
       if (line.startsWith("!!") || line.length <= 3) continue;
       collect(line.slice(3).split(" -> "), roots);
@@ -253,7 +254,7 @@ export async function runQueueValidate(
             .filter((p): p is string => p !== undefined),
         ),
       ];
-      const touched = touchedPackageRoots(workspaceRoot, manifestRel);
+      const touched = await touchedPackageRoots(workspaceRoot, manifestRel);
       // Drift attribution needs at least one touched root — an empty
       // touched-set (fresh or uncommitted manifest at pre-flight, batch not
       // started) would flag every honest declaration.

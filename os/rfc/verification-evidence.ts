@@ -12,7 +12,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
   <item>RFC-1516: bind evidence reuse to the oldest replayed result and harden committed-envelope reads for rfc-1516</item>
   <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
 
@@ -52,7 +51,8 @@ The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close r17 refusal-polarity consumers — ADR stamp/validate twins + attested dirty verdict</item>
-  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391, RFC-1453, RFC-1458, RFC-1489</history>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391, RFC-1453, RFC-1458, RFC-1489, RFC-1516</history>
 </CHANGE_SUMMARY>
 */
 
@@ -305,13 +305,13 @@ export async function captureGitContext(
   // clean verdict.
   const sessionRules =
     status.exitCode === 0
-      ? await sessionIgnoreRulePaths(workspaceRoot, async (paths) => {
-          const t = await verifierGit(workspaceRoot, ["ls-files", "-z", "--", ...paths]);
+      ? await sessionIgnoreRulePaths(workspaceRoot, async (paths, root) => {
+          const t = await verifierGit(root, ["ls-files", "-z", "--", ...paths]);
           return t.exitCode === 0
             ? new Set(t.stdout.split("\0").filter((p) => p.length > 0))
             : null;
         })
-      : [];
+      : null;
   return {
     commit: commit.exitCode === 0 ? commit.stdout.trim() : "unknown",
     // A refused dirty verdict records `true` — the envelope is signed
@@ -322,6 +322,9 @@ export async function captureGitContext(
     workingTreeDirty:
       status.exitCode !== 0 ||
       status.stdout.split("\n").some((line) => line.length > 0 && !line.startsWith("!! ")) ||
+      // `null` = toplevel unresolvable right after status answered —
+      // the envelope attests dirty, never curated-clean (CX-167).
+      sessionRules === null ||
       sessionRules.length > 0,
   };
 }

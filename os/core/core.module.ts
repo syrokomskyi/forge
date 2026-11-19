@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1535: docs.archive self-stages both sides of every move pair — no half-staged EC-31 pairs (F-0038)</item>
   <item>RFC-1585: review wave — write-path corruptions, --check flag, scaffold hydration
 
 Independent fo-review (isolation: subagent) found: empty marker pairs lost
@@ -40,7 +39,8 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522, RFC-1528, RFC-1536</history>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522, RFC-1528, RFC-1535, RFC-1536</history>
 </CHANGE_SUMMARY>
 */
 
@@ -53,6 +53,11 @@ import type {
 } from "../../src/types.ts";
 import path from "node:path";
 import { restoreTrackedLockfile, execFileSyncAdapter } from "../mission/lockfile.ts";
+import {
+  closeEvidenceIndex,
+  evidenceAnchoredGit,
+  evidenceRepoPreflight,
+} from "../../src/utils/verifier-git.ts";
 import { writeFileIfChanged } from "../../src/utils/fs-idempotent.ts";
 import {
   FORGE_SKILLS,
@@ -899,7 +904,13 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "on mismatch); --verify --base <sha> additionally requires a commit " +
           "in base..HEAD carrying X-Policy-Digest: <sha256> when the surface advanced.",
         scope: "workspace",
-        reads: ["forge.yaml", ".forge/policy.digest", ".forge/pinned.yaml", "hooks/**", ".github/workflows/**"],
+        reads: [
+          "forge.yaml",
+          ".forge/policy.digest",
+          ".forge/pinned.yaml",
+          "hooks/**",
+          ".github/workflows/**",
+        ],
         writes: [".forge/policy.digest"],
         generates: [],
         cacheable: false,
@@ -1311,10 +1322,21 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
               if (restored) {
                 // RFC-1602 (F-0245): index-side counterpart — the restore put
                 // HEAD back on disk; without unstaging, the pre-restore prune
-                // stays staged and the lockfile sits MM.
-                await io.exec("git", ["reset", "-q", "--", "pnpm-lock.yaml"], {
-                  cwd: routedContext.workspaceRoot,
-                });
+                // stays staged and the lockfile sits MM. Anchored mutation:
+                // ambient exec inherits session GIT_* and could reset a
+                // foreign index (CX-170).
+                const lockPreflight = await evidenceRepoPreflight(routedContext.workspaceRoot);
+                if (lockPreflight !== null) {
+                  try {
+                    await evidenceAnchoredGit(
+                      routedContext.workspaceRoot,
+                      ["reset", "-q", "--", "pnpm-lock.yaml"],
+                      { preflight: lockPreflight },
+                    );
+                  } finally {
+                    closeEvidenceIndex(lockPreflight);
+                  }
+                }
                 if (outputFormat === "pretty") {
                   logger.info("  docs.archive: restored pnpm-lock.yaml to HEAD (safety net)");
                 }
@@ -1375,7 +1397,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             if (!dryRun && selection.candidates.length > 0) {
               const record = await recordDeferredRegen({
                 workspaceRoot: routedContext.workspaceRoot,
-                exec: (command, args, opts) => io.exec(command, args, opts),
                 movedPaths: [...deferredMovedPaths],
                 owners: selection.candidates,
               });
@@ -1417,7 +1438,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             const unstageable = await findUnstageablePaths({
               paths: stagePathList,
               workspaceRoot: routedContext.workspaceRoot,
-              exec: (command, args, opts) => io.exec(command, args, opts),
               exists: (relPath) => io.exists(path.join(routedContext.workspaceRoot, relPath)),
             });
             if (unstageable.length > 0) {
@@ -1445,7 +1465,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             const staged = await stageMovedPairs({
               movedPaths: stagePathList,
               workspaceRoot: routedContext.workspaceRoot,
-              exec: (command, args, opts) => io.exec(command, args, opts),
             });
             if (staged.error) {
               // Non-fatal — the commit-side EC-31 check is the safety net
@@ -1468,7 +1487,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
               ...(await sweepMmResidue({
                 paths: stagePathList,
                 workspaceRoot: routedContext.workspaceRoot,
-                exec: (command, args, opts) => io.exec(command, args, opts),
               })),
             );
             if (outputFormat === "pretty") {

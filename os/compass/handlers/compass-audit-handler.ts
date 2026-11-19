@@ -10,7 +10,6 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1094: audit work orders now carry the KEY_DECISIONS block alongside MODULE_CONTRACT and CHANGE_SUMMARY.</item>
   <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
   <item>RFC-1143: validate/plan/record apply filterLedgerEligiblePaths — ledger-ineligible authored paths (missions/, gitignored) are skipped with skippedIneligible diagnostics instead of failing COMPASS-AUDIT-01; record warns but still writes.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
@@ -50,25 +49,15 @@ evidence channel — this commit closes all root causes.
 
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
-  <history>RFC-0352, RFC-0556, RFC-1242</history>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <history>RFC-0352, RFC-0556, RFC-1094, RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 
-import { basename, dirname, isAbsolute, join, resolve, relative } from "node:path";
+import { join, resolve, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-import {
-  execFileSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  type Dirent,
-} from "../../../src/utils/sync-fs.ts";
-import {
-  evidenceConfigArgs,
-  verifierGit,
-  verifierGitEnv,
-  resolveGitBin,
-} from "../../../src/utils/verifier-git.ts";
+import { readdirSync, type Dirent } from "../../../src/utils/sync-fs.ts";
+import { verifierGit } from "../../../src/utils/verifier-git.ts";
 import { createCompassInventoryEntries } from "./compass-inventory.ts";
 import { resolveCompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
@@ -118,9 +107,10 @@ interface CompassAuditLedger {
 
 interface CompassAuditWorkOrderItem {
   path: string;
-  currentRevision: number;
+  /** `null` when neither registry nor git history could prove a revision — unverifiable, never "1" (CX-168). */
+  currentRevision: number | null;
   auditedRevision: number | null;
-  reason: "never-audited" | "revision-threshold-crossed";
+  reason: "never-audited" | "revision-threshold-crossed" | "revision-unverifiable";
   moduleContract: string;
   keyDecisions: string;
   changeSummary: string;
@@ -213,31 +203,27 @@ async function filterLedgerEligiblePaths(
   // must be committed-clean; when any cannot be proven, exclude
   // NOTHING — an over-inclusive ledger flags a legit path as audit-due
   // (visible, reviewable) while a silently skipped path stays invisible.
-  if (!(await ignoreRuleSourcesProven(workspaceRoot))) {
+  const proven = await ignoreRuleSourcesProven(workspaceRoot);
+  if (!proven) {
     return new Set(candidates);
   }
-  let ignored = new Set<string>();
-  try {
-    // verifierGitEnv — GIT_* selectors (GIT_DIR/GIT_WORK_TREE) cannot
-    // redirect the .gitignore lookup into a foreign checkout, and the
-    // resolved binary removes PATH substitution (CX-52/CX-122). The
-    // `-c` pins carry `core.excludesFile`/attrs file to the null
-    // device — the one ignore source pinnable by config (CX-163).
-    const stdout = execFileSync(
-      resolveGitBin(),
-      [...evidenceConfigArgs(["check-ignore"]), "check-ignore", "--stdin"],
-      {
-        cwd: workspaceRoot,
-        input: candidates.join("\n"),
-        encoding: "utf-8",
-        env: verifierGitEnv(),
-      },
-    );
-    ignored = new Set(stdout.split("\n").filter((l: string) => l.length > 0));
-  } catch {
-    // check-ignore exits 1 when nothing is ignored — treat all as eligible
-    ignored = new Set();
-  }
+  // The exclusion check itself runs on the judged channel (CX-166): the
+  // resolved binary and scrubbed env remove PATH/`GIT_*` redirection,
+  // `core.excludesFile`/`core.attributesFile` are pinned to the null
+  // device, `GIT_DIR`/`GIT_COMMON_DIR`/`GIT_WORK_TREE` carry the proven
+  // resolution anchors, and the fingerprint is re-proved immediately
+  // before the spawn — an `info/exclude` planted between the source
+  // check and this spawn reads as drift/refusal, never as a consulted
+  // rule source. `check-ignore` exits 1 when nothing matches; a refused
+  // (-1) or failed read means the exclusion set is unverifiable →
+  // exclude NOTHING (over-inclusive, visible).
+  const checked = await verifierGit(proven, ["check-ignore", "--stdin"], {
+    input: candidates.join("\n"),
+  });
+  const ignored =
+    checked.exitCode === 0
+      ? new Set(checked.stdout.split("\n").filter((l: string) => l.length > 0))
+      : new Set<string>();
   for (const p of candidates) {
     if (!ignored.has(p)) eligible.add(p);
   }
@@ -274,48 +260,36 @@ function listWorktreeGitignores(worktree: string): string[] {
 
 /**
  * Every `check-ignore` rule source must be committed-clean for its
- * exclusion verdict to be trusted (CX-163):
+ * exclusion verdict to be trusted (CX-163/CX-166):
  *
- * - `.git/info/exclude` is local-only BY DESIGN — never committed, so
- *   presence alone is unproven. Linked worktrees keep it in the common
- *   dir (`<common>/info/exclude`), resolved structurally through the
- *   gitfile's metadir.
+ * - `info/exclude` is local-only BY DESIGN — never committed, so
+ *   presence alone is unproven. It is a channel shape violation
+ *   (EVIDENCE_SHAPE_PATHS): the judged `check-ignore` spawn refuses on
+ *   it wherever the resolved gitdir/common dir puts it — a forged
+ *   metadir `commondir` cannot re-point that judgment because the
+ *   channel derives the common dir STRUCTURALLY, and a subdirectory
+ *   cwd resolves the parent's real gitdir through `--git-path`, not
+ *   the `join(cwd, ".git")` lookup that used to miss both (CX-166).
  * - Worktree `.gitignore` files must each be tracked AND clean — an
- *   untracked plant or dirty edit authors live rules. One path-scoped
- *   judged `status` answers both: any reported entry (or a refused
- *   read) means unproven.
- * - `core.excludesFile` is pinned to the null device on the spawn —
- *   no source check needed.
+ *   untracked plant or dirty edit authors live rules. The walk is
+ *   anchored at the channel-resolved TOPLEVEL (a subdirectory cwd
+ *   otherwise misses every parent-scope rule file, CX-166) and one
+ *   path-scoped judged `status` answers both untracked and dirty —
+ *   any reported entry (or a refused read) means unproven.
+ * - `core.excludesFile`/`core.attributesFile` are pinned to the null
+ *   device on the spawn — no source check needed.
+ *
+ * Returns the proven toplevel, or `null` when any rule source is
+ * unproven — the caller then excludes NOTHING (over-inclusive, visible).
  */
-async function ignoreRuleSourcesProven(workspaceRoot: string): Promise<boolean> {
-  const dotGit = join(workspaceRoot, ".git");
-  const excludeCandidates = [join(dotGit, "info", "exclude")];
-  try {
-    const st = statSync(dotGit);
-    if (st.isFile()) {
-      const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf-8").trim());
-      if (m !== null) {
-        const meta = isAbsolute(m[1]!.trim()) ? m[1]!.trim() : resolve(workspaceRoot, m[1]!.trim());
-        excludeCandidates.push(join(meta, "info", "exclude"));
-        if (basename(dirname(meta)) === "worktrees") {
-          excludeCandidates.push(join(dirname(dirname(meta)), "info", "exclude"));
-        }
-      }
-    }
-  } catch {
-    /* .git absent/unreadable — the status probe below judges the rest */
-  }
-  for (const p of excludeCandidates) {
-    try {
-      if (statSync(p).isFile()) return false;
-    } catch {
-      /* absent */
-    }
-  }
-  const gitignores = listWorktreeGitignores(workspaceRoot);
-  if (gitignores.length === 0) return true;
-  const r = await verifierGit(workspaceRoot, ["status", "--porcelain", "-z", "--", ...gitignores]);
-  return r.exitCode === 0 && r.stdout.length === 0;
+async function ignoreRuleSourcesProven(workspaceRoot: string): Promise<string | null> {
+  const top = await verifierGit(workspaceRoot, ["rev-parse", "--show-toplevel"]);
+  const workTree = top.exitCode === 0 ? top.stdout.trim() : "";
+  if (workTree.length === 0) return null;
+  const gitignores = listWorktreeGitignores(workTree);
+  if (gitignores.length === 0) return workTree;
+  const r = await verifierGit(workTree, ["status", "--porcelain", "-z", "--", ...gitignores]);
+  return r.exitCode === 0 && r.stdout.length === 0 ? workTree : null;
 }
 
 // RFC-1143: partition authored entries into ledger-eligible and ineligible
@@ -387,7 +361,10 @@ export async function runCompassAuditPlan(
       entry.path,
     );
 
-    if (!isAuditDue(currentRevision, auditedRevision, threshold)) {
+    // `null` revision — the channel could not prove history at all
+    // (CX-168). The item is due by definition (unverifiable is never
+    // clean) and must surface, not skip.
+    if (currentRevision !== null && !isAuditDue(currentRevision, auditedRevision, threshold)) {
       continue;
     }
 
@@ -401,7 +378,12 @@ export async function runCompassAuditPlan(
       path: entry.path,
       currentRevision,
       auditedRevision,
-      reason: auditedRevision === null ? "never-audited" : "revision-threshold-crossed",
+      reason:
+        currentRevision === null
+          ? "revision-unverifiable"
+          : auditedRevision === null
+            ? "never-audited"
+            : "revision-threshold-crossed",
       moduleContract,
       keyDecisions,
       changeSummary,
@@ -475,6 +457,16 @@ export async function runCompassAuditRecord(
     context.workspaceRoot,
     filePath,
   );
+
+  // A `null` revision is unverifiable history (CX-168) — recording it
+  // would write fabricated evidence into the ledger. Refuse the write;
+  // the operator fixes the repo surface and re-runs.
+  if (revision === null) {
+    context.logger.error(
+      `[compass.audit.record] ${filePath}: revision unverifiable — git history refused; refusing to record`,
+    );
+    return { exitCode: 1, data: { path: filePath, action: "recorded" } };
+  }
 
   const agent = agentFlag ?? (await getGitUser(context.workspaceRoot));
   const ledger = await loadLedger(context.workspaceRoot);
@@ -557,6 +549,17 @@ export async function runCompassAuditBaseline(
       context.workspaceRoot,
       entry.path,
     );
+
+    // `null` revision — unverifiable history (CX-168): seeding a
+    // fabricated number would stamp unproven evidence as audited.
+    // Skip the entry; the next baseline re-tries once the channel
+    // answers.
+    if (revision === null) {
+      context.logger.warn(
+        `[compass.audit.baseline] ${entry.path}: revision unverifiable — skipped`,
+      );
+      continue;
+    }
 
     ledger.entries.push({
       path: entry.path,
@@ -675,11 +678,30 @@ export async function runCompassAuditValidate(
       entry.path,
     );
 
+    const severity = strict ? "error" : "warning";
+    // A `null` revision means the judged channel could not prove the
+    // file's history at all (CX-168) — that is a structural failure of
+    // the audit gate, never "audit due at revision 1". Report it as
+    // its own unverifiable diagnostic so a refused read can never pass
+    // as a clean ledger.
+    if (currentRevision === null) {
+      context.logger[strict ? "error" : "warn"](
+        `[compass.audit.validate] COMPASS-AUDIT-02: ${entry.path}: revision unverifiable — git history refused`,
+      );
+      diagnostics.push({
+        ruleId: "COMPASS-AUDIT-02",
+        severity,
+        file: entry.path,
+        message: "Compass audit unverifiable: git history refused — the revision cannot be proven",
+        fix: "fix: restore the repo evidence surface (remove forged .git metadata/config), then re-run compass.audit.validate",
+      });
+      continue;
+    }
+
     if (!isAuditDue(currentRevision, auditedRevision, ledger.revisionThreshold)) {
       continue;
     }
 
-    const severity = strict ? "error" : "warning";
     context.logger[strict ? "error" : "warn"](
       `[compass.audit.validate] COMPASS-AUDIT-01: ${entry.path}: audit overdue (current=${currentRevision}, audited=${auditedRevision ?? "never"}, threshold=${ledger.revisionThreshold})`,
     );

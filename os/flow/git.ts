@@ -160,7 +160,6 @@ r9-remediated channel — this commit closes both root causes.
   channel-wide.
 
 The independent r10 probe file and acceptance report land in the
-follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
 
 Independent clean-context verification (round 11, candidate 029219ca9)
@@ -201,6 +200,7 @@ the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -231,6 +231,7 @@ import {
   EVIDENCE_REFUSED_PREFIX,
   isEvidenceGitQuery,
   isIndexConsultingRead,
+  repoShaped,
 } from "../../src/utils/verifier-git.ts";
 
 /**
@@ -593,7 +594,21 @@ export async function topLevel(cwd: string, _io: WorkspaceIO): Promise<string | 
 
 export async function isBare(repoRoot: string, _io: WorkspaceIO): Promise<boolean> {
   const result = await gitEvidence(repoRoot, ["rev-parse", "--is-bare-repository"]);
-  return result.exitCode === 0 && result.stdout.trim() === "true";
+  // A refused/failed read on a REPO-SHAPED dir is "unverifiable", never
+  // "not bare" — the r19 polarity bug let an unproven surface walk past
+  // the bare-repository gates in flow.install/flow.check/repo-kind
+  // (CX-171). A plain non-repo is a different honest answer: git would
+  // exit 128 "not a git repository" — the fs-level repoShaped walk
+  // separates the two on the same -1 (CX-151's discriminator), so a
+  // folder that was never a repo still reaches the caller's own
+  // not-a-repo diagnostic instead of crashing here.
+  if (result.exitCode !== 0) {
+    if (!repoShaped(repoRoot)) return false;
+    throw new Error(
+      `git rev-parse --is-bare-repository failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
+    );
+  }
+  return result.stdout.trim() === "true";
 }
 
 /** Current branch short name; null on detached HEAD (symbolic-ref fails). */
@@ -933,11 +948,19 @@ export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<Di
   // Session-authored ignore rules: an untracked `.gitignore` can hide
   // itself from status entirely, so the fs walk + tracked-set check is
   // the only honest enumeration (CX-142). A failed tracked read counts
-  // every rule as session-authored — fail closed.
-  const sessionRules = await sessionIgnoreRulePaths(worktree, async (paths) => {
-    const r = await gitEvidence(worktree, ["ls-files", "-z", "--", ...paths]);
+  // every rule as session-authored — fail closed. `null` means the
+  // worktree toplevel could not be resolved on the channel that JUST
+  // answered status — the dirty set is unverifiable, so the verdict
+  // must not reach a caller as a clean-ish entry list (CX-167).
+  const sessionRules = await sessionIgnoreRulePaths(worktree, async (paths, root) => {
+    const r = await gitEvidence(root, ["ls-files", "-z", "--", ...paths]);
     return r.exitCode === 0 ? new Set(r.stdout.split("\0").filter((p) => p.length > 0)) : null;
   });
+  if (sessionRules === null) {
+    throw new Error(
+      "git status --porcelain succeeded but the worktree toplevel became unresolvable — dirty verdict unverifiable",
+    );
+  }
   for (const p of sessionRules) {
     if (entries.some((e) => e.slice(3) === p) || toleratedState.includes(p)) continue;
     // A session-authored rule under `.forge/` can only hide paths the
