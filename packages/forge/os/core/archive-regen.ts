@@ -13,7 +13,6 @@ line). Manifest-generation logic itself is never duplicated here.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>F-0126: tighten owner predicate — generates[] or all-generated writes[]; required flags must be REGEN_FLAGS-covered; excluded[] diagnostics</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
   <item>RFC-1535: stageMovedPairs — self-staging helper for move pairs (F-0038)</item>
@@ -28,6 +27,7 @@ git add, the lockfile restore gained its index-side counterpart, and a
 post-staging sweep surfaces MM residue with the git show : remediation.
 
 RFC-1602</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <history>RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -37,8 +37,13 @@ import path from "node:path";
 import picomatch from "picomatch";
 import { hasGeneratedMarker } from "../../src/utils/generated-marker.ts";
 import { loadLiveCommandInventory } from "../../src/utils/command-inventory.ts";
+import {
+  closeEvidenceIndex,
+  evidenceAnchoredGit,
+  evidenceRepoPreflight,
+  verifierGit,
+} from "../../src/utils/verifier-git.ts";
 import type {
-  ExecResult,
   ForgeFlagValue,
   ForgeRegisteredCommandInfo,
   ForgeRuntimeContext,
@@ -266,13 +271,20 @@ export async function runArchiveRegen(options: {
 export async function stageMovedPairs(options: {
   movedPaths: string[];
   workspaceRoot: string;
-  exec: (command: string, args: string[], opts?: { cwd?: string }) => Promise<ExecResult>;
 }): Promise<{ staged: number; error?: string }> {
-  const { movedPaths, workspaceRoot, exec } = options;
+  const { movedPaths, workspaceRoot } = options;
   if (movedPaths.length === 0) return { staged: 0 };
+  // Anchored mutation on the judged channel — the ambient exec layer
+  // inherits the session's `GIT_*`, so `git add` could stage into a
+  // foreign index or under a hostile env (CX-170). A refused surface
+  // reports an error, never a fabricated `staged`.
+  const preflight = await evidenceRepoPreflight(workspaceRoot);
+  if (preflight === null) {
+    return { staged: 0, error: "repo surface unverifiable — refusing to stage" };
+  }
   try {
-    const result = await exec("git", ["add", "-A", "--", ...movedPaths], {
-      cwd: workspaceRoot,
+    const result = await evidenceAnchoredGit(workspaceRoot, ["add", "-A", "--", ...movedPaths], {
+      preflight,
     });
     if (result.exitCode !== 0) {
       return { staged: 0, error: result.stderr || `git add exit ${result.exitCode}` };
@@ -280,6 +292,8 @@ export async function stageMovedPairs(options: {
     return { staged: movedPaths.length };
   } catch (error) {
     return { staged: 0, error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    closeEvidenceIndex(preflight);
   }
 }
 
@@ -301,24 +315,22 @@ export interface DeferredRegenRecord {
   owners: DeferredRegenOwner[];
 }
 
-export type RegenExec = (
-  command: string,
-  args: string[],
-  opts?: { cwd?: string },
-) => Promise<ExecResult>;
-
-async function gitCommonDir(workspaceRoot: string, exec: RegenExec): Promise<string | null> {
-  const result = await exec("git", ["rev-parse", "--git-common-dir"], { cwd: workspaceRoot });
+async function gitCommonDir(workspaceRoot: string): Promise<string | null> {
+  // Judged channel — ambient exec inherits session GIT_* selectors that
+  // could point the common dir at a foreign gitdir and write the
+  // deferred-regen record outside the proven repo (CX-170).
+  const result = await verifierGit(workspaceRoot, [
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-common-dir",
+  ]);
   if (result.exitCode !== 0) return null;
   const dir = result.stdout.trim();
-  return dir.length === 0 ? null : path.resolve(workspaceRoot, dir);
+  return dir.length === 0 ? null : dir;
 }
 
-export async function deferredRegenFilePath(
-  workspaceRoot: string,
-  exec: RegenExec,
-): Promise<string | null> {
-  const dir = await gitCommonDir(workspaceRoot, exec);
+export async function deferredRegenFilePath(workspaceRoot: string): Promise<string | null> {
+  const dir = await gitCommonDir(workspaceRoot);
   return dir ? path.join(dir, "forge", "deferred-regen.json") : null;
 }
 
@@ -329,11 +341,10 @@ export async function deferredRegenFilePath(
  */
 export async function recordDeferredRegen(options: {
   workspaceRoot: string;
-  exec: RegenExec;
   movedPaths: string[];
   owners: DeferredRegenOwner[];
 }): Promise<{ file: string } | null> {
-  const file = await deferredRegenFilePath(options.workspaceRoot, options.exec);
+  const file = await deferredRegenFilePath(options.workspaceRoot);
   if (!file) return null;
   let existing: DeferredRegenRecord | null = null;
   try {
@@ -358,9 +369,8 @@ export async function recordDeferredRegen(options: {
  */
 export async function consumeDeferredRegen(options: {
   workspaceRoot: string;
-  exec: RegenExec;
 }): Promise<{ record: DeferredRegenRecord; file: string } | null> {
-  const file = await deferredRegenFilePath(options.workspaceRoot, options.exec);
+  const file = await deferredRegenFilePath(options.workspaceRoot);
   if (!file || !existsSync(file)) return null;
   try {
     const record = JSON.parse(readFileSync(file, "utf8")) as DeferredRegenRecord;
@@ -387,14 +397,14 @@ export function clearDeferredRegen(file: string): void {
 export async function findUnstageablePaths(options: {
   paths: string[];
   workspaceRoot: string;
-  exec: RegenExec;
   exists: (relPath: string) => Promise<boolean>;
 }): Promise<string[]> {
-  const { paths, workspaceRoot, exec, exists } = options;
+  const { paths, workspaceRoot, exists } = options;
+  // Judged channel — a refused `ls-files` reports every missing-on-disk
+  // path as unstageable (fail-closed: archive refuses before staging),
+  // never a forged-empty tracked set (CX-170).
   const tracked = new Set(
-    (await exec("git", ["ls-files"], { cwd: workspaceRoot })).stdout
-      .split("\n")
-      .filter((l) => l.length > 0),
+    (await verifierGit(workspaceRoot, ["ls-files"])).stdout.split("\n").filter((l) => l.length > 0),
   );
   const unstageable: string[] = [];
   for (const p of paths) {
@@ -411,14 +421,17 @@ export async function findUnstageablePaths(options: {
 export async function sweepMmResidue(options: {
   paths: string[];
   workspaceRoot: string;
-  exec: RegenExec;
 }): Promise<string[]> {
-  const { paths, workspaceRoot, exec } = options;
+  const { paths, workspaceRoot } = options;
   if (paths.length === 0) return [];
-  const status = await exec("git", ["status", "--porcelain", "--", ...paths], {
-    cwd: workspaceRoot,
-  });
+  const status = await verifierGit(workspaceRoot, ["status", "--porcelain", "--", ...paths]);
   const warnings: string[] = [];
+  if (status.exitCode !== 0) {
+    // A refused/unreadable status must surface as a diagnostic, never as
+    // a forged-clean sweep (CX-170).
+    warnings.push("MM-residue sweep unverifiable — git status refused or failed");
+    return warnings;
+  }
   for (const line of status.stdout.split("\n")) {
     if (line.length < 3) continue;
     const [x, y] = [line[0], line[1]];

@@ -85,7 +85,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { verifierGit, verifierScratchGit } from "../../../src/utils/verifier-git.ts";
+import { repoShaped, verifierGit, verifierScratchGit } from "../../../src/utils/verifier-git.ts";
 import { listDirtyPaths } from "../../compass/handlers/git-revision.ts";
 import { collectDigest } from "../../flow/digest.ts";
 
@@ -138,8 +138,14 @@ describe("CX-151/152 — listDirtyPaths refused-surface downgrade", () => {
   it("control: a genuine non-repo reports not-a-repo, not refused", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "cx16-norepo-"));
     tmpdirs.push(root);
+    // The control needs a genuinely repo-free ancestor space: a
+    // transient `.git` or bare signature above the tmpdir (parallel
+    // runs share /tmp) makes the dir repo-SHAPED, where refused IS the
+    // honest verdict — assert the discriminator itself, then the
+    // verdict follows whatever the fs level proved.
+    const shaped = repoShaped(root);
     const r = await listDirtyPaths(root);
-    expect(r.refused).toBe(false);
+    expect(r.refused).toBe(shaped);
     expect(r.paths).toBeNull();
   });
 

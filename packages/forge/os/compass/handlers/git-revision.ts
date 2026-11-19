@@ -11,7 +11,6 @@ plus getFileRevisionFromHistory and the porcelain dirty-path helpers
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
   <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
 
@@ -51,7 +50,8 @@ The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
-  <history>RFC-0352, RFC-0556</history>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <history>RFC-0352, RFC-0556, RFC-1318</history>
 </CHANGE_SUMMARY>
 */
 
@@ -98,7 +98,14 @@ export interface DirtyPathResult {
 
 /** Paths with uncommitted changes under `repoRoot` — see DirtyPathResult. */
 export async function listDirtyPaths(repoRoot: string): Promise<DirtyPathResult> {
-  const r = await verifierGit(repoRoot, ["status", "--porcelain"]);
+  // Anchor the enumeration at the worktree toplevel — porcelain paths
+  // are cwd-relative by default, so a subdirectory cwd would emit
+  // `../`-truncated bases `isDirtyPath` can never match against
+  // repo-relative callers (CX-167). A refused/absent resolution falls
+  // back to the given cwd — the status call below re-judges it anyway.
+  const top = await repoTopLevel(repoRoot);
+  const scanRoot = top ?? repoRoot;
+  const r = await verifierGit(scanRoot, ["status", "--porcelain"]);
   if (r.exitCode !== 0) {
     // Not-a-repo answers the same non-zero way a refused channel does —
     // `git rev-parse` separates the two (a plain missing repo must still
@@ -137,10 +144,25 @@ export async function listDirtyPaths(repoRoot: string): Promise<DirtyPathResult>
   // walk + tracked-set check can prove a rule session-authored, and it
   // always counts as dirt (CX-142). A failed tracked read counts every
   // found rule — fail closed.
-  const sessionRules = await sessionIgnoreRulePaths(repoRoot, async (paths) => {
-    const t = await verifierGit(repoRoot, ["ls-files", "-z", "--", ...paths]);
+  // Session-authored ignore rules: an untracked `.gitignore` hides
+  // itself and every covered path from status entirely — only an fs
+  // walk + tracked-set check can prove a rule session-authored, and it
+  // always counts as dirt (CX-142). A failed tracked read counts every
+  // found rule — fail closed. `null` means the worktree toplevel could
+  // not be resolved on the channel that JUST answered status — a
+  // mid-call sabotage class; the dirty set is unverifiable, not empty
+  // (CX-167).
+  const sessionRules = await sessionIgnoreRulePaths(repoRoot, async (paths, root) => {
+    const t = await verifierGit(root, ["ls-files", "-z", "--", ...paths]);
     return t.exitCode === 0 ? new Set(t.stdout.split("\0").filter((p) => p.length > 0)) : null;
   });
+  if (sessionRules === null) {
+    return {
+      paths: null,
+      refused: true,
+      reason: "worktree toplevel unresolvable — session ignore-rule set is unverifiable",
+    };
+  }
   return { paths: [...new Set([...base, ...sessionRules])], refused: false };
 }
 
@@ -158,7 +180,18 @@ async function runGit(cwd: string, args: string[]): Promise<string> {
   return r.stdout.trimEnd();
 }
 
-export async function getFileRevisionFromHistory(cwd: string, repoPath: string): Promise<number> {
+/**
+ * Count of history revisions touching `repoPath` — `null` when the
+ * history cannot be read (refused channel, dead git). `1` means "no
+ * recorded history" — a real answer — and is only ever returned when
+ * the channel genuinely succeeded with empty output. A refused read
+ * collapsed to `1` let audit gates treat sabotage as a current/clean
+ * revision (CX-168).
+ */
+export async function getFileRevisionFromHistory(
+  cwd: string,
+  repoPath: string,
+): Promise<number | null> {
   try {
     const output = await runGit(cwd, [
       "log",
@@ -167,7 +200,7 @@ export async function getFileRevisionFromHistory(cwd: string, repoPath: string):
       "--format=%H",
       "--",
       repoPath,
-    ]).catch(() => "");
+    ]);
 
     if (!output) {
       return 1;
@@ -176,7 +209,7 @@ export async function getFileRevisionFromHistory(cwd: string, repoPath: string):
     const revisions = output.split("\n").filter(Boolean).length;
     return Math.max(1, revisions);
   } catch {
-    return 1;
+    return null;
   }
 }
 
@@ -216,7 +249,13 @@ async function loadPathsCurrent(cwd: string): Promise<PathsCurrent> {
 }
 
 export interface RevisionByPathResult {
-  revision: number;
+  /**
+   * The file's revision — `null` when neither the registry nor git
+   * history could prove it (refused channel, dead git). Callers treat
+   * `null` as UNVERIFIABLE — never as "revision 1" or "no history"
+   * (CX-168).
+   */
+  revision: number | null;
   entityId: string | null;
   contentHash: string;
 }

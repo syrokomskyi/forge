@@ -13,11 +13,12 @@ because a product cannot know the system's name.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1510: step 3 — develop-branch outbox scan and deduplicated task creation</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
   <item>RFC-1510: close RFC-1510 review r1 findings — folder crash guard, ls-tree allowlist, OUTBOX-02 on develop</item>
   <item>RFC-1510: close RFC-1510 review r2 — declare OUTBOX-02 in scan rules, flat-scope test, readdir TOCTOU guard</item>
   <item>RFC-1541: version-set@2 contracts with validator and pin-drift scenario checks</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <history>RFC-1510</history>
 </CHANGE_SUMMARY>
 */
 
@@ -25,6 +26,7 @@ import path from "node:path";
 import YAML from "yaml";
 
 import { resolveIo } from "../../../src/utils/io.ts";
+import { verifierGit } from "../../../src/utils/verifier-git.ts";
 import type {
   Diagnostic,
   ForgeCommandInput,
@@ -114,10 +116,20 @@ function systemIdNeedleFor(id: string): RegExp {
   return new RegExp(`(^|[^a-z0-9-])${escaped}([^a-z0-9-]|$)`);
 }
 
-/** Committed file contents on the product's develop, or null when unreadable. */
-async function gitShow(io: WorkspaceIO, repo: string, spec: string): Promise<string | null> {
-  const res = await io.exec("git", ["show", spec], { cwd: repo });
-  return res.exitCode === 0 ? res.stdout : null;
+/**
+ * Committed file contents on the product's develop — `null` when
+ * unreadable, `refused` when the judged channel rejected the repo's
+ * surface (session-forged `.git` state; CX-170). The ambient `io.exec`
+ * inherited `process.env`, so a session `GIT_DIR`/`GIT_WORK_TREE` could
+ * serve a foreign repo's `develop:` bytes as the product's committed
+ * evidence — the channel scrubs and re-proves instead.
+ */
+async function gitShow(
+  repo: string,
+  spec: string,
+): Promise<{ stdout: string | null; refused: boolean }> {
+  const res = await verifierGit(repo, ["show", spec]);
+  return { stdout: res.exitCode === 0 ? res.stdout : null, refused: res.exitCode === -1 };
 }
 
 export async function runSystemOutboxScan(
@@ -170,8 +182,8 @@ export async function runSystemOutboxScan(
       }
       const productRoot = path.isAbsolute(folder) ? folder : path.resolve(map.root, folder);
 
-      // A stale products.local.yaml folder must warn, not crash — io.exec
-      // rejects on a nonexistent cwd before git ever runs.
+      // A stale products.local.yaml folder must warn, not crash — the
+      // channel refuses a nonexistent cwd before git ever runs.
       let isDir = false;
       try {
         isDir = (await io.stat(productRoot)).isDirectory;
@@ -189,17 +201,22 @@ export async function runSystemOutboxScan(
         continue;
       }
 
-      let tree: Awaited<ReturnType<WorkspaceIO["exec"]>>;
-      try {
-        tree = await io.exec("git", ["ls-tree", "--name-only", "develop", `${OUTBOX_DIR}/`], {
-          cwd: productRoot,
-        });
-      } catch {
+      // Judged channel — ambient io.exec inherits the session's GIT_*,
+      // which would point `develop` at a foreign object store (CX-170).
+      // A refusal is unverifiable, not "no entries": warn, never skip
+      // silently.
+      const tree = await verifierGit(productRoot, [
+        "ls-tree",
+        "--name-only",
+        "develop",
+        `${OUTBOX_DIR}/`,
+      ]);
+      if (tree.exitCode === -1) {
         diagnostics.push(
           diag(
             "SYSTEM-OUTBOX-04",
             "warning",
-            `product '${product.id}' is not a readable git checkout — skipped`,
+            `product '${product.id}' repo surface refused evidence — skipped (unverifiable)`,
           ),
         );
         continue;
@@ -218,9 +235,9 @@ export async function runSystemOutboxScan(
       // SYSTEM-OUTBOX-03 — a product file must never name the system. The
       // check is limited to forge.yaml and outbox entries: older prose in
       // product docs is deliberately out of scope (audit A2).
-      const forgeYaml = await gitShow(io, productRoot, "develop:forge.yaml");
+      const forgeYaml = await gitShow(productRoot, "develop:forge.yaml");
       const systemIdNeedle = systemIdNeedleFor(map.system.id);
-      if (forgeYaml !== null && systemIdNeedle.test(forgeYaml)) {
+      if (forgeYaml.stdout !== null && systemIdNeedle.test(forgeYaml.stdout)) {
         diagnostics.push(
           diag(
             "SYSTEM-OUTBOX-03",
@@ -235,7 +252,18 @@ export async function runSystemOutboxScan(
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => l.endsWith(".yaml"))) {
-        const raw = await gitShow(io, productRoot, `develop:${rel}`);
+        const entry = await gitShow(productRoot, `develop:${rel}`);
+        if (entry.refused) {
+          diagnostics.push(
+            diag(
+              "SYSTEM-OUTBOX-04",
+              "warning",
+              `product '${product.id}' repo surface refused evidence mid-scan — remaining entries unverifiable`,
+            ),
+          );
+          break;
+        }
+        const raw = entry.stdout;
         if (raw === null) continue;
         if (systemIdNeedle.test(raw)) {
           diagnostics.push(

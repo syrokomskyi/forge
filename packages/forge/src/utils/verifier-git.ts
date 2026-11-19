@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r15 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -41,6 +41,7 @@ import {
   readFileSync,
   readlinkSync,
   readSync,
+  realpathSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -629,6 +630,68 @@ export interface EvidenceFingerprint {
   /** The ambient `.git/index` the claims rebuild enumerated — resolved path + bytes. */
   indexPath: string | null;
   indexBytes: Buffer | null;
+  /**
+   * How the resolved `gitDir` was reached (CX-171): `"worktree"` — a
+   * `.git` node (dir or gitfile) at some ancestor resolved it;
+   * `"selfdir"` — git self-discovered the gitdir with no worktree node,
+   * so bareness is a topological fact, not the `core.bare` config claim;
+   * `"unknown"` — `gitDir` is null or the walk could not re-derive the
+   * resolution (the judge refuses that pairing).
+   */
+  topology: RepoTopology;
+}
+
+/**
+ * How the resolved gitdir was discovered — see `classifyTopology`.
+ */
+export type RepoTopology = "worktree" | "selfdir" | "unknown";
+
+/**
+ * Re-walk the ancestor chain git's own setup walks, from `repoRoot`
+ * upward (CX-171): at each level a `.git` NODE (dir or file — a gitfile
+ * counts; git follows either) means worktree discovery resolved the
+ * repository — non-bare, and that level IS the worktree toplevel
+ * (`--show-toplevel` cannot be asked under a pinned `GIT_DIR`: with no
+ * worktree selector git treats the CWD itself as the implicit worktree
+ * and answers the subdir — the same trap `GIT_WORK_TREE=<gitdir>` was
+ * on bare, CX-162/CX-167). Reaching the resolved `gitDir` itself first
+ * means git self-discovered it as a bare-shaped gitdir — no worktree
+ * node exists anywhere, so `core.bare` claims in its config are the
+ * only thing telling git otherwise; topology reports bare instead. The
+ * OLD name-shape check (`basename == ".git"`, parent `worktrees/`)
+ * misclassified both directions: a bare repo named `.git` read as a
+ * worktree metadir, and a bare repo under a `worktrees/`-named parent
+ * read as a linked worktree. Comparison is realpath-normalized so a
+ * symlinked `repoRoot` component cannot skip the gitdir level.
+ */
+function classifyTopology(
+  repoRoot: string,
+  gitDir: string,
+): { topology: RepoTopology; workTree: string | null } {
+  const real = (p: string) => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return p;
+    }
+  };
+  const gitDirReal = real(gitDir);
+  for (let level = path.resolve(repoRoot); ;) {
+    try {
+      const st = lstatSync(path.join(level, ".git"));
+      if (st.isDirectory() || st.isFile() || st.isSymbolicLink()) {
+        return { topology: "worktree", workTree: level };
+      }
+    } catch {
+      /* no `.git` node at this level */
+    }
+    if (level === gitDir || real(level) === gitDirReal) {
+      return { topology: "selfdir", workTree: null };
+    }
+    const parent = path.dirname(level);
+    if (parent === level) return { topology: "unknown", workTree: null };
+    level = parent;
+  }
 }
 
 /**
@@ -1247,6 +1310,14 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
       "--all-objects",
     ],
   },
+  // `check-ignore` is a pure read — ignore-rule matching against
+  // `.gitignore`/`info/exclude`/`core.excludesFile`, no drivers, no
+  // writes. `--stdin` reads piped pathnames; the spawn's stdin is
+  // caller-supplied `opts.input` (or EOF), never a hang (CX-166: the
+  // audit gate's exclusion check runs ON the channel so its
+  // fingerprint re-prove bounds the rule-source TOCTOU the same way
+  // every other read's is bounded).
+  { prefix: ["check-ignore"] },
 ];
 
 /**
@@ -2106,8 +2177,8 @@ export function judgeEvidenceRepoSurface(
       `branch.${headBranch}.pushremote=`,
     );
   }
-  // `core.bare` is a DERIVED pin, not a blanket false (CX-162): the
-  // unconditional `core.bare=` made `rev-parse --is-bare-repository`
+  // `core.bare` is a DERIVED pin, not a blanket false (CX-162/CX-171):
+  // the unconditional `core.bare=` made `rev-parse --is-bare-repository`
   // answer "false" on a genuinely bare repo on a perfectly healthy
   // channel — the channel itself emitting fabricated evidence, no
   // refusal needed, and every bare-aware consumer (`detectRepoKind`,
@@ -2115,17 +2186,18 @@ export function judgeEvidenceRepoSurface(
   // from filesystem paths git never serves. Bareness is a TOPOLOGICAL
   // fact computed from the anchored resolution, never the config claim
   // (a session `core.bare` claim is neutralized to empty by the key
-  // loop above, and this pin lands last so it wins): a `.git` FILE is
-  // a gitfile — worktree layout; `<wt>/.git` → non-bare;
-  // `<common>/worktrees/<id>` → non-bare; any other resolved gitdir →
-  // bare. The pin still lands last, so a session `core.bare=false`
-  // claim inside a real bare repo's config cannot flip it either.
-  const bareGitDir = fingerprint?.gitDir ?? null;
-  const derivedBare =
-    bareGitDir !== null &&
-    fingerprint?.dotGit?.kind !== "file" &&
-    path.basename(bareGitDir) !== ".git" &&
-    path.basename(path.dirname(bareGitDir)) !== "worktrees";
+  // loop above, and this pin lands last so it wins): `"worktree"`
+  // topology → false; `"selfdir"` — git found the gitdir itself with no
+  // `.git` node to hang a worktree on — is bare no matter what the
+  // session wrote in `core.bare` (a planted `bare=false` inside a real
+  // bare repo otherwise reopens the exempt-marker path, CX-171).
+  if (fingerprint?.gitDir != null && fingerprint.topology === "unknown") {
+    // Git resolved a gitdir the ancestor walk cannot re-derive — the
+    // resolution is unexplainable under the captured surface, so no
+    // pin can be proven right; refuse rather than guess (CX-171).
+    shapeViolations.push("topology");
+  }
+  const derivedBare = fingerprint?.topology === "selfdir";
   configArgs.push("-c", `core.bare=${derivedBare ? "true" : ""}`);
   return { configArgs, hookArgs, refusedKeys, shapeViolations, warnedShape, objectFormat };
 }
@@ -2457,6 +2529,7 @@ export async function captureEvidenceSurface(
         worktreeFiles: new Map(),
         indexPath: null,
         indexBytes: null,
+        topology: "unknown",
       },
     };
   }
@@ -2508,41 +2581,54 @@ export async function captureEvidenceSurface(
   });
   let gitDir = resolution.exitCode === 0 ? resolution.stdout.replace(/\r?\n$/, "") || null : null;
   if (gitDir !== null && !path.isAbsolute(gitDir)) gitDir = path.resolve(repoRoot, gitDir);
-  // commonDir is derived STRUCTURALLY — a gitdir under
+  // A linked-worktree metadir is identified by the MARKER PAIR git
+  // itself writes — `commondir` (→ the common dir) and `gitdir` (→ the
+  // worktree's `.git` file) — not by path name alone: a self-contained
+  // gitdir sitting under a `worktrees/`-named parent is a bare repo,
+  // and name-shape classification refused every judged read on it
+  // (CX-171). Markers BELOW the structural position stay what they
+  // were — a `commondir`/`gitdir` pair anywhere else is the redirect
+  // plant the presence-refusal below still refuses.
+  const isMetadir =
+    gitDir !== null &&
+    path.basename(path.dirname(gitDir)) === "worktrees" &&
+    safeReadBytes(path.join(gitDir, "commondir")) !== null &&
+    safeReadBytes(path.join(gitDir, "gitdir")) !== null;
+  // commonDir is derived STRUCTURALLY — a marker-proven metadir under
   // `<common>/worktrees/` belongs to `<common>`, anything else is its
   // own common dir. `commondir` file content is never honored: honoring
   // it would resolve a session-forged target wholesale; children pin
   // GIT_COMMON_DIR only when it differs from GIT_DIR, and a commondir
   // file in a primary `.git` is refused on presence (CX-143/CX-162).
-  const commonDir =
-    gitDir !== null && path.basename(path.dirname(gitDir)) === "worktrees"
-      ? path.dirname(path.dirname(gitDir))
-      : gitDir;
-  // Topological bareness (CX-162): a `.git` FILE is a gitfile —
-  // worktree layout; `<wt>/.git` → non-bare; `<common>/worktrees/<id>`
-  // → non-bare; any other resolved gitdir is a bare repo. On a bare
-  // repo `--show-toplevel` must NOT run: with `GIT_DIR` pinned and no
-  // worktree selector, git treats the CWD itself as the implicit
-  // worktree and answers the gitdir — the fingerprint then pins
-  // `GIT_WORK_TREE=<gitdir>` into every judged spawn, where the env
-  // selector outranks the `core.bare=true` pin and re-fabricates
+  const commonDir = isMetadir ? path.dirname(path.dirname(gitDir!)) : gitDir;
+  // Topological bareness (CX-162/CX-171): re-walk the ancestor chain git
+  // itself walked. A `.git` NODE (dir or file) at some level means the
+  // gitdir was resolved through worktree discovery — non-bare. Reaching
+  // the resolved gitdir itself first means git self-discovered it as a
+  // gitdir — no worktree node exists, so `--is-bare-repository` falls
+  // back to the `core.bare` config claim; the claim is session-writable,
+  // so the channel reports the topological fact instead: bare. PATH NAME
+  // SHAPE cannot decide this — a self-contained bare repo literally
+  // named `.git` or parked under a `worktrees/`-named parent is still
+  // bare (CX-171). On a bare repo `--show-toplevel` must NOT run: with
+  // `GIT_DIR` pinned and no worktree selector, git treats the CWD itself
+  // as the implicit worktree and answers the gitdir — the fingerprint
+  // then pins `GIT_WORK_TREE=<gitdir>` into every judged spawn, where
+  // the env selector outranks the `core.bare=true` pin and re-fabricates
   // "non-bare". `workTree=null` on bare is the honest resolution.
-  const topologicalBare =
-    gitDir !== null &&
-    dotGit.kind !== "file" &&
-    path.basename(gitDir) !== ".git" &&
-    path.basename(path.dirname(gitDir)) !== "worktrees";
-  const workTreeResult =
-    gitDir === null || topologicalBare
-      ? null
-      : await runGit(repoRoot, ["rev-parse", "--show-toplevel"], {
-          preflight: false,
-          internalEnv: resolutionEnv({ gitDir, commonDir }),
-        });
-  const workTree =
-    workTreeResult !== null && workTreeResult.exitCode === 0
-      ? workTreeResult.stdout.replace(/\r?\n$/, "") || null
-      : null;
+  const topologyResult =
+    gitDir === null
+      ? { topology: "unknown" as RepoTopology, workTree: null }
+      : classifyTopology(repoRoot, gitDir);
+  const topology = topologyResult.topology;
+  // The worktree toplevel is the level where the `.git` node was found
+  // during discovery — a structural fact of the walk, never a spawned
+  // answer: `--show-toplevel` under a pinned `GIT_DIR` resolves the CWD
+  // itself as the implicit worktree (CX-162's bare-repo trap applies to
+  // every subdirectory cwd, CX-167). A `core.worktree` claim that would
+  // override this derivation is a refused config claim, so the channel
+  // refuses before a wrong anchor can pin.
+  const workTree = topologyResult.workTree;
   // Every internal spawn below runs pinned to the resolved anchors — a
   // mid-capture indirection rewrite can no longer re-point a
   // `--git-path` resolve into fresh fake-land.
@@ -2653,6 +2739,7 @@ export async function captureEvidenceSurface(
     worktreeFiles: worktreesDir === null ? new Map() : enumerateTreeFiles(worktreesDir),
     indexPath: indexAbs,
     indexBytes: indexAbs === null ? null : safeReadBytes(indexAbs),
+    topology,
   };
   return {
     configPath,
@@ -3107,16 +3194,27 @@ export function spawnCaptured(
 /**
  * Shared spawn for the trusted-git channels: surface preflight → argv
  * judgment → pinned spawn. `judge` picks the table — the read table
- * for `verifierGit`, the bounded mutation set for `verifierScratchGit`.
- * `useIndexEnv` applies the preflight's claims-rebuilt verifier index —
- * read-table ops only; the scratch channel's mutations (add/commit)
- * need the clone's real index (CX-121's env is a read-judgment surface,
- * never a write path).
+ * for `verifierGit`, the bounded mutation set for `verifierScratchGit`,
+ * the anchored mutation table for `evidenceAnchoredGit`. `useIndexEnv`
+ * applies the preflight's claims-rebuilt verifier index — read-table
+ * ops only; mutations need the repo's real index (CX-121's env is a
+ * read-judgment surface, never a write path). `opts.anchored` hands in
+ * a caller-owned preflight: the fingerprint is re-proved once and ANY
+ * drift refuses — re-judging the live surface would "heal" into the
+ * swapped repo the caller meant to be protected from (CX-169).
  */
 async function verifierGitSpawn(
   cwd: string,
   args: string[],
-  opts: { timeoutMs?: number; maxBuffer?: number; extraEnv?: Record<string, string> } | undefined,
+  opts:
+    | {
+        timeoutMs?: number;
+        maxBuffer?: number;
+        extraEnv?: Record<string, string>;
+        anchored?: EvidencePreflight | null;
+        input?: string | Buffer;
+      }
+    | undefined,
   judge: (args: readonly string[]) => boolean,
   table: string,
   useIndexEnv: boolean,
@@ -3127,22 +3225,44 @@ async function verifierGitSpawn(
   // refuses rather than trusting it (CX-72..79, CX-104). A non-repo cwd
   // (clone/init destinations) has no config to enumerate — the op itself
   // decides whether the path must be a repo.
-  let preflight = await evidenceRepoPreflight(cwd);
-  // Re-prove the fingerprint right before the spawn, and keep re-
-  // preflighting while the surface drifts — a session write racing the
-  // judgment→spawn window reads as drift and the bounded loop re-judges
-  // the live state, shrinking the stale-judgment surface to the reprove
-  // itself (CX-134's cached-channel sibling on the per-call path; R13-D1:
-  // a one-shot reprove+reflight left a whole second-preflight window for
-  // a config flipper — the loop makes the LAST check always immediate
-  // before the spawn).
-  for (let attempt = 0; preflight !== null && !reproveEvidenceSurface(cwd, preflight); attempt++) {
-    // The prior fingerprint's resolution anchors pin the re-preflight's
-    // resolves — a commondir/gitfile plant between captures cannot
-    // steer re-resolution into a forged common dir (CX-143).
-    const priorFp = preflight.fingerprint;
-    closeEvidenceIndex(preflight);
-    preflight = attempt >= 2 ? null : await evidenceRepoPreflight(cwd, priorFp);
+  let preflight: EvidencePreflight | null;
+  let ownsPreflight = true;
+  if (opts?.anchored !== undefined) {
+    preflight = opts.anchored;
+    ownsPreflight = false;
+    // Anchored semantics: the caller proved THIS surface around its
+    // earlier reads — a `.git` swap before the mutation is exactly the
+    // window the anchor exists to close. Refuse on the first failed
+    // reprove; a fresh preflight would only attest the foreign repo.
+    if (preflight !== null && !reproveEvidenceSurface(cwd, preflight)) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: repository surface drifted since the anchored judgment — refusing the mutation`,
+      };
+    }
+  } else {
+    preflight = await evidenceRepoPreflight(cwd);
+    // Re-prove the fingerprint right before the spawn, and keep re-
+    // preflighting while the surface drifts — a session write racing the
+    // judgment→spawn window reads as drift and the bounded loop re-judges
+    // the live state, shrinking the stale-judgment surface to the reprove
+    // itself (CX-134's cached-channel sibling on the per-call path; R13-D1:
+    // a one-shot reprove+reflight left a whole second-preflight window for
+    // a config flipper — the loop makes the LAST check always immediate
+    // before the spawn).
+    for (
+      let attempt = 0;
+      preflight !== null && !reproveEvidenceSurface(cwd, preflight);
+      attempt++
+    ) {
+      // The prior fingerprint's resolution anchors pin the re-preflight's
+      // resolves — a commondir/gitfile plant between captures cannot
+      // steer re-resolution into a forged common dir (CX-143).
+      const priorFp = preflight.fingerprint;
+      closeEvidenceIndex(preflight);
+      preflight = attempt >= 2 ? null : await evidenceRepoPreflight(cwd, priorFp);
+    }
   }
   try {
     // A surface that cannot be enumerated is unverifiable — the read
@@ -3224,12 +3344,13 @@ async function verifierGitSpawn(
       timeoutMs: opts?.timeoutMs ?? 60_000,
       maxBuffer: opts?.maxBuffer ?? 64 * 1024 * 1024,
       indexFd: spawnState.indexFd,
+      input: opts?.input,
     });
     return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
   } finally {
-    // The per-call preflight owns its held fds — a cached preflight
-    // (OriginGit) keeps them for the instance's lifetime instead.
-    closeEvidenceIndex(preflight);
+    // The per-call preflight owns its held fds — a cached or anchored
+    // preflight outlives this spawn and stays open for its owner.
+    if (ownsPreflight) closeEvidenceIndex(preflight);
   }
 }
 
@@ -3317,22 +3438,33 @@ export function evidenceSpawnArgs(args: readonly string[]): string[] {
  * as `!!` lines, but the ONLY way to prove an ignore rule is
  * session-authored rather than committed policy is a filesystem walk
  * plus a tracked-set check — git's own enumeration is the channel
- * under attack. Returns every `.gitignore` path NOT in the tracked
- * set; when `tracked` cannot answer (failed ls-files), every found
- * rule counts as session-authored — fail closed, never silently clean.
- * `tracked` maps the found paths to the subset git knows (its index
- * claims) — `null` on a failed read.
+ * under attack. The walk is anchored at the worktree TOPLEVEL resolved
+ * through the judged channel, never the caller's cwd: a rule one level
+ * up still applies to a subdirectory cwd, and a cwd-scoped walk would
+ * never see it (CX-167). Returned paths are toplevel-relative.
+ *
+ * Returns every `.gitignore` path NOT in the tracked set; when
+ * `tracked` cannot answer (failed ls-files), every found rule counts
+ * as session-authored — fail closed, never silently clean. `tracked`
+ * maps the found paths to the subset git knows (its index claims) —
+ * `null` on a failed read — and receives the resolved root so its
+ * pathspec queries anchor where the relative names are true. `null`
+ * return marks the toplevel itself unresolvable (refused channel,
+ * bare/non-worktree cwd) — an unverifiable rule set, never "no rules".
  */
 export async function sessionIgnoreRulePaths(
   worktree: string,
-  tracked: (paths: string[]) => Promise<Set<string> | null>,
-): Promise<string[]> {
+  tracked: (paths: string[], root: string) => Promise<Set<string> | null>,
+): Promise<string[] | null> {
+  const top = await verifierGit(worktree, ["rev-parse", "--show-toplevel"]);
+  const root = top.exitCode === 0 ? top.stdout.trim() : "";
+  if (root.length === 0) return null;
   const found: string[] = [];
   for (const stack = [""]; stack.length > 0;) {
     const rel = stack.pop()!;
     let entries: Dirent[];
     try {
-      entries = readdirSync(path.join(worktree, rel), { withFileTypes: true });
+      entries = readdirSync(path.join(root, rel), { withFileTypes: true });
     } catch {
       continue;
     }
@@ -3348,7 +3480,7 @@ export async function sessionIgnoreRulePaths(
     }
   }
   if (found.length === 0) return [];
-  const trackedSet = await tracked(found);
+  const trackedSet = await tracked(found, root);
   return trackedSet === null ? found : found.filter((p) => !trackedSet.has(p));
 }
 
@@ -3366,9 +3498,28 @@ export async function sessionIgnoreRulePaths(
 export async function verifierGit(
   cwd: string,
   args: string[],
-  opts?: { timeoutMs?: number; maxBuffer?: number; extraEnv?: Record<string, string> },
+  opts?: {
+    timeoutMs?: number;
+    maxBuffer?: number;
+    extraEnv?: Record<string, string>;
+    /**
+     * A caller-owned preflight to anchor this read to — reused so a
+     * read→mutation sequence judges ONE proven surface; drift against
+     * it refuses rather than re-judging a swapped repo (CX-169).
+     */
+    preflight?: EvidencePreflight | null;
+    /** Optional bytes piped to the child's stdin (`check-ignore --stdin`). */
+    input?: string | Buffer;
+  },
 ): Promise<VerifierGitResult> {
-  return verifierGitSpawn(cwd, args, opts, isVerifierGitQuery, "verifier read table", true);
+  return verifierGitSpawn(
+    cwd,
+    args,
+    { ...opts, anchored: opts?.preflight },
+    isVerifierGitQuery,
+    "verifier read table",
+    true,
+  );
 }
 
 /**
@@ -3386,4 +3537,100 @@ export async function verifierScratchGit(
   opts?: { timeoutMs?: number; maxBuffer?: number; extraEnv?: Record<string, string> },
 ): Promise<VerifierGitResult> {
   return verifierGitSpawn(cwd, args, opts, isScratchGitQuery, "scratch table", false);
+}
+
+/**
+ * Mutating ops forge may run on a repo it just judged — narrower than
+ * the scratch table (no clone/init/config writes): the only anchored
+ * uses are staging and un-staging path lists (`add -A --`,
+ * `reset -q --`). Everything outside the table is a caller bug, not a
+ * use case (CX-169/CX-170).
+ */
+const ANCHORED_MUTATION_OPS: Readonly<Record<string, readonly string[]>> = {
+  // `-N`/`--intent-to-add` records a zero-blob placeholder — staged
+  // content claims must be real objects. `-f`/`--force` force-stages
+  // ignore-hidden paths. `--pathspec-from-(file|stdin)` reads the path
+  // set from a session file. `-p`/`-i`/`-e` open interactive loops on a
+  // no-tty spawn. `--chmod` rewrites entry modes.
+  add: [
+    "-N",
+    "--intent-to-add",
+    "-f",
+    "--force",
+    "--pathspec-from-file",
+    "--pathspec-file-nul",
+    "--pathspec-from-stdin",
+    "-p",
+    "--patch",
+    "-i",
+    "--interactive",
+    "-e",
+    "--edit",
+    "--chmod",
+  ],
+  // `--hard`/`--soft`/`--merge`/`--keep` move HEAD or clobber worktree
+  // bytes — the only anchored use is `reset -q -- <paths>` un-staging.
+  reset: [
+    "--hard",
+    "--soft",
+    "--merge",
+    "--keep",
+    "--pathspec-from-file",
+    "--pathspec-file-nul",
+    "--pathspec-from-stdin",
+  ],
+};
+
+/**
+ * Runtime argv judgment for the anchored-mutation channel — only the
+ * ops above, and never a ref-store handle (`@{…}` is a fabrication
+ * channel in every position).
+ */
+export function isAnchoredMutationQuery(args: readonly string[]): boolean {
+  if (args.length === 0) return false;
+  if (args.some((a) => a.includes("@{"))) return false;
+  const forbid = ANCHORED_MUTATION_OPS[args[0]!];
+  if (forbid === undefined) return false;
+  return !args.slice(1).some((a) => isForbiddenEvidenceArg(a, forbid));
+}
+
+/**
+ * A trusted mutation anchored to a caller-captured preflight: forge
+ * writes into the repo it just proved — `pinnedGitAdd`, archive
+ * move-staging, the lockfile un-stage (CX-169/CX-170). The anchored
+ * fingerprint is re-proved immediately before the spawn and drift
+ * refuses outright: an ambient `git add` between a judged read and the
+ * mutation would follow a swapped `.git` indirection into a foreign
+ * index, while a fresh preflight would happily attest THAT repo
+ * (CX-169). The spawn still carries the full evidence env — resolved
+ * binary, scrubbed env, resolution pins, `GIT_ATTR_SOURCE` starvation
+ * — so `info/attributes` `filter.*` drivers never rewrite staged bytes
+ * (they refuse the channel anyway via shapeViolations). `opts.preflight`
+ * is required: `null` means the caller's own preflight found nothing
+ * provable, and the op fails closed downstream the same way a missing
+ * repo does.
+ */
+export async function evidenceAnchoredGit(
+  cwd: string,
+  args: string[],
+  opts: {
+    timeoutMs?: number;
+    maxBuffer?: number;
+    extraEnv?: Record<string, string>;
+    preflight: EvidencePreflight | null;
+  },
+): Promise<VerifierGitResult> {
+  return verifierGitSpawn(
+    cwd,
+    args,
+    {
+      timeoutMs: opts.timeoutMs,
+      maxBuffer: opts.maxBuffer,
+      extraEnv: opts.extraEnv,
+      anchored: opts.preflight,
+    },
+    isAnchoredMutationQuery,
+    "anchored mutation table",
+    false,
+  );
 }

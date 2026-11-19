@@ -12,11 +12,12 @@ restores the file committed at HEAD so the worktree returns clean.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1505: step 3 — tracked lockfile restore helper</item>
   <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
   <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
   <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <history>RFC-1505</history>
 </CHANGE_SUMMARY>
 */
 
@@ -24,35 +25,14 @@ import path from "node:path";
 import { execFileSync } from "../../src/utils/sync-fs.ts";
 import type { ExecOptions, ExecResult, WorkspaceIO } from "../../src/types.ts";
 import {
-  evidenceConfigArgs,
-  resolveGitBin,
+  closeEvidenceIndex,
+  evidenceAnchoredGit,
+  evidenceRepoPreflight,
   verifierGit,
-  verifierGitEnv,
 } from "../../src/utils/verifier-git.ts";
 import { extractImporterBlock, removeImporterBlock } from "./importer-block.ts";
 
 const LOCKFILE_NAME = "pnpm-lock.yaml";
-
-/**
- * `git add` on the repo that actually owns `root` — the ambient `io.exec`
- * layer inherits `process.env`, so a session `GIT_DIR`/`GIT_WORK_TREE`
- * would register the staged bytes in a foreign index (CX-164). The
- * scrubbed env + resolved binary + `-c` pins anchor the mutation to the
- * cwd repo. Returns false on any non-zero exit.
- */
-function pinnedGitAdd(root: string, name: string): boolean {
-  try {
-    execFileSync(resolveGitBin(), [...evidenceConfigArgs(["add"]), "add", name], {
-      cwd: root,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      env: verifierGitEnv(),
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Restore `pnpm-lock.yaml` to the bytes committed at HEAD.
@@ -135,25 +115,38 @@ export async function pruneMissionImportersFromLockfile(
   missionIds: string[],
   io: Pick<WorkspaceIO, "exec" | "writeFile">,
 ): Promise<{ pruned: string[]; staged: boolean }> {
-  // Judged channel for the committed-bytes read — same CX-164 redirect:
-  // ambient `GIT_DIR` would serve the foreign repo's lockfile bytes.
-  const head = await verifierGit(root, ["show", `HEAD:${LOCKFILE_NAME}`]);
-  if (head.exitCode !== 0) return { pruned: [], staged: false };
-  let next = head.stdout;
-  const pruned: string[] = [];
-  for (const missionId of missionIds) {
-    const key = `missions/${missionId}/workpiece`;
-    if (extractImporterBlock(next, key) === null) continue;
-    next = removeImporterBlock(next, key);
-    pruned.push(missionId);
+  // One preflight anchors the whole read→write→stage sequence: a `.git`
+  // indirection swap landing between the judged `show` and the `add`
+  // re-points the staging target into a foreign index, and a fresh
+  // preflight would happily attest THAT repo — the anchored fingerprint
+  // is re-proved immediately before the mutation and any drift refuses
+  // (CX-169). The `show` read itself runs on the same anchored surface.
+  const preflight = await evidenceRepoPreflight(root);
+  if (preflight === null) return { pruned: [], staged: false };
+  try {
+    // Judged channel for the committed-bytes read — same CX-164
+    // redirect: ambient `GIT_DIR` would serve the foreign repo's
+    // lockfile bytes.
+    const head = await verifierGit(root, ["show", `HEAD:${LOCKFILE_NAME}`], { preflight });
+    if (head.exitCode !== 0) return { pruned: [], staged: false };
+    let next = head.stdout;
+    const pruned: string[] = [];
+    for (const missionId of missionIds) {
+      const key = `missions/${missionId}/workpiece`;
+      if (extractImporterBlock(next, key) === null) continue;
+      next = removeImporterBlock(next, key);
+      pruned.push(missionId);
+    }
+    const target = path.join(root, LOCKFILE_NAME);
+    if (pruned.length === 0) {
+      // Nothing legitimately prunes — keep the discard-churn restore.
+      await io.writeFile(target, head.stdout);
+      return { pruned, staged: false };
+    }
+    await io.writeFile(target, next);
+    const add = await evidenceAnchoredGit(root, ["add", "--", LOCKFILE_NAME], { preflight });
+    return { pruned, staged: add.exitCode === 0 };
+  } finally {
+    closeEvidenceIndex(preflight);
   }
-  const target = path.join(root, LOCKFILE_NAME);
-  if (pruned.length === 0) {
-    // Nothing legitimately prunes — keep the discard-churn restore.
-    await io.writeFile(target, head.stdout);
-    return { pruned, staged: false };
-  }
-  await io.writeFile(target, next);
-  const staged = pinnedGitAdd(root, LOCKFILE_NAME);
-  return { pruned, staged };
 }

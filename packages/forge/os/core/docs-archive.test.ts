@@ -9,7 +9,6 @@ at zero merge operations (RFC-1230, AC-3).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>F-0126: owner-predicate exclusion tests — mixed-writes mutator, uncovered required flag, REGEN_FLAGS override, end-to-end stamp exclusion</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
   <item>RFC-1535: stageMovedPairs real-git fixtures — both sides staged, non-git degrade, empty no-op</item>
@@ -24,6 +23,7 @@ git add, the lockfile restore gained its index-side counterpart, and a
 post-staging sweep surfaces MM residue with the git show : remediation.
 
 RFC-1602</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <history>RFC-1230, RFC-1235, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -494,18 +494,6 @@ describe("RFC-1535 stageMovedPairs", () => {
     const outcome = await stageMovedPairs({
       movedPaths: ["docs/rfcs/rfc-1.md", "docs/rfcs/archive/rfc-1.md"],
       workspaceRoot: root,
-      exec: (command, args, opts) =>
-        Promise.resolve(
-          (() => {
-            try {
-              const stdout = execFileSync(command, args, { ...opts, encoding: "utf8" });
-              return { exitCode: 0, stdout, stderr: "" };
-            } catch (e) {
-              const err = e as { status?: number; stderr?: string };
-              return { exitCode: err.status ?? 1, stdout: "", stderr: err.stderr ?? "" };
-            }
-          })(),
-        ),
     });
     expect(outcome.error).toBeUndefined();
     expect(outcome.staged).toBe(2);
@@ -522,54 +510,24 @@ describe("RFC-1535 stageMovedPairs", () => {
     const outcome = await stageMovedPairs({
       movedPaths: ["docs/a.md", "docs/archive/a.md"],
       workspaceRoot: root,
-      exec: (command, args, opts) =>
-        Promise.resolve(
-          (() => {
-            try {
-              const stdout = execFileSync(command, args, { ...opts, encoding: "utf8" });
-              return { exitCode: 0, stdout, stderr: "" };
-            } catch (e) {
-              const err = e as { status?: number; stderr?: string };
-              return { exitCode: err.status ?? 1, stdout: "", stderr: err.stderr ?? "" };
-            }
-          })(),
-        ),
     });
     expect(outcome.staged).toBe(0);
     expect(outcome.error).toBeTruthy();
   });
 
   it("an empty moved set is a no-op — dry-run shape stays untouched", async () => {
-    let calls = 0;
     const outcome = await stageMovedPairs({
       movedPaths: [],
       workspaceRoot: "/nonexistent",
-      exec: () => {
-        calls++;
-        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
-      },
     });
     expect(outcome.staged).toBe(0);
-    expect(calls).toBe(0);
+    expect(outcome.error).toBeUndefined();
   });
 });
 
 // ---- RFC-1602 (F-0212/F-0245): deferred regen record + atomic bookkeeping ----
 
 describe("RFC-1602 deferred regen record", () => {
-  const gitExec = (command: string, args: string[], opts?: { cwd?: string }) =>
-    Promise.resolve(
-      (() => {
-        try {
-          const stdout = execFileSync(command, args, { ...opts, encoding: "utf8" });
-          return { exitCode: 0, stdout, stderr: "" };
-        } catch (e) {
-          const err = e as { status?: number; stderr?: string };
-          return { exitCode: err.status ?? 1, stdout: "", stderr: err.stderr ?? "" };
-        }
-      })(),
-    );
-
   const initRepo = (root: string) => {
     execFileSync("git", ["-C", root, "init", "-q"], { stdio: "pipe" });
     execFileSync("git", ["-C", root, "config", "user.email", "t@t"], { stdio: "pipe" });
@@ -581,7 +539,7 @@ describe("RFC-1602 deferred regen record", () => {
     initRepo(root);
     const written = await recordDeferredRegen({
       workspaceRoot: root,
-      exec: gitExec,
+
       movedPaths: ["docs/rfcs/rfc-1.md", "docs/rfcs/archive/rfc-1.md"],
       owners: [
         {
@@ -592,11 +550,11 @@ describe("RFC-1602 deferred regen record", () => {
       ],
     });
     expect(written).not.toBeNull();
-    const consumed = await consumeDeferredRegen({ workspaceRoot: root, exec: gitExec });
+    const consumed = await consumeDeferredRegen({ workspaceRoot: root });
     expect(consumed?.record.owners.map((o) => o.command)).toEqual(["rfc.index.generate"]);
     expect(consumed?.record.movedPaths).toContain("docs/rfcs/rfc-1.md");
     clearDeferredRegen(consumed!.file);
-    expect(await consumeDeferredRegen({ workspaceRoot: root, exec: gitExec })).toBeNull();
+    expect(await consumeDeferredRegen({ workspaceRoot: root })).toBeNull();
   });
 
   it("a second archive run merges owners instead of clobbering the record", async () => {
@@ -604,20 +562,20 @@ describe("RFC-1602 deferred regen record", () => {
     initRepo(root);
     await recordDeferredRegen({
       workspaceRoot: root,
-      exec: gitExec,
+
       movedPaths: ["docs/rfcs/rfc-1.md"],
       owners: [{ command: "rfc.index.generate", flags: {}, artifactPaths: [] }],
     });
     await recordDeferredRegen({
       workspaceRoot: root,
-      exec: gitExec,
+
       movedPaths: ["docs/adrs/adr-2.md"],
       owners: [
         { command: "rfc.index.generate", flags: { write: true }, artifactPaths: [] },
         { command: "ecosystem.manifest.generate", flags: {}, artifactPaths: [] },
       ],
     });
-    const consumed = await consumeDeferredRegen({ workspaceRoot: root, exec: gitExec });
+    const consumed = await consumeDeferredRegen({ workspaceRoot: root });
     expect(consumed?.record.owners.map((o) => o.command)).toEqual([
       "rfc.index.generate",
       "ecosystem.manifest.generate",
@@ -637,7 +595,7 @@ describe("RFC-1602 deferred regen record", () => {
     const unstageable = await findUnstageablePaths({
       paths: ["docs/a.md", "missions/m-1/close-report.json"],
       workspaceRoot: root,
-      exec: gitExec,
+
       exists: (relPath) => Promise.resolve(existsSync(path.join(root, relPath))),
     });
     expect(unstageable).toEqual(["missions/m-1/close-report.json"]);
@@ -662,7 +620,6 @@ describe("RFC-1602 deferred regen record", () => {
     const warnings = await sweepMmResidue({
       paths: ["pnpm-lock.yaml"],
       workspaceRoot: root,
-      exec: gitExec,
     });
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("git show :pnpm-lock.yaml > pnpm-lock.yaml");
@@ -677,7 +634,6 @@ describe("RFC-1602 deferred regen record", () => {
     const warnings = await sweepMmResidue({
       paths: ["a.md"],
       workspaceRoot: root,
-      exec: gitExec,
     });
     expect(warnings).toEqual([]);
   });

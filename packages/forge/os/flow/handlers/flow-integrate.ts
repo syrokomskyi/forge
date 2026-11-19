@@ -21,6 +21,21 @@ at cleanup without moving develop again.</purpose>
   <item>docs.archive's deferral clears only when every deferred owner ran — a skipped owner keeps .git/forge/deferred-regen.json.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
+  <item>RFC-1598: generated-conflict auto-resolve runs the owner generator inside a detached checked-out side (theirs → ours → take-theirs deferral), never the mixed mid-rebase index (RFC-1598)</item>
+  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
+  <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
+
+docs.archive recorded ~12-minute inline owner regen blocking session end
+(F-0212) and left pnpm-lock.yaml MM after its safety-net restore (F-0245).
+The invalidated owner inventory now lands in .git/forge/deferred-regen.json
+for flow.integrate's post-rebase fold to sweep (record cleared only when
+every owner ran); bookkeeping pathspecs are validated before the first
+git add, the lockfile restore gained its index-side counterpart, and a
+post-staging sweep surfaces MM residue with the git show : remediation.
+
+RFC-1602</item>
+  <item>RFC-1602: document the deferred-regen fold contract in the guide and compass decisions</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <item>RFC-1619: bind the integration-gate manifests step to post-rebase regen provenance (RFC-1619)</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
   <item>RFC-1622: record RFC-1622 integration phase timings</item>
@@ -973,10 +988,7 @@ async function integrateFlowBranchAttempt(
     // .git/forge/deferred-regen.json — the fold sweeps it here so the
     // archive command returns in seconds. Deferred owners carry their
     // recorded flags; their full artifact path set joins the owned set.
-    const deferred = await consumeDeferredRegen({
-      workspaceRoot: worktree,
-      exec: (command, args, cmdOpts) => io.exec(command, args, { cwd: worktree, ...cmdOpts }),
-    });
+    const deferred = await consumeDeferredRegen({ workspaceRoot: worktree });
     const extraOwnedPaths: string[] = [];
     if (deferred) {
       for (const owner of deferred.record.owners) {

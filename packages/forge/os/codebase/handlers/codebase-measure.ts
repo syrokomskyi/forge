@@ -19,6 +19,7 @@ totals + per-language + top-dir measures. Read-only by default;
   <item>RFC-1581 review: repo-root anchor via rev-parse, contract-aligned
     measure shape (repo/exclusions/measuredAt, symbols nested, topDirs path),
     name-driven category for binary/unreadable files, single-read I/O.</item>
+  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,6 +27,7 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { stringify as yamlStringify } from "yaml";
 
 import { resolveIo } from "../../../src/utils/io.ts";
+import { verifierGit } from "../../../src/utils/verifier-git.ts";
 import { hasGeneratedMarker } from "../../../src/utils/generated-marker.ts";
 import type {
   ForgeCommandInput,
@@ -296,29 +298,21 @@ export async function runCodebaseMeasure(
     };
   }
 
-  if (typeof io.exec !== "function") {
-    return {
-      exitCode: 1,
-      summary: "[codebase.measure] failed — exec capability unavailable",
-      nextSteps: [
-        {
-          action:
-            "Run codebase.measure through an io adapter that provides exec (ambient CLI or kernel io).",
-          kind: "required",
-        },
-      ],
-    };
-  }
-
   // Repo-root anchor — identical measurement from any subdirectory.
-  const rootProbe = await io.exec("git", ["rev-parse", "--show-toplevel"], {
-    cwd: workspaceRoot,
-  });
+  // Judged channel: ambient `io.exec` inherits the session's GIT_* —
+  // GIT_DIR/GIT_INDEX_FILE would narrow or redirect the enumerated
+  // tracked set and the measurement would silently attest a forged
+  // file list (CX-170). A refused read is an explicit failure, never
+  // a smaller-but-"true" measure.
+  const rootProbe = await verifierGit(workspaceRoot, ["rev-parse", "--show-toplevel"]);
   const repoRoot = rootProbe.exitCode === 0 ? rootProbe.stdout.trim() : null;
   if (!repoRoot) {
     return {
       exitCode: 1,
-      summary: "[codebase.measure] failed — not inside a git repository",
+      summary:
+        rootProbe.exitCode === -1
+          ? "[codebase.measure] failed — repo evidence surface refused (unverifiable)"
+          : "[codebase.measure] failed — not inside a git repository",
       nextSteps: [
         {
           action: "Run inside a forge repository checkout (git rev-parse --show-toplevel failed).",
@@ -328,11 +322,14 @@ export async function runCodebaseMeasure(
     };
   }
 
-  const listed = await io.exec("git", ["ls-files", "-z"], { cwd: repoRoot });
+  const listed = await verifierGit(repoRoot, ["ls-files", "-z"]);
   if (listed.exitCode !== 0) {
     return {
       exitCode: 1,
-      summary: `[codebase.measure] failed — git ls-files exited ${listed.exitCode}`,
+      summary:
+        listed.exitCode === -1
+          ? "[codebase.measure] failed — repo evidence surface refused (unverifiable)"
+          : `[codebase.measure] failed — git ls-files exited ${listed.exitCode}`,
       nextSteps: [
         {
           action: `Run inside a Git repository with tracked files (${listed.stderr.trim() || "git ls-files failed"}).`,
