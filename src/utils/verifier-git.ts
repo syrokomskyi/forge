@@ -18,47 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
-
-Independent clean-context verification (round 11, candidate 029219ca9)
-returned REFUTED with seven live counterexamples against the
-r10-remediated channel — this commit closes all of them.
-
-- `.git/info/attributes` joins the shape-violation paths (CX-125): the
-  r6 reasoning covered only program reach, but working-tree-encoding /
-  text / eol / ident are built-in clean-side conversions that rewrite
-  what the zero-stat index content-hash sees with no external program.
-- Index-consulting classification is argv-exact (CX-126/127/128):
-  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
-  ambiguous diff forms (a nonrev second positional is a pathspec, not a
-  rev) refuse under an unproven index, describe --dirty/--broken are
-  index-consuming, and grep is parsed option-aware so a worktree grep
-  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
-- The verifier claims index has no discoverable path (CX-129): a
-  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
-  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
-  through a freshly opened independent file description per spawn;
-  the named flat-file fallback re-proves its bytes against the expected
-  image before every spawn, and child descriptors close on every return
-  path.
-- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
-  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
-  specs under an unproven index), answering positional nulls so the
-  record stream can never desynchronize spec attribution.
-- Trusted transports refuse file-class targets and URL rewrites
-  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
-  and ls-remote/fetch spawn with protocol.file.allow=never so file:
-  URLs and bare-path remotes fail honestly; the pin is transport-only
-  so verifierScratchGit's judged `clone <path>` still works. Test
-  origins moved from local path/file remotes to a loopback git daemon
-  so fixtures keep exercising real fetch/ls-remote behavior.
-
-The port commit that follows carries the ported cx11 probe file plus
-the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r15 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -1214,6 +1178,10 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
   // a count of `.git/logs/refs/stash` REFLOG lines, session-fabricable
   // with no real stash objects: the CX-92 exclusion class (CX-146).
   { prefix: ["status"], forbid: ["--branch", "-b", "--show-stash"] },
+  // `--notes`/`--show-notes` add session-planted `refs/notes/*` bodies to
+  // the display set — argv overrides the `notes.displayRef=`/`core.notesRef=`
+  // pins verbatim, serving the provenance class the `%(notes)` atom refusal
+  // exists to close (CX-154). `--no-notes` suppresses and stays admitted.
   {
     prefix: ["log"],
     forbid: [
@@ -1225,10 +1193,15 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
       "--reflog",
       "--use-bitmap-index",
       "--test-bitmap",
+      "--notes",
+      "--show-notes",
     ],
   },
   { prefix: ["diff"], forbid: ["--output", "--ext-diff", "--textconv", "--no-index"] },
-  { prefix: ["show"], forbid: ["--output", "--ext-diff", "--textconv", "-g", "--reflog"] },
+  {
+    prefix: ["show"],
+    forbid: ["--output", "--ext-diff", "--textconv", "-g", "--reflog", "--notes", "--show-notes"],
+  },
   { prefix: ["symbolic-ref"], forbid: ["-d", "--delete", "-m"], maxPositionals: 1 },
   // Config reads answer from .git/config only — the `--file`/`--blob`/
   // `--worktree` source flags name an alternate config store (a
@@ -1316,6 +1289,14 @@ export function isEvidenceGitQuery(args: readonly string[]): boolean {
   // cannot be pinned by name (the branch/ref names are positional), so
   // the atoms are refused outright — fail closed, never a shaped answer.
   if (args.some((a) => /%\((?:upstream|push|track|notes)/i.test(a))) return false;
+  // `%N` expands session-planted notes in `log`/`show` format strings —
+  // the `%(notes)` atom check misses the placeholder form, and the
+  // displayRef pins then curate the answer to "" (CX-154). `%n` is a
+  // newline and stays admitted; `rev-list` leaves `%N` literal
+  // (verified git 2.53) so only the expanding subcommands judge it.
+  if ((args[0] === "log" || args[0] === "show") && args.slice(1).some((a) => a.includes("%N"))) {
+    return false;
+  }
   return EVIDENCE_GIT_QUERIES.some((query) => {
     if (!query.prefix.every((part, i) => args[i] === part)) return false;
     const tail = args.slice(query.prefix.length);
@@ -2260,15 +2241,87 @@ function enumerateTreeFiles(root: string): Map<string, EvidenceSurfaceFile> {
  * `.git`; any non-regular member is reported and the caller refuses
  * WITHOUT spawning — no child ever enters a blocking read.
  */
+/**
+ * Whether a repo-shaped surface exists at or above `dir` — any `.git`
+ * node (dir, gitfile, link, FIFO) at lstat level, or a bare-repo
+ * signature (`HEAD` + `objects/` + `refs/`). Consulted ONLY when the
+ * trusted channel could not answer: `-1` means both "no repo" and
+ * "unenumerable repo", indistinguishable by exit code — a same-UID
+ * session can fabricate the not-a-repo shape (`.git/HEAD` FIFO →
+ * preflight null, CX-156), so existence of git state to forge is the
+ * honest discriminator. Absent → genuinely nothing to protect.
+ */
+export function repoShaped(repoRoot: string): boolean {
+  let dir = path.resolve(repoRoot);
+  for (let depth = 0; depth <= 64; depth++) {
+    try {
+      lstatSync(path.join(dir, ".git"));
+      return true;
+    } catch {
+      /* absent — keep walking */
+    }
+    // Bare-repo signature: HEAD (any node type — a FIFO counts, it is
+    // still the surface to forge) plus the objects/refs directories.
+    try {
+      lstatSync(path.join(dir, "HEAD"));
+      if (
+        statSync(path.join(dir, "objects")).isDirectory() &&
+        statSync(path.join(dir, "refs")).isDirectory()
+      ) {
+        return true;
+      }
+    } catch {
+      /* not a bare signature */
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+  return false;
+}
+
 function discoverGitMetaHazards(repoRoot: string): string[] {
   const hazards: string[] = [];
   const scanGitdir = (gitdir: string) => {
-    for (const name of ["config", "HEAD", "commondir", "gitdir"]) {
+    for (const name of ["config", "HEAD", "commondir", "gitdir", "packed-refs"]) {
       const ap = path.join(gitdir, name);
       try {
         if (!statSync(ap).isFile()) hazards.push(ap);
       } catch {
         /* absent — fine */
+      }
+    }
+    // Loose refs: git opens every ref file its read resolves — a FIFO or
+    // device under refs/ stalls the child to the spawn timeout before the
+    // channel can fail closed (residual r16 observation). Stat every
+    // member: dirs and regular files are legitimate, anything else fails
+    // closed pre-spawn. Bounded by depth and member count.
+    const stack: Array<{ dir: string; depth: number }> = [
+      { dir: path.join(gitdir, "refs"), depth: 0 },
+    ];
+    let scanned = 0;
+    while (stack.length > 0 && scanned < 8192) {
+      const { dir, depth } = stack.pop()!;
+      let entries: string[];
+      try {
+        entries = readdirSync(dir);
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        scanned++;
+        const ap = path.join(dir, entry);
+        let st: ReturnType<typeof statSync>;
+        try {
+          st = statSync(ap);
+        } catch {
+          continue; // dangling or unreadable — git fails honestly on it
+        }
+        if (st.isDirectory()) {
+          if (depth < 32) stack.push({ dir: ap, depth: depth + 1 });
+          continue;
+        }
+        if (!st.isFile()) hazards.push(ap);
       }
     }
   };
@@ -2306,6 +2359,12 @@ function discoverGitMetaHazards(repoRoot: string): string[] {
     if (m !== null) {
       const meta = path.isAbsolute(m[1]!.trim()) ? m[1]!.trim() : path.resolve(dir, m[1]!.trim());
       scanGitdir(meta);
+      // A linked-worktree metadir (`<common>/worktrees/<id>`) holds no
+      // refs of its own — they live in the structural common dir two
+      // levels up; scan it too or a FIFO there still stalls the child.
+      if (path.basename(path.dirname(meta)) === "worktrees") {
+        scanGitdir(path.dirname(path.dirname(meta)));
+      }
     }
     return hazards;
   }

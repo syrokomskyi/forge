@@ -12,7 +12,6 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
   <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
@@ -54,6 +53,7 @@ evidence channel — this commit closes all root causes.
 
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-1391, RFC-1453, RFC-1454, RFC-1483, RFC-1504, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
@@ -145,8 +145,14 @@ async function execGit(workspaceRoot: string, args: string[]): Promise<string> {
 }
 
 async function isRfcFileClean(workspaceRoot: string, rfcRelPath: string): Promise<boolean> {
-  const status = await execGit(workspaceRoot, ["status", "--porcelain", "--", rfcRelPath]);
-  return status.length === 0;
+  // A refused or failed read is NOT a clean file — the dirty verdict is
+  // unverifiable, so `exitCode !== 0 → false` (CX-157: the `execGit`
+  // nonzero→"" mapping reads a refusal as clean and skips RFC-IMP-04 on
+  // exactly the dirty file it guards; the indexUnproven asymmetry keeps
+  // every other stamp gate answering honestly, making this the only
+  // blind gate).
+  const r = await verifierGit(workspaceRoot, ["status", "--porcelain", "--", rfcRelPath]);
+  return r.exitCode === 0 && r.stdout.trim().length === 0;
 }
 
 async function commitReachableFromHead(workspaceRoot: string, commitSha: string): Promise<boolean> {
@@ -1055,8 +1061,8 @@ export async function runRfcImplementStamp(
   if (!rfcFileClean) {
     violations.push({
       rule: "RFC-IMP-04",
-      message: `RFC file ${rfcRelPath} has uncommitted changes. Commit the RFC file before stamping.`,
-      fixHint: `commit or stash the uncommitted changes to ${rfcRelPath}, then re-run`,
+      message: `RFC file ${rfcRelPath} has uncommitted changes or its dirty state could not be verified. Commit the RFC file before stamping.`,
+      fixHint: `commit or stash the uncommitted changes to ${rfcRelPath} (or restore a verifiable git surface), then re-run`,
     });
   }
 

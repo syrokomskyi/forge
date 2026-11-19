@@ -11,7 +11,6 @@ plus getFileRevisionFromHistory and the porcelain dirty-path helpers
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-integrity to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
   <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
@@ -51,13 +50,18 @@ evidence channel — this commit closes all root causes.
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
-  <history>RFC-0352</history>
+  <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
+  <history>RFC-0352, RFC-0556</history>
 </CHANGE_SUMMARY>
 */
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
-import { sessionIgnoreRulePaths, verifierGit } from "../../../src/utils/verifier-git.ts";
+import {
+  repoShaped,
+  sessionIgnoreRulePaths,
+  verifierGit,
+} from "../../../src/utils/verifier-git.ts";
 import { createHash } from "node:crypto";
 
 import { resolve, join } from "node:path";
@@ -98,13 +102,18 @@ export async function listDirtyPaths(repoRoot: string): Promise<DirtyPathResult>
   if (r.exitCode !== 0) {
     // Not-a-repo answers the same non-zero way a refused channel does —
     // `git rev-parse` separates the two (a plain missing repo must still
-    // read as "nothing to protect", a refused verdict must block).
+    // read as "nothing to protect", a refused verdict must block). The
+    // probe rides the same channel, so a channel-wide refusal ALSO
+    // answers -1 — the fs-level repoShaped check is the second witness:
+    // git state exists to forge and the failed read stays unverifiable,
+    // never the benign not-a-repo shape (CX-151/152/156).
     const probe = await verifierGit(repoRoot, ["rev-parse", "--is-inside-work-tree"]);
     const isRepo = probe.exitCode === 0 && probe.stdout.trim() === "true";
+    const refused = isRepo || repoShaped(repoRoot);
     return {
       paths: null,
-      refused: isRepo,
-      reason: isRepo ? r.stderr.trim() : undefined,
+      refused,
+      reason: refused ? r.stderr.trim() : undefined,
     };
   }
   const base = r.stdout

@@ -20,7 +20,6 @@ stay empty by construction.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
 
@@ -69,6 +68,7 @@ decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -486,17 +486,45 @@ async function classifyItem(
   rfcs: string[],
   specsDir: string,
   invariantsFile: string,
+  diagnostics: Diagnostic[],
 ): Promise<{ category: RiskCategory; flags: RiskCategory[] }> {
   const flags = new Set<RiskCategory>();
 
+  // `diff` is refused categorically under an unproven index even though a
+  // two-commit diff never consults it — `log --name-only` answers the same
+  // touched-file set from commit objects alone (a superset: it also lists
+  // files a later commit reverted). A refused names read must never
+  // degrade to files=[] — that silently narrows the classification
+  // (CX-155: a contract-touching item labelled "other").
   const names = await gitEvidence(repoRoot, ["diff", "--name-only", base, tip]);
-  const files =
-    names.exitCode === 0
-      ? names.stdout
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0)
-      : [];
+  const splitNames = (stdout: string) =>
+    stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+  let files: string[];
+  if (names.exitCode === 0) {
+    files = splitNames(names.stdout);
+  } else {
+    const listed = await gitEvidence(repoRoot, [
+      "log",
+      "--name-only",
+      "-m",
+      "--format=",
+      `${base}..${tip}`,
+    ]);
+    if (listed.exitCode === 0) {
+      files = splitNames(listed.stdout);
+    } else {
+      files = [];
+      diagnostics.push({
+        ruleId: "FLOW-PUSH-13",
+        severity: "error",
+        message: `risk classification for ${base.slice(0, 9)}..${tip.slice(0, 9)} is unverifiable — the evidence channel refused every file enumeration (${listed.stderr.trim() || names.stderr.trim()})`,
+        fixHint: `restore the repository's index/config surface and re-run flow.digest`,
+      });
+    }
+  }
   const specsPrefix = `${specsDir.replace(/\/+$/, "")}/`;
   if (
     files.some(
@@ -529,8 +557,31 @@ async function classifyItem(
     base,
     tip,
   ]);
-  if (diff.exitCode === 0) {
-    for (const line of diff.stdout.split("\n")) {
+  let diffOut: string | null = diff.exitCode === 0 ? diff.stdout : null;
+  if (diffOut === null) {
+    // Same refused-diff fallback as the names read — per-commit patches
+    // from `log -U0` carry the @ai-invariant lines without the index.
+    const ld = await gitEvidence(repoRoot, [
+      "log",
+      "--unified=0",
+      "--no-color",
+      "-m",
+      "--format=",
+      `${base}..${tip}`,
+    ]);
+    if (ld.exitCode === 0) {
+      diffOut = ld.stdout;
+    } else {
+      diagnostics.push({
+        ruleId: "FLOW-PUSH-13",
+        severity: "error",
+        message: `invariant-line scan for ${base.slice(0, 9)}..${tip.slice(0, 9)} is unverifiable — the evidence channel refused every diff read`,
+        fixHint: `restore the repository's index/config surface and re-run flow.digest`,
+      });
+    }
+  }
+  if (diffOut !== null) {
+    for (const line of diffOut.split("\n")) {
       if ((line.startsWith("+") || line.startsWith("-")) && line.includes("@ai-invariant")) {
         flags.add("invariant");
         break;
@@ -990,7 +1041,16 @@ export async function collectDigest(
         : developChain[segment.from - 1]!;
     const tip = developChain[segment.to]!;
     const meta = await commitMeta(repoRoot, io, base, tip);
-    const cls = await classifyItem(repoRoot, io, base, tip, meta.rfcs, specsDir, invariantsFile);
+    const cls = await classifyItem(
+      repoRoot,
+      io,
+      base,
+      tip,
+      meta.rfcs,
+      specsDir,
+      invariantsFile,
+      diagnostics,
+    );
     items.push({
       id: `I-${tip.slice(0, 9)}`,
       kind: segment.record?.kind ?? "unattributed",
