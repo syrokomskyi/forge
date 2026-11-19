@@ -21,11 +21,11 @@ at cleanup without moving develop again.</purpose>
   <item>docs.archive's deferral clears only when every deferred owner ran — a skipped owner keeps .git/forge/deferred-regen.json.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1602: document the deferred-regen fold contract in the guide and compass decisions</item>
   <item>RFC-1619: bind the integration-gate manifests step to post-rebase regen provenance (RFC-1619)</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
   <item>RFC-1622: record RFC-1622 integration phase timings</item>
   <item>RFC-1622: honor RFC-1622 receipt capability</item>
+  <item>RFC-1622: revalidate RFC-1622 owner on retry</item>
   <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589, RFC-1597, RFC-1598, RFC-1599, RFC-1600, RFC-1602</history>
 </CHANGE_SUMMARY>
 */
@@ -580,6 +580,7 @@ interface IntegrateGateState {
    * uncheckable side — defers correctness to the post-rebase regen fold. */
   autoResolveDeferred?: string[];
   postRebaseRegen?: PostRebaseRegenResult;
+  manifestValidationDeferred: boolean;
   reattachedTo?: string;
   autoCleaned?: string[];
   autocommitSha?: string;
@@ -1631,6 +1632,7 @@ async function integrateFlowBranchAttempt(
       dirtyToleratedState: dirty.toleratedState,
       toleratedDirt,
       autoResolved,
+      manifestValidationDeferred,
       ...(autoResolveDeferred.length > 0 ? { autoResolveDeferred } : {}),
       ...(postRebaseRegen !== undefined ? { postRebaseRegen } : {}),
       ...(reattachedTo !== undefined ? { reattachedTo } : {}),
@@ -1935,6 +1937,20 @@ async function integrateFlowBranchAttempt(
           (result) => result !== null && "diagnostics" in result,
         );
         if (regen !== null && "diagnostics" in regen) return out("locked-delta", regen);
+        if (
+          s.manifestValidationDeferred &&
+          (regen === null || !regen.ran.includes("ecosystem.manifest.generate"))
+        ) {
+          return out(
+            "locked-delta",
+            refuse(
+              "FLOW-INT-12",
+              "the deferred ecosystem manifest owner was unavailable after rebase",
+              "restore the manifest owner and re-run flow.integrate",
+              { branch, developBefore: s.developBefore, rebased: true },
+            ),
+          );
+        }
         if (regen !== null) s.postRebaseRegen = regen;
       }
       if (attempt >= MAX_PRELOCK_ATTEMPTS) {

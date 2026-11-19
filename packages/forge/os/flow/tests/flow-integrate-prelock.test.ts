@@ -12,7 +12,6 @@ The gate is a fake hooks/integration-gate.sh recording lock state and env
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1589: pre-lock integration gate — Phase A/B, locked-delta selection, progress guarantee</item>
   <item>RFC-1589: run the integration gate outside the integration lock</item>
   <item>RFC-1592: probe-or-retire ratchet for blocking check rules
 
@@ -38,11 +37,14 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1622: record RFC-1622 integration phase timings</item>
+  <item>RFC-1622: revalidate RFC-1622 owner on retry</item>
+  <history>RFC-1589</history>
 </CHANGE_SUMMARY>
 */
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -218,6 +220,55 @@ describe("flow.integrate pre-lock gate (RFC-1589)", () => {
     expect(integrateEvent?.gateMode).toBe("pre-lock");
     expect(typeof integrateEvent?.lockHeldMs).toBe("number");
     expect(integrateEvent?.preLockAttempts).toBe(1);
+  }, 30_000);
+
+  it("refuses when a later rebase removes the deferred manifest owner", async () => {
+    const repo = await governedRepo();
+    const manifest = "docs/ecosystem.generated.yaml";
+    const content = "schema: 3\n";
+    await writeFile(join(repo, manifest), content);
+    await gitExec(repo, ["add", manifest]);
+    await gitExec(repo, ["commit", "-m", "add manifest"]);
+    const hook = join(repo, "hooks", "integration-gate.sh");
+    await mkdir(join(repo, "hooks"), { recursive: true });
+    await writeFile(
+      hook,
+      [
+        "#!/bin/sh",
+        'if [ "${FORGE_GATE_MODE:-}" = "pre-lock" ]; then',
+        '  git -C "$FLOW_PRIMARY" rm -q docs/ecosystem.generated.yaml',
+        '  git -C "$FLOW_PRIMARY" commit -q -m "remove manifest"',
+        "fi",
+        "exit 0",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    await gitExec(repo, ["add", "hooks/integration-gate.sh"]);
+    await gitExec(repo, ["commit", "-m", "install gate"]);
+    const session = await openSession(repo, "removed-owner");
+    await commitIn(session.worktree!, "a.txt", "a");
+    const invoke = Object.assign(
+      async (name: string) => ({
+        ok: true,
+        exitCode: 0,
+        ...(name === "ecosystem.manifest.generate"
+          ? { data: { file: manifest, sha256: createHash("sha256").update(content).digest("hex") } }
+          : {}),
+      }),
+      { manifestReceiptV1: true as const },
+    );
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      preLock: true,
+      invoke,
+      invokeRoot: session.worktree!,
+    });
+    expect(data.integrated).toBe(false);
+    expect(data.diagnostics.map((diagnostic) => diagnostic.ruleId)).toContain("FLOW-INT-12");
+    expect((await gitExec(repo, ["cat-file", "-e", "develop:a.txt"])).exitCode).not.toBe(0);
   }, 30_000);
 
   it("runs locked-delta under the lock when develop moved, selecting the delta's domain steps plus anchors (AC-3)", async () => {
