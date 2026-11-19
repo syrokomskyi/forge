@@ -9,12 +9,12 @@ can be registered in a Warpgogol kernel without direct dependency.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1463: composite gates report complete violation sets and self-ensure prerequisites — ensure/compositeGate metadata, executor ensure runner, blockedBy skip tracking, ENSURE-01..04 + GATE-CMP-01, runCompositeGate</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
   <item>RFC-1622: honor RFC-1622 receipt capability</item>
-  <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231, RFC-1306, RFC-1354, RFC-1360, RFC-1366</history>
+  <item>RFC-1622: preserve single manifest render during archive replay RFC-1622</item>
+  <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231, RFC-1306, RFC-1354, RFC-1360, RFC-1366, RFC-1461</history>
 </CHANGE_SUMMARY>
 */
 
@@ -445,4 +445,6 @@ export type ForgeInvokeCommand = ((
 ) => Promise<ForgeInvokeResult>) & {
   /** The host explicitly supports an attempt-local manifest render receipt. */
   manifestReceiptV1?: true;
+  /** The host runs the standard, splittable RFC evidence sync implementation. */
+  evidenceSyncStepsV1?: true;
 };

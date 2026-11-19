@@ -22,6 +22,7 @@ invocation attests "all generated artifacts + RFC evidence are current".
 <CHANGE_SUMMARY>
   <item>RFC-1306: initial — EVIDENCE_SYNC_STEPS chain + runRfcEvidenceSync via the ctx.invoke port; EVIDENCE-SYNC-01 fail-closed without a kernel host, EVIDENCE-SYNC-02 propagates a failed step's diagnostics verbatim; review-r1: try/catch maps thrown invokes into EVIDENCE-SYNC-02, dry-run exposes `planned` in data.</item>
   <item>RFC-1306: review-r1 — io-native writes, cacheable off on chain generators, EVIDENCE-SYNC-02 on invoke throws</item>
+  <item>RFC-1622: preserve single manifest render during archive replay RFC-1622</item>
 </CHANGE_SUMMARY>
 */
 
@@ -411,3 +412,7 @@ export async function runRfcEvidenceSync(
     `rfc.evidence.sync: ${steps.length} steps clean, ${changedFiles.length} file${changedFiles.length === 1 ? "" : "s"} changed`,
   );
 }
+
+// A kernel can advertise this exact implementation to the integration fold.
+// Ordinary invocations retain the complete sync, including the manifest.
+Object.assign(runRfcEvidenceSync, { evidenceSyncStepsV1: true });
