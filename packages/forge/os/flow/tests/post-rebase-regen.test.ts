@@ -13,6 +13,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
+  <item>RFC-1622: preserve single manifest render during archive replay RFC-1622</item>
 </CHANGE_SUMMARY>
 */
 // Test-Reason: requirement AC-1 (RFC-1619)
@@ -63,6 +64,124 @@ async function readRecord(dir: string, branch: string): Promise<PostRebaseRegenR
 const owners = [{ path: MANIFEST, command: "ecosystem.manifest.generate" }];
 
 describe("RFC-1622 manifest render receipt", () => {
+  it("runs a trusted deferred evidence sync with one final manifest render", async () => {
+    const dir = await repoWithManifest();
+    const calls: string[] = [];
+    const invoke: ForgeInvokeCommand = Object.assign(
+      async (name: string) => {
+        calls.push(name);
+        const bytes = await readFile(join(dir, MANIFEST));
+        return {
+          ok: true,
+          exitCode: 0,
+          ...(name === "ecosystem.manifest.generate"
+            ? { data: { file: MANIFEST, sha256: createHash("sha256").update(bytes).digest("hex") } }
+            : {}),
+        };
+      },
+      { manifestReceiptV1: true as const, evidenceSyncStepsV1: true as const },
+    );
+    const result = await regenerateAfterRebase({
+      branchWorktree: dir,
+      io: ambientIo,
+      invoke,
+      owners: [{ path: MANIFEST, command: "rfc.evidence.sync" }, ...owners],
+    });
+    expect(result).not.toHaveProperty("refused");
+    expect(calls).toEqual([
+      "checks.commands.generate",
+      "command.manifest.generate",
+      "validator.inventory.generate",
+      "docs.commands.generate",
+      "ecosystem.manifest.generate",
+    ]);
+  }, 30_000);
+
+  it("refuses when a split evidence step fails before rendering", async () => {
+    const dir = await repoWithManifest();
+    const calls: string[] = [];
+    const invoke: ForgeInvokeCommand = Object.assign(
+      async (name: string) => {
+        calls.push(name);
+        return {
+          ok: name !== "validator.inventory.generate",
+          exitCode: name === "validator.inventory.generate" ? 1 : 0,
+        };
+      },
+      { manifestReceiptV1: true as const, evidenceSyncStepsV1: true as const },
+    );
+    const result = await regenerateAfterRebase({
+      branchWorktree: dir,
+      io: ambientIo,
+      invoke,
+      owners: [{ path: MANIFEST, command: "rfc.evidence.sync" }, ...owners],
+    });
+    expect(result).toHaveProperty("refused", true);
+    expect(calls).not.toContain("ecosystem.manifest.generate");
+  }, 30_000);
+
+  it("reports a thrown split evidence step as a refusal", async () => {
+    const dir = await repoWithManifest();
+    const invoke: ForgeInvokeCommand = Object.assign(
+      async (name: string) => {
+        if (name === "validator.inventory.generate") throw new Error("unavailable");
+        return { ok: true, exitCode: 0 };
+      },
+      { manifestReceiptV1: true as const, evidenceSyncStepsV1: true as const },
+    );
+    const result = await regenerateAfterRebase({
+      branchWorktree: dir,
+      io: ambientIo,
+      invoke,
+      owners: [{ path: MANIFEST, command: "rfc.evidence.sync" }, ...owners],
+    });
+    expect(result).toMatchObject({
+      refused: true,
+      message: expect.stringContaining("unavailable"),
+    });
+  }, 30_000);
+
+  it("keeps parameterized evidence sync whole", async () => {
+    const dir = await repoWithManifest();
+    const calls: string[] = [];
+    const invoke: ForgeInvokeCommand = Object.assign(
+      async (name: string) => {
+        calls.push(name);
+        return { ok: true, exitCode: 0 };
+      },
+      { manifestReceiptV1: true as const, evidenceSyncStepsV1: true as const },
+    );
+    await regenerateAfterRebase({
+      branchWorktree: dir,
+      io: ambientIo,
+      invoke,
+      owners: [
+        { path: MANIFEST, command: "rfc.evidence.sync", flags: { id: "RFC-1622" } },
+        ...owners,
+      ],
+    });
+    expect(calls[0]).toBe("rfc.evidence.sync");
+  }, 30_000);
+
+  it("keeps an unverified sync implementation whole", async () => {
+    const dir = await repoWithManifest();
+    const calls: string[] = [];
+    const invoke: ForgeInvokeCommand = Object.assign(
+      async (name: string) => {
+        calls.push(name);
+        return { ok: true, exitCode: 0 };
+      },
+      { manifestReceiptV1: true as const },
+    );
+    await regenerateAfterRebase({
+      branchWorktree: dir,
+      io: ambientIo,
+      invoke,
+      owners: [{ path: MANIFEST, command: "rfc.evidence.sync" }, ...owners],
+    });
+    expect(calls[0]).toBe("rfc.evidence.sync");
+  }, 30_000);
+
   it("uses the generator receipt and binds the committed bytes", async () => {
     const dir = await repoWithManifest();
     const content = "contentHash: candidate\n";

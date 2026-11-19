@@ -20,6 +20,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1619: forge/post-rebase-regen@1 provenance record — blob-sha output map + advisory write on every successful regen</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
+  <item>RFC-1622: preserve single manifest render during archive replay RFC-1622</item>
 </CHANGE_SUMMARY>
 </MODULE_CONTRACT>
 */
@@ -28,6 +29,7 @@ import { createHash } from "node:crypto";
 
 import type { ForgeFlagValue, ForgeInvokeCommand, WorkspaceIO } from "../../src/types.ts";
 import { REGEN_FLAGS } from "../core/archive-regen.ts";
+import { EVIDENCE_SYNC_STEPS } from "../rfc/handlers/rfc-evidence-sync.ts";
 import { git, gitCommit } from "./git.ts";
 import { GENERATED_BASENAME_OWNERS } from "./preflight.ts";
 
@@ -198,14 +200,38 @@ export async function regenerateAfterRebase(input: {
   // state (untracked forge files) is not the generators' doing.
   const before = await porcelainSnapshot(branchWorktree, io);
   for (const o of owners) {
-    const result = await invoke(o.command, o.flags ?? REGEN_FLAGS[o.command] ?? {});
-    if (failed(result)) {
-      return {
-        refused: true,
-        message: `post-rebase regeneration: ${o.command} failed — ${result.summary ?? `exit ${result.exitCode}`}`,
-        fixHint: `run ${o.command} inside the session worktree, inspect and commit the diff, then re-run flow.integrate`,
-      };
+    // The built-in bare sync delegates these generators and then renders the
+    // manifest. Preserve its other steps, but let the scheduled final owner
+    // render once. Unknown implementations and parameterized syncs stay whole.
+    const splitSync =
+      o.command === "rfc.evidence.sync" &&
+      Object.keys(o.flags ?? {}).length === 0 &&
+      invoke.evidenceSyncStepsV1 === true &&
+      invoke.manifestReceiptV1 === true &&
+      owners.at(-1)?.command === "ecosystem.manifest.generate";
+    const steps = splitSync
+      ? EVIDENCE_SYNC_STEPS.filter((step) => step !== "ecosystem.manifest.generate")
+      : [o.command];
+    let result: Awaited<ReturnType<ForgeInvokeCommand>> | undefined;
+    for (const step of steps) {
+      try {
+        result = await invoke(step, splitSync ? {} : (o.flags ?? REGEN_FLAGS[o.command] ?? {}));
+      } catch (error) {
+        return {
+          refused: true,
+          message: `post-rebase regeneration: ${o.command}${splitSync ? ` (${step})` : ""} threw — ${error instanceof Error ? error.message : String(error)}`,
+          fixHint: `run ${o.command} inside the session worktree, inspect and commit the diff, then re-run flow.integrate`,
+        };
+      }
+      if (failed(result)) {
+        return {
+          refused: true,
+          message: `post-rebase regeneration: ${o.command}${splitSync ? ` (${step})` : ""} failed — ${result.summary ?? `exit ${result.exitCode}`}`,
+          fixHint: `run ${o.command} inside the session worktree, inspect and commit the diff, then re-run flow.integrate`,
+        };
+      }
     }
+    if (!result) throw new Error("post-rebase regeneration: empty owner chain");
     ran.push(o.command);
     if (
       o.command === "ecosystem.manifest.generate" &&
