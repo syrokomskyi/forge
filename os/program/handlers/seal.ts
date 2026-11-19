@@ -132,8 +132,8 @@ export async function runSeal(
   let branch = "";
   let head = "";
   try {
-    branch = gitBranch(workspaceRoot);
-    head = gitHead(workspaceRoot);
+    branch = await gitBranch(workspaceRoot);
+    head = await gitHead(workspaceRoot);
   } catch {
     return sealFail(program, packetId, [
       { rule: "PROGRAM-PACKET-02", message: "failed to read git state" },
@@ -148,7 +148,7 @@ export async function runSeal(
 
   let isClean = false;
   try {
-    isClean = gitIsClean(workspaceRoot);
+    isClean = await gitIsClean(workspaceRoot);
   } catch {
     // ignore
   }

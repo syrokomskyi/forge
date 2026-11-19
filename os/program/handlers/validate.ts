@@ -139,8 +139,8 @@ export async function runValidate(
   let branch = "";
   let head = "";
   try {
-    branch = gitBranch(workspaceRoot);
-    head = gitHead(workspaceRoot);
+    branch = await gitBranch(workspaceRoot);
+    head = await gitHead(workspaceRoot);
   } catch {
     violations.push({
       rule: "PROGRAM-PACKET-02",
@@ -157,7 +157,7 @@ export async function runValidate(
   // Validate seal transition (covers most validation rules)
   let isClean = false;
   try {
-    isClean = gitIsClean(workspaceRoot);
+    isClean = await gitIsClean(workspaceRoot);
   } catch {
     // ignore
   }

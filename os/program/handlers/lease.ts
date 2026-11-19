@@ -147,7 +147,7 @@ async function leaseStart(
 
   let head = "";
   try {
-    head = gitHead(workspaceRoot);
+    head = await gitHead(workspaceRoot);
   } catch {
     return leaseFail(program, packetId, "start", [
       { rule: "PROGRAM-PACKET-02", message: "failed to read git HEAD" },
@@ -350,7 +350,16 @@ async function leaseRecover(
   );
   fs.mkdirSync(recoveryDir, { recursive: true });
 
-  const head = gitHead(workspaceRoot);
+  let head: string;
+  try {
+    head = await gitHead(workspaceRoot);
+  } catch {
+    // Refused HEAD read → no attested `observedHead` may be written
+    // into a signed recovery record (CX-165) — fail, never fabricate.
+    return leaseFail(program, packetId, "recover", [
+      { rule: "PROGRAM-PACKET-02", message: "failed to read git HEAD" },
+    ]);
+  }
   const recovery: RecoveryRecord = {
     schema: "forge/program-packet-recovery@1",
     program,

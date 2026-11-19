@@ -592,10 +592,11 @@ export interface EvidenceFingerprint {
    * The shared git dir — derived STRUCTURALLY from `gitDir`'s path
    * shape (`<common>/worktrees/<id>` → `<common>`, else `gitDir`
    * itself), NEVER from `commondir` file content: honoring the file
-   * would resolve a same-uid session's forged common dir, and every
-   * child pins `GIT_COMMON_DIR` to this value anyway, so the file is
-   * fingerprint-only — a planted or rewritten `commondir` is drift,
-   * not a redirect (CX-143).
+   * would resolve a same-uid session's forged common dir. Children
+   * pin `GIT_COMMON_DIR` only when it differs from `GIT_DIR` (CX-162)
+   * — in a primary `.git` a `commondir` file is instead refused on
+   * presence, so the file is drift-or-refusal either way, never a
+   * redirect (CX-143).
    */
   commonDir: string | null;
   /** `--show-toplevel` at capture — null for bare or unresolved repos. */
@@ -2105,6 +2106,27 @@ export function judgeEvidenceRepoSurface(
       `branch.${headBranch}.pushremote=`,
     );
   }
+  // `core.bare` is a DERIVED pin, not a blanket false (CX-162): the
+  // unconditional `core.bare=` made `rev-parse --is-bare-repository`
+  // answer "false" on a genuinely bare repo on a perfectly healthy
+  // channel — the channel itself emitting fabricated evidence, no
+  // refusal needed, and every bare-aware consumer (`detectRepoKind`,
+  // `collectFlowCheck`, `isFlowAdopted`) silently re-derived identity
+  // from filesystem paths git never serves. Bareness is a TOPOLOGICAL
+  // fact computed from the anchored resolution, never the config claim
+  // (a session `core.bare` claim is neutralized to empty by the key
+  // loop above, and this pin lands last so it wins): a `.git` FILE is
+  // a gitfile — worktree layout; `<wt>/.git` → non-bare;
+  // `<common>/worktrees/<id>` → non-bare; any other resolved gitdir →
+  // bare. The pin still lands last, so a session `core.bare=false`
+  // claim inside a real bare repo's config cannot flip it either.
+  const bareGitDir = fingerprint?.gitDir ?? null;
+  const derivedBare =
+    bareGitDir !== null &&
+    fingerprint?.dotGit?.kind !== "file" &&
+    path.basename(bareGitDir) !== ".git" &&
+    path.basename(path.dirname(bareGitDir)) !== "worktrees";
+  configArgs.push("-c", `core.bare=${derivedBare ? "true" : ""}`);
   return { configArgs, hookArgs, refusedKeys, shapeViolations, warnedShape, objectFormat };
 }
 
@@ -2150,7 +2172,16 @@ export function resolutionEnv(
 ): Record<string, string> {
   const env: Record<string, string> = {};
   if (fp?.gitDir != null) env["GIT_DIR"] = fp.gitDir;
-  if (fp?.commonDir != null) env["GIT_COMMON_DIR"] = fp.commonDir;
+  // `GIT_COMMON_DIR` only when it genuinely differs — i.e. a linked
+  // worktree metadir. Pinning it equal to `GIT_DIR` is NOT an identity
+  // no-op: a set GIT_COMMON_DIR takes setup down the linked-worktree
+  // branch, which derives the worktree from CWD — on a bare repo that
+  // fabricates a worktree and `--is-bare-repository` answers `false`
+  // even under a `core.bare=true` config pin (CX-162). For a normal
+  // repo the redirect defense is unchanged: a planted `commondir` file
+  // in a primary `.git` is refused on presence, and the ambient env is
+  // scrubbed, so nothing left can re-point the common dir.
+  if (fp?.commonDir != null && fp.commonDir !== fp.gitDir) env["GIT_COMMON_DIR"] = fp.commonDir;
   if (fp?.workTree != null) env["GIT_WORK_TREE"] = fp.workTree;
   return env;
 }
@@ -2480,14 +2511,29 @@ export async function captureEvidenceSurface(
   // commonDir is derived STRUCTURALLY — a gitdir under
   // `<common>/worktrees/` belongs to `<common>`, anything else is its
   // own common dir. `commondir` file content is never honored: honoring
-  // it would resolve a session-forged target wholesale, and every child
-  // pins GIT_COMMON_DIR anyway so the file is fingerprint-only (CX-143).
+  // it would resolve a session-forged target wholesale; children pin
+  // GIT_COMMON_DIR only when it differs from GIT_DIR, and a commondir
+  // file in a primary `.git` is refused on presence (CX-143/CX-162).
   const commonDir =
     gitDir !== null && path.basename(path.dirname(gitDir)) === "worktrees"
       ? path.dirname(path.dirname(gitDir))
       : gitDir;
+  // Topological bareness (CX-162): a `.git` FILE is a gitfile —
+  // worktree layout; `<wt>/.git` → non-bare; `<common>/worktrees/<id>`
+  // → non-bare; any other resolved gitdir is a bare repo. On a bare
+  // repo `--show-toplevel` must NOT run: with `GIT_DIR` pinned and no
+  // worktree selector, git treats the CWD itself as the implicit
+  // worktree and answers the gitdir — the fingerprint then pins
+  // `GIT_WORK_TREE=<gitdir>` into every judged spawn, where the env
+  // selector outranks the `core.bare=true` pin and re-fabricates
+  // "non-bare". `workTree=null` on bare is the honest resolution.
+  const topologicalBare =
+    gitDir !== null &&
+    dotGit.kind !== "file" &&
+    path.basename(gitDir) !== ".git" &&
+    path.basename(path.dirname(gitDir)) !== "worktrees";
   const workTreeResult =
-    gitDir === null
+    gitDir === null || topologicalBare
       ? null
       : await runGit(repoRoot, ["rev-parse", "--show-toplevel"], {
           preflight: false,
@@ -2505,7 +2551,8 @@ export async function captureEvidenceSurface(
   // `.git` is unreachable through `repoRoot`, so its commondir/gitdir/
   // HEAD only joins the fingerprint at the resolved anchor (CX-143).
   // A planted commondir then drifts the fingerprint AND can never be
-  // followed: GIT_COMMON_DIR preempts it in every child.
+  // followed: `GIT_COMMON_DIR` preempts it where pinned, and where the
+  // pin is withheld (CX-162) presence alone is a violation.
   if (gitDir !== null) {
     const seen = new Set(indirection.map((i) => i.path));
     for (const name of ["commondir", "gitdir", "HEAD"]) {

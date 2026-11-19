@@ -141,8 +141,8 @@ export async function runComplete(
   let head = "";
   let isClean = false;
   try {
-    head = gitHead(workspaceRoot);
-    isClean = gitIsClean(workspaceRoot);
+    head = await gitHead(workspaceRoot);
+    isClean = await gitIsClean(workspaceRoot);
   } catch {
     return completeFail(program, packetId, [
       { rule: "PROGRAM-PACKET-02", message: "failed to read git state" },
@@ -151,10 +151,20 @@ export async function runComplete(
 
   // Check ancestry: implementation head must descend from seal commit
   const sealCommit = lease.sealCommit ?? lease.baseCommit;
-  const ancestryValid = gitAncestorOf(workspaceRoot, sealCommit, implementationHead);
+  const ancestryValid = await gitAncestorOf(workspaceRoot, sealCommit, implementationHead);
 
-  // Get changed files between seal and implementation head
-  const changedFiles = gitChangedFilesBetween(workspaceRoot, sealCommit, implementationHead);
+  // Get changed files between seal and implementation head — a refused
+  // diff is unverifiable, not empty (CX-165): the allowed/forbidden
+  // checks below must never run on a silently narrowed enumeration.
+  const changedFiles = await gitChangedFilesBetween(workspaceRoot, sealCommit, implementationHead);
+  if (changedFiles === null) {
+    return completeFail(program, packetId, [
+      {
+        rule: "PROGRAM-PACKET-02",
+        message: "changed-file evidence between seal and implementation head is unverifiable",
+      },
+    ]);
+  }
 
   // Validate transition
   const violations = validateCompleteTransition(manifest, entry, lease, {
@@ -292,8 +302,8 @@ async function bootstrapComplete(
   let head = "";
   let isClean = false;
   try {
-    head = gitHead(workspaceRoot);
-    isClean = gitIsClean(workspaceRoot);
+    head = await gitHead(workspaceRoot);
+    isClean = await gitIsClean(workspaceRoot);
   } catch {
     return completeFail(program, packetId, [
       { rule: "PROGRAM-PACKET-02", message: "failed to read git state" },
@@ -307,7 +317,7 @@ async function bootstrapComplete(
   }
 
   // Verify ancestry: head must descend from seal commit
-  const ancestryValid = gitAncestorOf(workspaceRoot, sealCommit, head);
+  const ancestryValid = await gitAncestorOf(workspaceRoot, sealCommit, head);
   if (!ancestryValid) {
     return completeFail(program, packetId, [
       {
@@ -317,8 +327,16 @@ async function bootstrapComplete(
     ]);
   }
 
-  // Get changed files
-  const changedFiles = gitChangedFilesBetween(workspaceRoot, sealCommit, head);
+  // Get changed files — refused diff is unverifiable, not empty (CX-165)
+  const changedFiles = await gitChangedFilesBetween(workspaceRoot, sealCommit, head);
+  if (changedFiles === null) {
+    return completeFail(program, packetId, [
+      {
+        rule: "PROGRAM-PACKET-02",
+        message: "changed-file evidence since the seal commit is unverifiable",
+      },
+    ]);
+  }
 
   // Parse packet for allowed/forbidden files
   let packet;
