@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/.</item>
   <item>RFC-0722: add ADR-DIR-01 directory structure warning rule for unsanctioned subdirectories.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -50,12 +49,13 @@ evidence channel — this commit closes all root causes.
 
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
-  <history>RFC-0366</history>
+  <item>RFC-1616: close r17 refusal-polarity consumers — ADR stamp/validate twins + attested dirty verdict</item>
+  <history>RFC-0366, RFC-0521</history>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
-import { verifierGit } from "../../../src/utils/verifier-git.ts";
+import { repoShaped, verifierGit } from "../../../src/utils/verifier-git.ts";
 import {
   listAdrFiles,
   readAndParseAdr,
@@ -449,22 +449,36 @@ async function validateSingleAdr(
 
   // AV-16: implementation commit drift detection (RFC-0625)
   // Warns when implement: ADR-XXXX commits exist in git history since createdAt
-  // but the ADR status is not yet "implemented".
+  // but the ADR status is not yet "implemented". A refused or failed read is
+  // NOT an empty history — on a repo-shaped surface the verdict is
+  // unverifiable, never "no drift" (CX-160); a genuinely absent repo skips
+  // honestly.
   if (status !== "implemented") {
     const datePattern = /^\d{4}-\d{2}-\d{2}$/;
     if (datePattern.test(createdAt)) {
-      const log = await execGitLog(workspaceRoot, ["log", `--since=${createdAt}`, "--oneline"]);
-      if (log) {
-        const pattern = new RegExp(`implement:\\s+${adrId}\\b`, "i");
-        const matchingLines = log.split("\n").filter((line) => pattern.test(line.trim()));
-        if (matchingLines.length > 0) {
-          addViolation(
-            adrId,
-            relFile,
-            "AV-16",
-            `${adrId} has ${matchingLines.length} implement: commit(s) in git history since ${createdAt} but status is still "${status}". Run: site-kernel run adr.implement.stamp --id ${adrId} --implementation-commit <sha> to transition to implemented.`,
-            "warning",
-          );
+      const r = await verifierGit(workspaceRoot, ["log", `--since=${createdAt}`, "--oneline"]);
+      if (r.exitCode !== 0 && repoShaped(workspaceRoot)) {
+        addViolation(
+          adrId,
+          relFile,
+          "AV-16",
+          `${adrId} drift check is unverifiable — the evidence channel refused the history read (${r.stderr.trim() || `git log exited ${r.exitCode}`})`,
+          "warning",
+        );
+      } else if (r.exitCode === 0) {
+        const log = r.stdout.trim();
+        if (log) {
+          const pattern = new RegExp(`implement:\\s+${adrId}\\b`, "i");
+          const matchingLines = log.split("\n").filter((line) => pattern.test(line.trim()));
+          if (matchingLines.length > 0) {
+            addViolation(
+              adrId,
+              relFile,
+              "AV-16",
+              `${adrId} has ${matchingLines.length} implement: commit(s) in git history since ${createdAt} but status is still "${status}". Run: site-kernel run adr.implement.stamp --id ${adrId} --implementation-commit <sha> to transition to implemented.`,
+              "warning",
+            );
+          }
         }
       }
     }
@@ -520,9 +534,4 @@ async function validateSingleAdr(
       );
     }
   }
-}
-
-async function execGitLog(workspaceRoot: string, args: string[]): Promise<string> {
-  const r = await verifierGit(workspaceRoot, args);
-  return r.exitCode === 0 ? r.stdout.trim() : "";
 }
