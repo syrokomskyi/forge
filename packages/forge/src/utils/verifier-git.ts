@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
   <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
+  <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -3026,6 +3026,74 @@ export function armEvidenceWindowWatch(
   const events: string[] = [];
   const watchers: { close(): void }[] = [];
   let failed = false;
+  // Stat pins (CX-r23-A): inotify only sees dirent ops — a byte write
+  // that keeps the path's dirent (`mmap(MAP_SHARED)` stores, `/proc/<pid>/fd`
+  // rewrites) fires NO event, so events alone cannot prove the consulted
+  // surface stayed pinned. Every write bumps the inode's ctime, which no
+  // same-UID process can restore — pinning {ino, ctimeMs} at arm and
+  // re-statting at settle turns every silent write into drift evidence.
+  // `objects/` is excluded from the walk (the fingerprint's own tree
+  // compare covers it at the post-drain reprove; its loose-object count
+  // can outsize the pin bound). `forge/` is the verifier's journal dir.
+  const pins = new Map<string, { ino: number; ctimeMs: number }>();
+  const EVIDENCE_PIN_BOUND = 8192;
+  const pinTree = (root: string) => {
+    for (const [rel, st] of enumerateTreeFiles(root)) {
+      if (failed) return;
+      const top = rel.includes("/") ? rel.slice(0, rel.indexOf("/")) : rel;
+      if (top === "objects" || top === "forge") continue;
+      const abs = path.join(root, rel);
+      if (ignore?.(abs) === true) continue;
+      pins.set(abs, { ino: st.ino, ctimeMs: st.ctimeMs });
+      if (pins.size > EVIDENCE_PIN_BOUND) {
+        failed = true;
+        return;
+      }
+    }
+  };
+  const pinFile = (abs: string) => {
+    if (failed || pins.has(abs)) return;
+    try {
+      const st = statSync(abs);
+      pins.set(abs, { ino: st.ino, ctimeMs: st.ctimeMs });
+      if (pins.size > EVIDENCE_PIN_BOUND) failed = true;
+    } catch {
+      /* absent — a mid-window create is a dirent event the watch sees */
+    }
+  };
+  const pinRoots = new Set<string>();
+  for (const r of [fp.gitDir, fp.commonDir]) {
+    if (r !== null && !pinRoots.has(r)) {
+      pinRoots.add(r);
+      pinTree(r);
+    }
+  }
+  // The anchored op's HEAD is not its own write surface — keep it pinned
+  // even under the mutation ignore-filter (a mid-mutation HEAD flip
+  // steers `reset` the same way a config plant steers a read).
+  const pinHead = (root: string | null) => {
+    if (root !== null) pinFile(path.join(root, "HEAD"));
+  };
+  pinHead(fp.gitDir);
+  pinHead(fp.commonDir);
+  // The real index is the anchored op's own write surface — the
+  // ignore-filter excludes it for `add`/`reset` but pins it on reads.
+  if (fp.indexPath !== null && ignore?.(fp.indexPath) !== true) pinFile(fp.indexPath);
+  if (fp.configPath !== null && ignore?.(fp.configPath) !== true) pinFile(fp.configPath);
+  const claims = preflight.index;
+  if (claims?.path !== undefined) pinFile(claims.path);
+  let claimsFdPin: { fd: number; ino: number; ctimeMs: number } | null = null;
+  if (claims?.fd !== undefined) {
+    try {
+      const st = fstatSync(claims.fd);
+      claimsFdPin = { fd: claims.fd, ino: st.ino, ctimeMs: st.ctimeMs };
+    } catch {
+      failed = true;
+    }
+  }
+  for (const f of extraFiles ?? []) {
+    if (ignore?.(f) !== true) pinFile(f);
+  }
   const record = (abs: string) => {
     if (ignore?.(abs) === true) return;
     for (const j of journalDirs) {
@@ -3095,6 +3163,32 @@ export function armEvidenceWindowWatch(
           w.close();
         } catch {
           /* gone */
+        }
+      }
+      // Stat pins (CX-r23-A): an `mmap(MAP_SHARED)` store, a
+      // `/proc/<pid>/fd` write, or any other dirent-invisible rewrite
+      // leaves no inotify event but still bumps the inode's ctime —
+      // kernel-managed and unrestorable. A vanished pinned file is
+      // drift too (delete+recreate between arm and settle restores the
+      // dirent but never the inode identity).
+      for (const [abs, pin] of pins) {
+        try {
+          const st = statSync(abs);
+          if (st.ino !== pin.ino || st.ctimeMs !== pin.ctimeMs) {
+            events.push(abs);
+          }
+        } catch {
+          events.push(abs);
+        }
+      }
+      if (claimsFdPin !== null) {
+        try {
+          const st = fstatSync(claimsFdPin.fd);
+          if (st.ino !== claimsFdPin.ino || st.ctimeMs !== claimsFdPin.ctimeMs) {
+            events.push(`/proc/self/fd/${claimsFdPin.fd}`);
+          }
+        } catch {
+          events.push(`/proc/self/fd/${claimsFdPin.fd}`);
         }
       }
       return events;
@@ -3779,7 +3873,10 @@ async function verifierGitSpawn(
     // The armed watch saw the `.git` surface for the whole child
     // lifetime — any event recorded inside it means the child may have
     // read an unjudged surface, so the verdict is refused regardless of
-    // what the child printed (CX-r22-A/B/D/F).
+    // what the child printed (CX-r22-A/B/D/F). The pin layer inside
+    // `settle()` covers dirent-invisible writes (CX-r23-A); the
+    // fingerprint's own compare is the last byte check for the
+    // `objects/` tree the pin bound leaves out.
     if (windowWatch !== null) {
       const events = await windowWatch.settle();
       windowWatch = null;
@@ -3788,6 +3885,20 @@ async function verifierGitSpawn(
           exitCode: -1,
           stdout: "",
           stderr: `${EVIDENCE_REFUSED_PREFIX}: repository surface mutated during the judged read (${events[0]}${events.length > 1 ? ` +${events.length - 1}` : ""})`,
+        };
+      }
+      // Read path only: the anchored op's own writes (objects, index,
+      // refs) ARE the mutation — the filtered pins already cover every
+      // non-mutation surface for it.
+      if (
+        opts?.anchored === undefined &&
+        preflight !== null &&
+        !reproveEvidenceSurface(cwd, preflight)
+      ) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: repository surface drifted during the judged read: git ${args.join(" ")}`,
         };
       }
     }

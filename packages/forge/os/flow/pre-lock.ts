@@ -18,7 +18,6 @@ append-only pre-lock verdict records at
   the same fail-closed direction the real gate takes.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1589: pre-lock verdict store + locked-delta selection mirror + progress guarantee inputs</item>
   <item>RFC-1589: run the integration gate outside the integration lock</item>
   <item>RFC-1592: probe-or-retire ratchet for blocking check rules
 
@@ -44,6 +43,8 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
+  <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
+  <history>RFC-1589</history>
 </CHANGE_SUMMARY>
 */
 
@@ -147,8 +148,10 @@ export async function deltaChangedPaths(
   // exit -1 is "no git answer" (refusal/timeout) — `[]` there would let
   // the locked-delta gate select a NARROWER step set than honest
   // (CX-174); null marks the delta unprovable so the caller runs full.
-  if (diff.exitCode === -1) return null;
-  if (diff.exitCode !== 0) return [];
+  // A nonzero git exit is the same class: the diff FAILED (corrupt
+  // objects, unresolvable tips), so `[]` would fabricate an empty delta
+  // (CX-r23-C). Only a clean exit produces an honest list.
+  if (diff.exitCode !== 0) return null;
   return diff.stdout
     .split("\n")
     .map((l) => l.trim())

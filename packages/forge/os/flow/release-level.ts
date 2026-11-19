@@ -15,11 +15,12 @@ next release version it implies.</purpose>
   <item>RFC frontmatter is read only via `listRfcFiles`/`readAndParseRfc` (RFC-1465) — never re-parsed locally.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1488: step 3 — pending level from X-RFC trailers + versionBump</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
+  <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
+  <history>RFC-1488</history>
 </CHANGE_SUMMARY>
 */
 
@@ -27,6 +28,7 @@ import { join } from "node:path";
 
 import { listRfcFiles, readAndParseRfc, rfcFileMatchesId } from "../rfc/frontmatter-io.ts";
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
+import { repoShaped } from "../../src/utils/verifier-git.ts";
 import { git } from "./git.ts";
 import type { ReleaseLine } from "./release-lines.ts";
 import { bumpVersion, formatVersion, maxLevel, type ReleaseLevel, type SemVer } from "./semver.ts";
@@ -82,6 +84,12 @@ export async function pendingLevel(
   const countArgs = ["rev-list", "--count", range];
   if (line.paths.length > 0) countArgs.push("--", ...line.paths);
   const count = await git(repoRoot, io, countArgs);
+  // A failed count on a repo-shaped surface is unverifiable — `0`
+  // fabricates level "none" and skips the whole pending bump (CX-r23-B,
+  // isBare's repoShaped pattern). Non-repo workdirs keep the benign read.
+  if (count.exitCode !== 0 && repoShaped(repoRoot)) {
+    throw new Error(`pendingLevel: rev-list failed (${count.exitCode}): ${count.stderr.trim()}`);
+  }
   const commitsSince = count.exitCode === 0 ? Number.parseInt(count.stdout.trim(), 10) : 0;
 
   const diagnostics: Diagnostic[] = [];
