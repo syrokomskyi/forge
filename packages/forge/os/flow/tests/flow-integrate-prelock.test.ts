@@ -37,6 +37,7 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
   fo-session-retro preserves probe/retire evidence for escape frictions
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <item>RFC-1622: record RFC-1622 integration phase timings</item>
 </CHANGE_SUMMARY>
 */
 
@@ -192,6 +193,17 @@ describe("flow.integrate pre-lock gate (RFC-1589)", () => {
     expect(data.integrated).toBe(true);
     expect(data.gateMode).toBe("pre-lock");
     expect(data.preLockAttempts).toBe(1);
+    expect(data.phaseTimings?.map((entry) => entry.phase)).toEqual([
+      "preflight",
+      "rebase",
+      "regeneration",
+      "repository-gate",
+      "correctness-gate",
+      "finalization",
+    ]);
+    expect(data.phaseTimings?.every((entry) => entry.attempt === 1 && entry.durationMs >= 0)).toBe(
+      true,
+    );
     expect(typeof data.lockHeldMs).toBe("number");
     const lines = await logLines(log);
     // Exactly one gate run — the pre-lock Phase A — and the lock file was

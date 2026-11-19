@@ -11,6 +11,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1568: step 2 — record lifecycle tests</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
+  <item>RFC-1622: record RFC-1622 integration phase timings</item>
 </CHANGE_SUMMARY>
 */
 
@@ -82,7 +83,15 @@ describe("startGateRun / finishGateRun", () => {
     expect(record.status).toBe("running");
     expect(record.pid).toBe(process.pid);
 
-    await finishGateRun(common, record, { exitCode: 0, summary: "[flow.integrate] done" }, io);
+    const phaseTimings = [
+      { phase: "preflight", attempt: 1, durationMs: 42, disposition: "completed" as const },
+    ];
+    await finishGateRun(
+      common,
+      record,
+      { exitCode: 0, summary: "[flow.integrate] done", phaseTimings },
+      io,
+    );
 
     const raw = JSON.parse(
       await readFile(join(gateRunsDir(common), `${record.runId}.json`), "utf8"),
@@ -91,6 +100,7 @@ describe("startGateRun / finishGateRun", () => {
     expect(raw.exitCode).toBe(0);
     expect(raw.endedAt).toBeDefined();
     expect(raw.summary).toBe("[flow.integrate] done");
+    expect(raw.phaseTimings).toEqual(phaseTimings);
   });
 
   it("AC-2: a non-zero exit records failed", async () => {

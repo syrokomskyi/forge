@@ -21,7 +21,6 @@ at cleanup without moving develop again.</purpose>
   <item>docs.archive's deferral clears only when every deferred owner ran — a skipped owner keeps .git/forge/deferred-regen.json.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
 
 docs.archive recorded ~12-minute inline owner regen blocking session end
@@ -36,7 +35,8 @@ RFC-1602</item>
   <item>RFC-1602: document the deferred-regen fold contract in the guide and compass decisions</item>
   <item>RFC-1619: bind the integration-gate manifests step to post-rebase regen provenance (RFC-1619)</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
-  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589, RFC-1598, RFC-1599, RFC-1600</history>
+  <item>RFC-1622: record RFC-1622 integration phase timings</item>
+  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589, RFC-1597, RFC-1598, RFC-1599, RFC-1600</history>
 </CHANGE_SUMMARY>
 */
 
@@ -117,7 +117,15 @@ export const INTEGRATE_LOCK_STALE_MS = 2 * 3_600_000;
 /** RFC-1515 AC-4: the refused lock attempt reports who holds it. */
 export type LockDiagnostic = HeldLockDiagnostic;
 
+export interface FlowPhaseTiming {
+  phase: string;
+  attempt: number;
+  durationMs: number;
+  disposition: "completed" | "failed";
+}
+
 export interface FlowIntegrateData {
+  phaseTimings?: FlowPhaseTiming[];
   branch: string | null;
   integrated: boolean;
   /** develop tip before this invocation. */
@@ -485,7 +493,9 @@ export async function integrateFlowBranch(
   io: WorkspaceIO,
   opts: Parameters<typeof integrateFlowBranchAttempt>[2],
 ): Promise<FlowIntegrateData> {
-  const data = await integrateFlowBranchAttempt(repoRoot, io, opts);
+  const phaseTimings: FlowPhaseTiming[] = [];
+  const data = await integrateFlowBranchAttempt(repoRoot, io, { ...opts, phaseTimings });
+  data.phaseTimings = phaseTimings;
   const error = data.diagnostics.find((d) => d.severity === "error");
   if (error !== undefined && data.branch !== null) {
     // Best-effort bookkeeping — a journal write failure never adds a refusal.
@@ -517,6 +527,7 @@ export async function integrateFlowBranch(
 interface IntegrateAttemptOpts {
   branch: string | null;
   dryRun: boolean;
+  phaseTimings?: FlowPhaseTiming[];
   now?: Date;
   onProgress?: (m: string) => void;
   /** Caller already holds the integration lock (flow.cut/fix releases). */
@@ -617,6 +628,27 @@ async function integrateFlowBranchAttempt(
   opts: IntegrateAttemptOpts,
 ): Promise<FlowIntegrateData> {
   const now = opts.now ?? new Date();
+  let attemptNumber = 0;
+  const measure = async <T>(
+    phase: string,
+    run: () => Promise<T>,
+    failed: (result: T) => boolean = () => false,
+  ): Promise<T> => {
+    const start = Date.now();
+    let disposition: FlowPhaseTiming["disposition"] = "failed";
+    try {
+      const result = await run();
+      disposition = failed(result) ? "failed" : "completed";
+      return result;
+    } finally {
+      opts.phaseTimings?.push({
+        phase,
+        attempt: attemptNumber,
+        durationMs: Date.now() - start,
+        disposition,
+      });
+    }
+  };
 
   const branch = opts.branch ?? (await currentBranch(repoRoot, io));
   if (branch === null) {
@@ -1024,6 +1056,7 @@ async function integrateFlowBranchAttempt(
   };
 
   const integrateGatePhase = async (gateModeEnv?: IntegrateGateMode): Promise<GatePhaseResult> => {
+    attemptNumber += 1;
     const developBefore = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
     const hasBranch = await branchExists(primary, io, branch);
 
@@ -1314,23 +1347,28 @@ async function integrateFlowBranchAttempt(
     // rebase and before the gate spawns.
     if (entry.port === null) {
       const { runIntegratePreflight } = await import("../preflight.ts");
-      const preflight = await runIntegratePreflight({
-        primary,
-        branchWorktree,
-        branch,
-        io,
-        worktreeDirty: dirty,
-        invoke: opts.invoke,
-        deferManifestValidation:
-          opts.invoke !== undefined &&
-          (opts.invokeRoot ?? repoRoot) === branchWorktree &&
-          (await postRebaseOwners(branchWorktree, io)).some(
-            (owner) => owner.command === "ecosystem.manifest.generate",
-          ),
-        commandRegistry: opts.commandRegistry,
-        waitForeignSeconds: opts.waitForeignSeconds,
-        onProgress: opts.onProgress,
-      });
+      const preflight = await measure(
+        "preflight",
+        async () =>
+          runIntegratePreflight({
+            primary,
+            branchWorktree,
+            branch,
+            io,
+            worktreeDirty: dirty,
+            invoke: opts.invoke,
+            deferManifestValidation:
+              opts.invoke !== undefined &&
+              (opts.invokeRoot ?? repoRoot) === branchWorktree &&
+              (await postRebaseOwners(branchWorktree, io)).some(
+                (owner) => owner.command === "ecosystem.manifest.generate",
+              ),
+            commandRegistry: opts.commandRegistry,
+            waitForeignSeconds: opts.waitForeignSeconds,
+            onProgress: opts.onProgress,
+          }),
+        (result) => !result.ok,
+      );
       toleratedDirt = preflight.tolerated;
       foreignDirt = preflight.foreignDirt ?? [];
       for (const skipped of preflight.skipped) {
@@ -1472,7 +1510,11 @@ async function integrateFlowBranchAttempt(
     let autoResolved: string[] = [];
     let autoResolveDeferred: string[] = [];
     if (entry.port === null) {
-      const rebased = await rebaseOnto(branchWorktree, "develop", { branch, developBefore });
+      const rebased = await measure(
+        "rebase",
+        () => rebaseOnto(branchWorktree, "develop", { branch, developBefore }),
+        (result) => "diagnostics" in result,
+      );
       if ("diagnostics" in rebased) return rebased;
       autoResolved = rebased.autoResolved;
       autoResolveDeferred = rebased.autoResolveDeferred;
@@ -1483,12 +1525,17 @@ async function integrateFlowBranchAttempt(
     // change is committed before the gate judges it (F-0168).
     let postRebaseRegen: PostRebaseRegenResult | undefined;
     if (entry.port === null) {
-      const regen = await regenManifests(branchWorktree, {
-        branch,
-        developBefore,
-        rebased: true,
-        baseSha: rebaseBase,
-      });
+      const regen = await measure(
+        "regeneration",
+        () =>
+          regenManifests(branchWorktree, {
+            branch,
+            developBefore,
+            rebased: true,
+            baseSha: rebaseBase,
+          }),
+        (result) => result !== null && "diagnostics" in result,
+      );
       if (regen !== null && "diagnostics" in regen) return regen;
       postRebaseRegen = regen ?? undefined;
     }
@@ -1515,17 +1562,22 @@ async function integrateFlowBranchAttempt(
       });
     }
     opts.onProgress?.(`gate engine: ${engine.source} (${engine.root})`);
-    const gate = await runFlowScript(io, "integration-gate", {
-      primary,
-      cwd: engine.root,
-      env: {
-        FLOW_PRIMARY: primary,
-        FLOW_BRANCH: branch,
-        FLOW_BASE_SHA: rebaseBase,
-        FORGE_FLOW_TARGET: opts.target ?? "develop",
-        ...(gateModeEnv !== undefined ? { FORGE_GATE_MODE: gateModeEnv } : {}),
-      },
-    });
+    const gate = await measure(
+      "repository-gate",
+      () =>
+        runFlowScript(io, "integration-gate", {
+          primary,
+          cwd: engine.root,
+          env: {
+            FLOW_PRIMARY: primary,
+            FLOW_BRANCH: branch,
+            FLOW_BASE_SHA: rebaseBase,
+            FORGE_FLOW_TARGET: opts.target ?? "develop",
+            ...(gateModeEnv !== undefined ? { FORGE_GATE_MODE: gateModeEnv } : {}),
+          },
+        }),
+      (result) => result.status === "failed",
+    );
     if (gate.status === "failed") {
       return refuse(
         "FLOW-INT-05",
@@ -1541,12 +1593,17 @@ async function integrateFlowBranchAttempt(
     // (4b) RFC-1580: correctness gate from the PRIMARY install, judging the
     // session worktree against the develop tip it integrates into.
     const { runCorrectnessStep } = await import("../correctness-step.ts");
-    const correctness = await runCorrectnessStep(io, {
-      primary,
-      worktree: branchWorktree,
-      base: rebaseBase,
-      ...(opts.acceptWeakening ? { acceptWeakening: opts.acceptWeakening } : {}),
-    });
+    const correctness = await measure(
+      "correctness-gate",
+      () =>
+        runCorrectnessStep(io, {
+          primary,
+          worktree: branchWorktree,
+          base: rebaseBase,
+          ...(opts.acceptWeakening ? { acceptWeakening: opts.acceptWeakening } : {}),
+        }),
+      (result) => Boolean(result.refusal),
+    );
     if (correctness.refusal) {
       return refuse(
         "FLOW-INT-18",
@@ -1731,7 +1788,11 @@ async function integrateFlowBranchAttempt(
   const integrateInner = async (): Promise<FlowIntegrateData> => {
     const phase = await integrateGatePhase();
     if (!("state" in phase)) return phase;
-    return integrateMergeTail(phase.state);
+    return measure(
+      "finalization",
+      () => integrateMergeTail(phase.state),
+      (result) => result.diagnostics.some((diagnostic) => diagnostic.severity === "error"),
+    );
   };
 
   /** RFC-1589 Phase B — inside integrate.lock: revalidate the Phase-A
@@ -1845,21 +1906,31 @@ async function integrateFlowBranchAttempt(
       if (b1 !== s.rebaseBase) {
         // Develop moved between the Phase-A verdict and the lock — rebase
         // and regenerate onto B1 before the delta selection runs.
-        const rebased = await rebaseOnto(s.branchWorktree, b1, {
-          branch,
-          developBefore: s.developBefore,
-        });
+        const rebased = await measure(
+          "rebase",
+          () =>
+            rebaseOnto(s.branchWorktree, b1, {
+              branch,
+              developBefore: s.developBefore,
+            }),
+          (result) => "diagnostics" in result,
+        );
         if ("diagnostics" in rebased) return out("locked-delta", rebased);
         s.autoResolved.push(...rebased.autoResolved);
         if (rebased.autoResolveDeferred.length > 0) {
           (s.autoResolveDeferred ??= []).push(...rebased.autoResolveDeferred);
         }
-        const regen = await regenManifests(s.branchWorktree, {
-          branch,
-          developBefore: s.developBefore,
-          rebased: true,
-          baseSha: b1,
-        });
+        const regen = await measure(
+          "regeneration",
+          () =>
+            regenManifests(s.branchWorktree, {
+              branch,
+              developBefore: s.developBefore,
+              rebased: true,
+              baseSha: b1,
+            }),
+          (result) => result !== null && "diagnostics" in result,
+        );
         if (regen !== null && "diagnostics" in regen) return out("locked-delta", regen);
         if (regen !== null) s.postRebaseRegen = regen;
       }
@@ -1884,18 +1955,23 @@ async function integrateFlowBranchAttempt(
       // on the judged worktree the gate's own RFC-1582 selection runs over
       // ours ∪ delta — a superset of the delta selection + always rows,
       // never under-selected, always judged on the tree that will land.
-      const gate = await runFlowScript(io, "integration-gate", {
-        primary,
-        cwd: s.engine.root,
-        env: {
-          FLOW_PRIMARY: primary,
-          FLOW_BRANCH: branch,
-          FLOW_BASE_SHA: s.rebaseBase,
-          FORGE_FLOW_TARGET: opts.target ?? "develop",
-          FORGE_GATE_MODE: mode,
-          ...(mode === "locked-full" ? { FLOW_GATE_FULL: "1" } : {}),
-        },
-      });
+      const gate = await measure(
+        "repository-gate",
+        () =>
+          runFlowScript(io, "integration-gate", {
+            primary,
+            cwd: s.engine.root,
+            env: {
+              FLOW_PRIMARY: primary,
+              FLOW_BRANCH: branch,
+              FLOW_BASE_SHA: s.rebaseBase,
+              FORGE_FLOW_TARGET: opts.target ?? "develop",
+              FORGE_GATE_MODE: mode,
+              ...(mode === "locked-full" ? { FLOW_GATE_FULL: "1" } : {}),
+            },
+          }),
+        (result) => result.status === "failed",
+      );
       if (gate.status === "failed") {
         return out(
           mode,
@@ -1910,12 +1986,17 @@ async function integrateFlowBranchAttempt(
       }
       s.gate = gate;
       const { runCorrectnessStep } = await import("../correctness-step.ts");
-      const correctness = await runCorrectnessStep(io, {
-        primary,
-        worktree: s.branchWorktree,
-        base: b1,
-        ...(opts.acceptWeakening ? { acceptWeakening: opts.acceptWeakening } : {}),
-      });
+      const correctness = await measure(
+        "correctness-gate",
+        () =>
+          runCorrectnessStep(io, {
+            primary,
+            worktree: s.branchWorktree,
+            base: b1,
+            ...(opts.acceptWeakening ? { acceptWeakening: opts.acceptWeakening } : {}),
+          }),
+        (result) => Boolean(result.refusal),
+      );
       if (correctness.refusal) {
         return out(
           mode,
@@ -1939,7 +2020,11 @@ async function integrateFlowBranchAttempt(
       };
       s.branchTip = (await git(primary, io, ["rev-parse", branch])).stdout.trim();
     }
-    const data = await integrateMergeTail(s);
+    const data = await measure(
+      "finalization",
+      () => integrateMergeTail(s),
+      (result) => result.diagnostics.some((diagnostic) => diagnostic.severity === "error"),
+    );
     return out(mode, data, deltaSelection);
   };
 
