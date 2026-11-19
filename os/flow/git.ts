@@ -204,6 +204,7 @@ the round-11 acceptance report.</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
+  <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -307,6 +308,39 @@ export async function gitEvidence(
       stderr: `gitEvidence refused argv outside the evidence allowlist: git ${args.join(" ")}`,
     };
   }
+  // A mid-window refusal means the surface MOVED during the judged read —
+  // the child's answer is untrustworthy, but the repo itself may settle a
+  // millisecond later. Re-attempting re-preflights a stable surface and
+  // re-reads honestly; a persistent foreign writer still refuses once the
+  // flux budget is spent (RFC-1616 R25 follow-up — callers no longer need
+  // per-site catch loops for transient churn).
+  const fluxDeadline = Date.now() + 2_000;
+  for (;;) {
+    const r = await gitEvidenceAttempt(repoRoot, args, opts);
+    if (
+      r.exitCode !== -1 ||
+      !r.stderr.includes("during the judged read") ||
+      Date.now() >= fluxDeadline
+    ) {
+      return r;
+    }
+    await new Promise((r2) => setTimeout(r2, 120));
+  }
+}
+
+/** One armed-and-judged evidence spawn — see `gitEvidence`'s flux ride-out. */
+async function gitEvidenceAttempt(
+  repoRoot: string,
+  args: string[],
+  opts?: {
+    timeoutMs?: number;
+    extraEnv?: Record<string, string>;
+    internalEnv?: Record<string, string>;
+    preflight?: boolean;
+    /** Extra file inodes folded into the spawn-window watch (see `verifierGit`). */
+    extraWatchPaths?: readonly string[];
+  },
+): Promise<ExecResult> {
   // The session-writable repo surface is judged before every spawn —
   // transport/exec config keys `-c` cannot reach and .git metadata files
   // that rewrite what a read resolves make any answer fabricable, so the

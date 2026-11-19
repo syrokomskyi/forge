@@ -104,7 +104,11 @@ describe("CX-r24-A anchored reset can no longer resolve a flipped ref", () => {
   it("an armed anchored window records a mid-op loose-ref write", async () => {
     const root = mkRepo();
     const pre = await evidenceRepoPreflight(root);
-    const watch = armEvidenceWindowWatch(root, pre!, anchoredMutationIgnorable);
+    const watch = armEvidenceWindowWatch(
+      root,
+      pre!,
+      anchoredMutationIgnorable(pre!.fingerprint, "reset"),
+    );
     writeFileSync(path.join(root, ".git", "refs", "heads", "main"), `${foreignTip(root)}\n`);
     const events = await watch!.settle();
     expect(events.some((e) => e.includes("refs"))).toBe(true);
@@ -118,7 +122,13 @@ describe("CX-r24-A anchored reset can no longer resolve a flipped ref", () => {
     // `reset`-class arm: the op resolves objects, so existing objects
     // are pinned (`add`-class arms pass `pinObjects:false` — it never
     // resolves them, and its own utime freshen would false-trip).
-    const watch = armEvidenceWindowWatch(root, pre!, anchoredMutationIgnorable, undefined, true);
+    const watch = armEvidenceWindowWatch(
+      root,
+      pre!,
+      anchoredMutationIgnorable(pre!.fingerprint, "reset"),
+      undefined,
+      true,
+    );
     chmodSync(obj, 0o644); // objects are 444 — the attacker's own write prep
     const r = spawnSync(
       "python3",

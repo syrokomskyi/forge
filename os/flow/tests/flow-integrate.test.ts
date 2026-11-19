@@ -11,12 +11,12 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1598: refuse-before-staging index guard + checked-out-side generated-conflict resolver (RFC-1598)</item>
   <item>RFC-1600: require declaration context in the integrate dup-id scan and resolve real friction ids (F-0286)</item>
   <item>RFC-1600: ignore generated projections in the FLOW-INT-19 duplicate-id scan</item>
   <item>RFC-1600: keep FLOW-INT-19 fixture ids outside the live rule range (RFC-1600)</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
-  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1597, RFC-1599, RFC-1600</history>
+  <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
+  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1597, RFC-1598, RFC-1599, RFC-1600</history>
 </CHANGE_SUMMARY>
 */
 
@@ -849,13 +849,15 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
     });
     await wf(join(repo, "claimed.txt"), "dirty-in-flight");
 
-    // The foreign op finishes mid-wait: claim released, dirt committed away.
+    // The foreign op finishes mid-wait: the claim covers its write until
+    // the commit lands — releasing first would leave the dirt genuinely
+    // unattributed in the gap, an honest FLOW-INT-03, not the AC-4 wait.
     const clearer = setTimeout(() => {
       void (async () => {
-        await releaseOp(repo, ambientIo, "ship-002");
         await wf(join(repo, "claimed.txt"), "committed-away");
         await gitExec(repo, ["add", "claimed.txt"]);
         await gitExec(repo, ["commit", "-m", "foreign op lands its write"]);
+        await releaseOp(repo, ambientIo, "ship-002");
       })();
     }, 1200);
 

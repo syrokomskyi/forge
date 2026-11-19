@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
   <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <item>RFC-1616: pin ref and object surfaces under anchored git mutations</item>
+  <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -650,6 +650,27 @@ export interface EvidenceFingerprint {
    */
   refsDir: string | null;
   refsFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
+  /**
+   * `<gitdir>/refs` — the PER-WORKTREE namespace (`refs/worktree/`,
+   * `refs/bisect/`, `refs/rewritten/` live in the worktree's own
+   * gitdir, which `--git-path refs` does NOT resolve on a linked
+   * worktree). Null when it equals `refsDir` (plain/main repos) or
+   * `gitDir` is unresolved (CX-r25).
+   */
+  wtRefsDir: string | null;
+  wtRefsFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
+  /**
+   * Regular files directly under `gitDir` AND `commonDir` — git's
+   * pseudo-ref channel: `rev-parse FOO`/`log ORIG_HEAD`/`reset <name>`
+   * resolve `$GIT_DIR/<name>` before refs, so `ORIG_HEAD`,
+   * `MERGE_HEAD`, `AUTO_MERGE`, `BISECT_HEAD`, and ANY planted file
+   * (`.git/FOO`) answer as revs from unpinned bytes (CX-r25-A).
+   * Keyed by ABSOLUTE path — directories are excluded (`objects/`,
+   * `refs/`, `logs/`, `worktrees/` have their own tree members; a dir
+   * swap at a root name is a parent-dirent event plus tree-member
+   * drift). Files shared by both roots (plain repos) dedupe by key.
+   */
+  rootFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
   /**
    * `<common>/packed-refs` — the packed half of the same namespace;
    * byte-pinned like the index so a pre-arm rewrite is drift too.
@@ -2424,6 +2445,50 @@ function enumerateTreeFiles(root: string): Map<string, EvidenceSurfaceFile> {
 }
 
 /**
+ * Non-recursive sibling of `enumerateTreeFiles`: only regular files and
+ * symlinks directly inside `root`, keyed by ABSOLUTE path — the
+ * pseudo-ref channel (`rev-parse`/`log`/`reset` resolve `$GIT_DIR/<name>`
+ * before refs) needs every planted top-level file fingerprinted, not a
+ * name allowlist (CX-r25-A).
+ */
+function enumerateTopFiles(root: string, into: Map<string, EvidenceSurfaceFile>): void {
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    if (!e.isFile() && !e.isSymbolicLink()) continue;
+    const ap = path.join(root, e.name);
+    if (into.has(ap)) continue;
+    try {
+      if (e.isSymbolicLink()) {
+        const link = readlinkSync(ap);
+        let st;
+        try {
+          st = statSync(ap);
+        } catch {
+          st = lstatSync(ap);
+        }
+        into.set(ap, {
+          ino: st.ino,
+          ctimeMs: st.ctimeMs,
+          size: st.size,
+          link,
+          ...(st.isDirectory() ? { linkDir: true as const } : {}),
+        });
+      } else {
+        const st = statSync(ap);
+        into.set(ap, { ino: st.ino, ctimeMs: st.ctimeMs, size: st.size });
+      }
+    } catch {
+      /* vanished mid-scan — the judge's own sweep sees the same state */
+    }
+  }
+}
+
+/**
  * The `rev-parse --git-path` resolves + `.git` indirection + fingerprint —
  * one fused surface-capture (CX-134/CX-135) so callers cannot misorder
  * the three steps. Ordering contract: indirection bytes are read BEFORE
@@ -2636,6 +2701,9 @@ export async function captureEvidenceSurface(
         modulesFiles: new Map(),
         refsDir: null,
         refsFiles: new Map(),
+        wtRefsDir: null,
+        wtRefsFiles: new Map(),
+        rootFiles: new Map(),
         packedRefsPath: null,
         packedRefsBytes: null,
         indexPath: null,
@@ -2882,6 +2950,23 @@ export async function captureEvidenceSurface(
     modulesFiles: modulesDir === null ? new Map() : enumerateTreeFiles(modulesDir),
     refsDir: refsAbs,
     refsFiles: refsAbs === null ? new Map() : enumerateTreeFiles(refsAbs),
+    // The PER-WORKTREE ref namespace (`refs/worktree/`, `refs/bisect/`)
+    // lives at `<gitdir>/refs` — distinct from the common `refsDir` only
+    // on linked-worktree cwds; identical paths dedupe to null (CX-r25).
+    wtRefsDir: (() => {
+      const p = gitDir === null ? null : path.join(gitDir, "refs");
+      return p === null || p === refsAbs ? null : p;
+    })(),
+    wtRefsFiles: (() => {
+      const p = gitDir === null ? null : path.join(gitDir, "refs");
+      return p === null || p === refsAbs ? new Map() : enumerateTreeFiles(p);
+    })(),
+    rootFiles: (() => {
+      const m = new Map<string, EvidenceSurfaceFile>();
+      if (gitDir !== null) enumerateTopFiles(gitDir, m);
+      if (commonDir !== null && commonDir !== gitDir) enumerateTopFiles(commonDir, m);
+      return m;
+    })(),
     packedRefsPath: packedRefsAbs,
     packedRefsBytes: packedRefsAbs === null ? null : safeReadBytes(packedRefsAbs),
     indexPath: indexAbs,
@@ -3028,36 +3113,62 @@ function evidenceWindowFiles(preflight: EvidencePreflight): {
  * `*_HEAD`/lock files; anything else still refuses.
  */
 /**
- * Anchored-mutation event filter (CX-169's channel): `add`/`reset`
- * legitimately write the real index, object store, refs, HEAD-side
- * pseudo-refs, reflogs, and lock files — events under those paths are
- * the op working, not a plant. Everything else (config, `shallow`,
- * `info/*`, `packed-refs`, `modules/`, `worktrees/`, the `.git` node
- * itself) still refuses, so a shape-file plant concurrent with the
- * mutation cannot steer it (CX-r22 class on the write side).
+ * Anchored-mutation event filter factory (CX-169's channel): the
+ * admitted ops write exactly the real index + `index.lock` (+
+ * `sharedindex.*` under core.splitIndex), and `add` also churns the
+ * object store — resolved-path ignores for those only. Refs, logs,
+ * HEAD, pseudo-refs and every other lock stay FOREIGN: `reset -q --`
+ * is a pathspec-only index op — verified empirically it writes no ref
+ * and no reflog — yet it RESOLVES `HEAD → refs/heads/<branch>` for its
+ * blobs, so an unignored ref flip steers it (CX-r24-A). Basename
+ * matching was the r25 hole: `refs/heads/index`/`refs/heads/ORIG_HEAD`
+ * are legal branch names that basename ignores made invisible to the
+ * watch (CX-r25-B) — the filter therefore compares resolved absolute
+ * paths from the fingerprint, never name shapes.
  */
-export function anchoredMutationIgnorable(abs: string): boolean {
-  const name = abs.slice(abs.lastIndexOf("/") + 1);
-  return (
-    // Only `objects/` is a write surface the admitted ops legitimately
-    // churn (`add` creates blobs). `refs/`/`logs/` are NOT: `reset -q --`
-    // performs a pathspec-only index reset — no ref transaction, no
-    // reflog — yet it RESOLVES `HEAD → refs/heads/<branch>` to pick the
-    // blobs, so an unignored ref flip steers its index claims (CX-r24-A).
-    /\/objects(?:\/|$)/.test(abs) ||
-    name === "index" ||
-    name === "HEAD" ||
-    name === "ORIG_HEAD" ||
-    name === "MERGE_HEAD" ||
-    name === "MERGE_MSG" ||
-    name === "MERGE_MODE" ||
-    name === "CHERRY_PICK_HEAD" ||
-    name === "REVERT_HEAD" ||
-    name === "COMMIT_EDITMSG" ||
-    name === "AUTO_MERGE" ||
-    name === "FETCH_HEAD" ||
-    name.endsWith(".lock")
+export function anchoredMutationIgnorable(
+  fp: Pick<EvidenceFingerprint, "objectsDir" | "indexPath" | "gitDir" | "commonDir"> | undefined,
+  op: string,
+): (abs: string) => boolean {
+  const objects = fp?.objectsDir ?? null;
+  const index = fp?.indexPath ?? null;
+  const indexLock = index === null ? null : `${index}.lock`;
+  const roots = [fp?.gitDir, fp?.commonDir].filter(
+    (r): r is string => r !== null && r !== undefined,
   );
+  return (abs: string): boolean => {
+    // Resolved paths, never basenames (CX-r25-B): `refs/heads/index`,
+    // `refs/heads/ORIG_HEAD`, `logs/HEAD` are legal ref names that the
+    // op must still see as foreign — a basename filter anywhere under
+    // `refs/` reopened the CX-r24-A steering class.
+    //
+    // `add`/`reset -q --` write exactly: the real index + its lock,
+    // `sharedindex.*` when core.splitIndex is on, and (`add` only) the
+    // object store. EVERYTHING else — refs, logs, HEAD, pseudo-refs,
+    // locks outside the index — is foreign: neither admitted op runs a
+    // ref transaction, reflog append, or ref write of any kind.
+    if (
+      (op === "add" || op === "reset") &&
+      index !== null &&
+      (abs === index || abs === indexLock)
+    ) {
+      return true;
+    }
+    if (
+      (op === "add" || op === "reset") &&
+      roots.some((r) => path.dirname(abs) === r && path.basename(abs).startsWith("sharedindex."))
+    ) {
+      return true;
+    }
+    if (
+      op === "add" &&
+      objects !== null &&
+      (abs === objects || abs.startsWith(objects + path.sep))
+    ) {
+      return true;
+    }
+    return false;
+  };
 }
 
 export function armEvidenceWindowWatch(
@@ -3399,6 +3510,24 @@ export function reproveEvidenceSurface(
       }
     }
   }
+  if (fp.wtRefsDir !== null) {
+    // The per-worktree namespace (`refs/worktree/`, `refs/bisect/`) —
+    // same class as `refsDir`, reachable only on linked-worktree cwds.
+    const cur = enumerateTreeFiles(fp.wtRefsDir);
+    if (cur.size !== fp.wtRefsFiles.size) return false;
+    for (const [rel, st] of fp.wtRefsFiles) {
+      const c = cur.get(rel);
+      if (
+        c === undefined ||
+        c.ino !== st.ino ||
+        c.ctimeMs !== st.ctimeMs ||
+        c.size !== st.size ||
+        c.link !== st.link
+      ) {
+        return false;
+      }
+    }
+  }
   if (fp.packedRefsPath !== null) {
     const b = safeReadBytes(fp.packedRefsPath);
     if (
@@ -3407,6 +3536,30 @@ export function reproveEvidenceSurface(
         : fp.packedRefsBytes === null || !b.equals(fp.packedRefsBytes)
     )
       return false;
+  }
+  // The pseudo-ref channel: `rev-parse`/`log`/`reset` resolve
+  // `$GIT_DIR/<name>` before refs — a planted `.git/FOO` or a rewritten
+  // `ORIG_HEAD`/`AUTO_MERGE` answers as an unjudged rev. Absolute-keyed
+  // across gitDir+commonDir — presence is required both ways: a plant
+  // appears as a map entry the fingerprint lacks, a delete as an entry
+  // the live root lacks (CX-r25-A).
+  {
+    const roots = new Set([fp.gitDir, fp.commonDir].filter((r): r is string => r !== null));
+    const cur = new Map<string, EvidenceSurfaceFile>();
+    for (const r of roots) enumerateTopFiles(r, cur);
+    if (cur.size !== fp.rootFiles.size) return false;
+    for (const [abs, st] of fp.rootFiles) {
+      const c = cur.get(abs);
+      if (
+        c === undefined ||
+        c.ino !== st.ino ||
+        c.ctimeMs !== st.ctimeMs ||
+        c.size !== st.size ||
+        c.link !== st.link
+      ) {
+        return false;
+      }
+    }
   }
   if (fp.indexPath !== null) {
     const b = safeReadBytes(fp.indexPath);
@@ -3788,6 +3941,13 @@ async function verifierGitSpawn(
   // `close` — a plant+unlink inside the spawn window still leaves its
   // inotify record and refuses the verdict.
   let windowWatch: EvidenceWindowWatch | null = null;
+  // The scratch channel (`useIndexEnv=false`) gets the full claims-
+  // index + watch path for its READ-TABLE argv too (CX-r25-E):
+  // `for-each-ref`/`rev-parse`/`show` answer replay evidence on an
+  // adversary-owned repo — a mid-window flip would serve a torn view
+  // no admitted op ever produced. The bounded mutation ops keep the
+  // ambient real-index semantics their own write surface requires.
+  const effectiveIndexEnv = useIndexEnv || isVerifierGitQuery(args);
   if (opts?.anchored !== undefined) {
     preflight = opts.anchored;
     ownsPreflight = false;
@@ -3815,14 +3975,15 @@ async function verifierGitSpawn(
     windowWatch = armEvidenceWindowWatch(
       cwd,
       preflight,
-      anchoredMutationIgnorable,
+      anchoredMutationIgnorable(preflight.fingerprint, args[0]!),
       opts?.extraWatchPaths,
-      // `reset -q --` resolves HEAD→commit→tree→blobs — a mid-window
-      // rewrite of an existing object steers its index claims, so the
-      // object store joins the pins. `add` derives staged OIDs from
-      // worktree bytes alone; pinning its objects would misread the
-      // write-side utime freshen as drift (CX-r24-A).
-      args[0] === "reset",
+      // Every anchored op that RESOLVES objects needs existing objects
+      // pinned: `reset -q --` walks HEAD→commit→tree→blobs, and anchored
+      // reads (`show`/`cat-file`/`log`/`rev-parse`) answer with object
+      // bytes (CX-r25-C). `add` alone stays unpinned — it derives staged
+      // OIDs from worktree bytes, never consults existing objects, and
+      // its write-side utime freshen would misread as drift (CX-r24-A).
+      args[0] !== "add",
     );
     if (windowWatch === null) {
       return {
@@ -3869,7 +4030,7 @@ async function verifierGitSpawn(
     // `/proc/<childpid>/fd/3`. Arming BEFORE the last byte-level check
     // and draining AFTER `close` closes the arm→use gap: any surface
     // event inside the armed window refuses the verdict outright.
-    if (preflight !== null && useIndexEnv) {
+    if (preflight !== null && effectiveIndexEnv) {
       for (let armAttempt = 0; preflight !== null; armAttempt++) {
         windowWatch = armEvidenceWindowWatch(cwd, preflight, undefined, opts?.extraWatchPaths);
         // An unarmable surface (watch limit, vanished dir) cannot be
@@ -3895,7 +4056,7 @@ async function verifierGitSpawn(
     // table fails closed (no config judgment exists to trust). The
     // scratch channel keeps null-preflight ops: clone/init legitimately
     // run on non-repo cwds (R13 secondary asymmetry).
-    if (preflight === null && useIndexEnv) {
+    if (preflight === null && effectiveIndexEnv) {
       return {
         exitCode: -1,
         stdout: "",
@@ -3944,7 +4105,7 @@ async function verifierGitSpawn(
     // ops; non-index ops never consult it and proceed — but they still
     // carry `GIT_ATTR_SOURCE` because `log -p`/`show`/`diff` engage
     // attribute-gated drivers without touching the index (R13-D).
-    const spawnState = evidenceSpawnState(preflight, useIndexEnv);
+    const spawnState = evidenceSpawnState(preflight, effectiveIndexEnv);
     if (spawnState.unproven && isIndexConsultingRead(args)) {
       closeSpawnFds(spawnState);
       return {

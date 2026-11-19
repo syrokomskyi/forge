@@ -47,6 +47,7 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
   werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
   the 'recurrences' wording the addressed-match routing test pins</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
   <history>ADR-0129, ADR-0130, RFC-0000, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
@@ -72,11 +73,12 @@ import {
   type ClassifiedDirtyEntry,
   type DirtyClass,
 } from "./dirty-classify.ts";
-import { currentBranch, git, statusTracked, worktreeList } from "./git.ts";
+import { currentBranch, git, statusTracked, worktreeList, type DirtyStatus } from "./git.ts";
 import { computeForeignDirt, type ForeignDirtEntry } from "./primary-dirt.ts";
 import { commonGitDir } from "./registry.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 import { claimCoversPath, liveClaims, type OpClaim } from "./ops-registry.ts";
+import { EVIDENCE_REFUSED_PREFIX } from "../../src/utils/verifier-git.ts";
 
 export type LockfileClassification = "importer-prune-only" | "other";
 
@@ -1030,7 +1032,29 @@ export async function runIntegratePreflight(
   let foreignDirt: ForeignDirtEntry[] = [];
   let commonForDirt: string | null = null;
   for (;;) {
-    const primaryDirty = await deps.runStatusTracked(opts.primary, io);
+    let primaryDirty: DirtyStatus;
+    try {
+      primaryDirty = await deps.runStatusTracked(opts.primary, io);
+    } catch (e) {
+      // A refused mid-window read is the same flux this wait exists for —
+      // a foreign write inside the judged read proves the surface was in
+      // motion, so it is neither provably clean nor attributable. Poll
+      // again while the deadline holds; a refusal past it (or any
+      // structural refusal) still throws (RFC-1616 R25 follow-up).
+      const msg = e instanceof Error ? e.message : String(e);
+      if (
+        msg.includes(EVIDENCE_REFUSED_PREFIX) &&
+        msg.includes("during the judged read") &&
+        Date.now() < foreignDeadline
+      ) {
+        opts.onProgress?.(
+          `primary surface mutated mid-read — waiting up to ${Math.ceil((foreignDeadline - Date.now()) / 1000)}s`,
+        );
+        await new Promise((r) => setTimeout(r, Math.min(30_000, foreignDeadline - Date.now())));
+        continue;
+      }
+      throw e;
+    }
     if (primaryDirty.entries.length === 0) {
       primaryClean = true;
       foreignDirt = [];
