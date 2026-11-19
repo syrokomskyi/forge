@@ -43,6 +43,7 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
   fo-session-retro preserves probe/retire evidence for escape frictions
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
 </CHANGE_SUMMARY>
 */
 
@@ -141,8 +142,12 @@ export async function deltaChangedPaths(
   primary: string,
   b0: string,
   b1: string,
-): Promise<string[]> {
+): Promise<string[] | null> {
   const diff = await gitEvidence(primary, ["diff", "--name-only", `${b0}..${b1}`]);
+  // exit -1 is "no git answer" (refusal/timeout) — `[]` there would let
+  // the locked-delta gate select a NARROWER step set than honest
+  // (CX-174); null marks the delta unprovable so the caller runs full.
+  if (diff.exitCode === -1) return null;
   if (diff.exitCode !== 0) return [];
   return diff.stdout
     .split("\n")

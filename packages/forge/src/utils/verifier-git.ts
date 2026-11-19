@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r15 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -676,6 +676,16 @@ function classifyTopology(
     }
   };
   const gitDirReal = real(gitDir);
+  // A cwd strictly INSIDE the resolved gitdir — a proper descendant,
+  // never the gitdir level itself — is unprovable: the same walk-up
+  // finds no worktree node whether the gitdir is self-contained (bare)
+  // or a NON-bare repo's own metadir (`.git/objects` under a worktree's
+  // `.git`), so bareness would rest on the session-writable `core.bare`
+  // claim alone (CX-177). Answer unknown → the judge refuses.
+  const rootReal = real(path.resolve(repoRoot));
+  if (rootReal !== gitDirReal && rootReal.startsWith(gitDirReal + path.sep)) {
+    return { topology: "unknown", workTree: null };
+  }
   for (let level = path.resolve(repoRoot); ;) {
     try {
       const st = lstatSync(path.join(level, ".git"));
@@ -1061,6 +1071,16 @@ const EVIDENCE_SHAPE_PATHS = [
   // `core.excludesFile` (pinnable to DEVNULL) this path has no config
   // kill switch, so presence refuses rather than warns.
   "info/exclude",
+  // `status`/`diff` descend into populated submodule gitdirs — the
+  // submodule's OWN config (`include.path` → `core.fsmonitor=<prog>`
+  // executes inside the trusted spawn), index stat tuples, and
+  // `info/{grafts,shallow,exclude}` all live outside every judged
+  // surface: only the resolved gitdir's own paths are shape-checked
+  // (CX-173). A populated `modules/` tree is unjudgeable today, so its
+  // presence refuses the channel — a future RFC can add per-module
+  // judging; an EMPTY `modules/` dir is ignored (a removed submodule's
+  // residue is honest).
+  "modules",
 ] as const;
 
 /**
@@ -2035,7 +2055,22 @@ export function judgeEvidenceRepoSurface(
       } catch {
         return;
       }
-      if (lst.isDirectory()) return;
+      if (lst.isDirectory()) {
+        // `modules` is the one refuse path judged as a DIRECTORY: a
+        // populated submodule gitdir carries its own config
+        // (`include.path` → `core.fsmonitor` executes inside the
+        // trusted spawn), index, and info surface — none of it judged
+        // (CX-173). Any entry refuses; an empty `modules/` is honest
+        // residue from a removed submodule.
+        if (i < EVIDENCE_SHAPE_PATHS.length && name === "modules") {
+          try {
+            if (readdirSync(abs).length > 0) shapeViolations.push(name);
+          } catch {
+            /* unreadable dir — the fingerprint reprove reads the drift */
+          }
+        }
+        return;
+      }
       if (lst.isFile() || i < EVIDENCE_SHAPE_PATHS.length) {
         shapeViolations.push(name);
       } else {
@@ -3233,8 +3268,20 @@ async function verifierGitSpawn(
     // Anchored semantics: the caller proved THIS surface around its
     // earlier reads — a `.git` swap before the mutation is exactly the
     // window the anchor exists to close. Refuse on the first failed
-    // reprove; a fresh preflight would only attest the foreign repo.
-    if (preflight !== null && !reproveEvidenceSurface(cwd, preflight)) {
+    // reprove; a fresh preflight would only attest the foreign repo. A
+    // NULL anchor has nothing left to re-prove either: anchored ops run
+    // `useIndexEnv=false`, so the null-preflight refusal below never
+    // fires and the spawn would proceed with NO resolution pins —
+    // `git add`/`reset` mutating whatever `.git` ambient walk-up finds,
+    // CX-169's class on the mutation side (CX-175).
+    if (preflight === null) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: no anchored judgment — the repo surface was never proven; refusing the mutation`,
+      };
+    }
+    if (!reproveEvidenceSurface(cwd, preflight)) {
       return {
         exitCode: -1,
         stdout: "",

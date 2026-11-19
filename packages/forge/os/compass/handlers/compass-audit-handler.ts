@@ -10,7 +10,6 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
   <item>RFC-1143: validate/plan/record apply filterLedgerEligiblePaths — ledger-ineligible authored paths (missions/, gitignored) are skipped with skippedIneligible diagnostics instead of failing COMPASS-AUDIT-01; record warns but still writes.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
@@ -50,11 +49,12 @@ evidence channel — this commit closes all root causes.
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
-  <history>RFC-0352, RFC-0556, RFC-1094, RFC-1242</history>
+  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
+  <history>RFC-0352, RFC-0556, RFC-1094, RFC-1139, RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 
-import { join, resolve, relative } from "node:path";
+import { join, resolve, relative, isAbsolute } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { readdirSync, type Dirent } from "../../../src/utils/sync-fs.ts";
 import { verifierGit } from "../../../src/utils/verifier-git.ts";
@@ -189,7 +189,7 @@ function getAuthoredEntries(entries: CompassInventoryEntry[]): CompassInventoryE
 // can never be audited long-term — gitignored roots (missions/, dist/) and
 // the missions/ tree specifically (workpieces move to archive on close).
 // Batch-checks `git check-ignore --stdin` once for all candidate paths.
-async function filterLedgerEligiblePaths(
+export async function filterLedgerEligiblePaths(
   workspaceRoot: string,
   paths: string[],
 ): Promise<Set<string>> {
@@ -207,6 +207,25 @@ async function filterLedgerEligiblePaths(
   if (!proven) {
     return new Set(candidates);
   }
+  // `check-ignore` resolves pathnames against its spawn cwd — the proven
+  // TOPLEVEL — while `entry.path` is workspaceRoot-relative. A forge
+  // root nested below the git toplevel would judge every path against
+  // rules at the wrong location (CX-176): re-base onto the toplevel and
+  // treat `..` escapes as unproven rather than letting parent rules
+  // exclude an authored payload.
+  const rebased: { orig: string; rel: string }[] = [];
+  let anchored = true;
+  for (const p of candidates) {
+    const rel = relative(proven, join(workspaceRoot, p));
+    if (rel.startsWith("..") || isAbsolute(rel)) {
+      anchored = false;
+      break;
+    }
+    rebased.push({ orig: p, rel });
+  }
+  if (!anchored) {
+    return new Set(candidates);
+  }
   // The exclusion check itself runs on the judged channel (CX-166): the
   // resolved binary and scrubbed env remove PATH/`GIT_*` redirection,
   // `core.excludesFile`/`core.attributesFile` are pinned to the null
@@ -218,14 +237,14 @@ async function filterLedgerEligiblePaths(
   // (-1) or failed read means the exclusion set is unverifiable →
   // exclude NOTHING (over-inclusive, visible).
   const checked = await verifierGit(proven, ["check-ignore", "--stdin"], {
-    input: candidates.join("\n"),
+    input: rebased.map((r) => r.rel).join("\n"),
   });
   const ignored =
     checked.exitCode === 0
       ? new Set(checked.stdout.split("\n").filter((l: string) => l.length > 0))
       : new Set<string>();
-  for (const p of candidates) {
-    if (!ignored.has(p)) eligible.add(p);
+  for (const r of rebased) {
+    if (!ignored.has(r.rel)) eligible.add(r.orig);
   }
   return eligible;
 }
