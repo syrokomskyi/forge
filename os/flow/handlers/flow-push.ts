@@ -17,7 +17,6 @@ path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
 
@@ -66,6 +65,7 @@ decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
+  <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
   <history>RFC-1491, RFC-1501, RFC-1503, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -151,9 +151,12 @@ async function scanVerifierTrailers(
   repoRoot: string,
   io: WorkspaceIO,
   range: string,
-): Promise<Array<{ sha: string; trailers: string[] }>> {
+): Promise<Array<{ sha: string; trailers: string[] }> | null> {
   const list = await gitEvidence(repoRoot, ["rev-list", range]);
-  if (list.exitCode !== 0) return [];
+  // Any failure on an enumerable range is unverifiable — `[]` would run
+  // the trailer scan over nothing (CX-174's shape inside the push gate
+  // itself); null lets the caller refuse loudly.
+  if (list.exitCode !== 0) return null;
   const wanted = new Set(VERIFIER_TRAILERS.map((t) => t.toLowerCase()));
   const canonical = new Map(VERIFIER_TRAILERS.map((t) => [t.toLowerCase(), t]));
   const hits: Array<{ sha: string; trailers: string[] }> = [];
@@ -171,7 +174,13 @@ async function scanVerifierTrailers(
       "--format=%(trailers:only,separator=%x00)%x00%e",
       sha,
     ]);
-    if (parsed.exitCode !== 0) continue;
+    if (parsed.exitCode !== 0) {
+      // An enumerated commit whose trailer read fails is unverifiable —
+      // flag it like the encoding case instead of silently dropping its
+      // provenance under a surgical refusal.
+      hits.push({ sha, trailers: ["x-unverifiable-commit"] });
+      continue;
+    }
     const parsedParts = parsed.stdout.split("\x00");
     const declaredEncoding = (parsedParts.pop() ?? "").trim();
     const found = new Set<string>();
@@ -192,6 +201,10 @@ async function scanVerifierTrailers(
         const c = canonical.get(m[1]!.trim().toLowerCase());
         if (c && m[2]!.trim().length > 0) found.add(c);
       }
+    } else {
+      // The subject-shaped-trailer check could not run — flag the sha
+      // rather than assume no trailer-shaped subject.
+      found.add("x-unverifiable-commit");
     }
     if (found.size > 0) hits.push({ sha, trailers: [...found].sort() });
   }
@@ -293,9 +306,17 @@ export async function pushFlow(
     // The strictest honest range scans the whole local branch when the
     // remote was never contacted.
     const range = remote === null || !digest.remoteVerified ? local : `${remote}..${local}`;
-    if (scannedRanges.includes(range)) continue;
+    if (range === null || scannedRanges.includes(range)) continue;
     scannedRanges.push(range);
-    for (const hit of await scanVerifierTrailers(repoRoot, io, range)) {
+    const scan = await scanVerifierTrailers(repoRoot, io, range);
+    if (scan === null) {
+      return refuse(
+        "FLOW-PUSH-13",
+        `the verifier-trailer scan over '${range}' is unverifiable — the push cannot prove which commits carry verifier/audit trailers`,
+        "remove the evidence-channel refusal and re-run flow.push",
+      );
+    }
+    for (const hit of scan) {
       verifierTrailerCommits.set(hit.sha, hit);
     }
   }

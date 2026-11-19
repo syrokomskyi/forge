@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r15 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
+  <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -627,6 +627,18 @@ export interface EvidenceFingerprint {
    */
   worktreesDir: string | null;
   worktreeFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
+  /**
+   * The `--git-path modules`-resolved submodule-gitdir tree — the judge
+   * refuses a POPULATED modules/ once, but presence+bytes alone cannot
+   * fingerprint a directory (CX-179): an empty-at-capture `modules/`
+   * populated inside the judgment→spawn window would consult unjudged
+   * submodule config/index surface in the very `status`/`diff` spawn
+   * that follows. The whole subtree is pinned like `objects/` and
+   * `worktrees/` so any population reads as drift → re-preflight →
+   * the populated-dir refusal.
+   */
+  modulesDir: string | null;
+  modulesFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
   /** The ambient `.git/index` the claims rebuild enumerated — resolved path + bytes. */
   indexPath: string | null;
   indexBytes: Buffer | null;
@@ -2562,6 +2574,8 @@ export async function captureEvidenceSurface(
         objectFiles: new Map(),
         worktreesDir: null,
         worktreeFiles: new Map(),
+        modulesDir: null,
+        modulesFiles: new Map(),
         indexPath: null,
         indexBytes: null,
         topology: "unknown",
@@ -2758,6 +2772,16 @@ export async function captureEvidenceSurface(
   // dir — a subdirectory cwd now fingerprints the parent repo's
   // worktree registry the same way a root cwd does (CX-143).
   const worktreesDir = commonDir === null ? null : path.join(commonDir, "worktrees");
+  // `modules` resolved through the same `--git-path` query as every
+  // refuse shape path; a populated dir is a violation the fingerprint
+  // must see (CX-179) — enumerate its tree like objects/worktrees.
+  const modulesResolved = shapePaths[EVIDENCE_SHAPE_QUERY_PATHS.indexOf("modules")] ?? null;
+  const modulesDir =
+    modulesResolved === null
+      ? null
+      : path.isAbsolute(modulesResolved)
+        ? modulesResolved
+        : path.resolve(repoRoot, modulesResolved);
   const fingerprint: EvidenceFingerprint = {
     dotGit,
     gitDir,
@@ -2772,6 +2796,8 @@ export async function captureEvidenceSurface(
     objectFiles: objectsAbs === null ? new Map() : enumerateTreeFiles(objectsAbs),
     worktreesDir,
     worktreeFiles: worktreesDir === null ? new Map() : enumerateTreeFiles(worktreesDir),
+    modulesDir,
+    modulesFiles: modulesDir === null ? new Map() : enumerateTreeFiles(modulesDir),
     indexPath: indexAbs,
     indexBytes: indexAbs === null ? null : safeReadBytes(indexAbs),
     topology,
@@ -2882,6 +2908,26 @@ export function reproveEvidenceSurface(
     const cur = enumerateTreeFiles(fp.worktreesDir);
     if (cur.size !== fp.worktreeFiles.size) return false;
     for (const [rel, st] of fp.worktreeFiles) {
+      const c = cur.get(rel);
+      if (
+        c === undefined ||
+        c.ino !== st.ino ||
+        c.ctimeMs !== st.ctimeMs ||
+        c.size !== st.size ||
+        c.link !== st.link
+      ) {
+        return false;
+      }
+    }
+  }
+  if (fp.modulesDir !== null) {
+    // An empty-at-capture `modules/` populated mid-window is invisible
+    // to the shape-file byte check — the tree pin is what turns
+    // population into drift → re-preflight → populated-dir refusal
+    // (CX-179).
+    const cur = enumerateTreeFiles(fp.modulesDir);
+    if (cur.size !== fp.modulesFiles.size) return false;
+    for (const [rel, st] of fp.modulesFiles) {
       const c = cur.get(rel);
       if (
         c === undefined ||
