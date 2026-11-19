@@ -14,6 +14,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1568: step 2 — record lifecycle, classifyGateRun, retention</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
+  <item>RFC-1622: record RFC-1622 integration phase timings</item>
 </CHANGE_SUMMARY>
 */
 
@@ -125,7 +126,12 @@ export async function startGateRun(input: {
 export async function finishGateRun(
   commonGitDir: string,
   record: GateRunRecord,
-  result: { exitCode: number; summary?: string; reportPath?: string },
+  result: {
+    exitCode: number;
+    summary?: string;
+    reportPath?: string;
+    phaseTimings?: GateRunRecord["phaseTimings"];
+  },
   io: WorkspaceIO,
 ): Promise<void> {
   const finished: GateRunRecord = {
@@ -135,6 +141,7 @@ export async function finishGateRun(
     status: result.exitCode === 0 ? "succeeded" : "failed",
     ...(result.summary ? { summary: result.summary } : {}),
     ...(result.reportPath ? { reportPath: result.reportPath } : {}),
+    ...(result.phaseTimings ? { phaseTimings: result.phaseTimings } : {}),
   };
   await saveGateRun(commonGitDir, finished, io);
 }

@@ -12,6 +12,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1568: step 1 — gate-run record contract + refusal ids</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
+  <item>RFC-1622: record RFC-1622 integration phase timings</item>
 </CHANGE_SUMMARY>
 */
 
@@ -43,6 +44,13 @@ export interface GateRunRecord {
   logPath?: string;
   /** RFC-1532 gate report, when the command produced one. */
   reportPath?: string;
+  /** Phase timings supplied by flow.integrate, including retries. */
+  phaseTimings?: Array<{
+    phase: string;
+    attempt: number;
+    durationMs: number;
+    disposition: "completed" | "failed";
+  }>;
   /** mission.validate */
   missionId?: string;
 }
