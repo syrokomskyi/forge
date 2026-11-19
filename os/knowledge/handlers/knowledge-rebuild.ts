@@ -8,7 +8,7 @@ log). --diff reports drift; --check exits non-zero on orphan/missing; the
 plain run rewrites the regions in place.
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never write outside marker regions — non-marker content is authored elsewhere.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

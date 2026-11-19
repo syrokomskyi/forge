@@ -7,7 +7,7 @@ recency, producer trust). Each unit carries source + usedBy + utilityScore.
 The recall invocation is journaled so marginal utility can be measured.
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never write to journals or re-rank outcomes — recall is read-only retrieval.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -48,7 +48,12 @@ export interface RecallData {
   diagnostics?: { ruleId?: string; severity?: string; message?: string }[];
 }
 
-function emptyResult(task: string, k: number, ruleId: string, message: string): ForgeCommandResult<RecallData> {
+function emptyResult(
+  task: string,
+  k: number,
+  ruleId: string,
+  message: string,
+): ForgeCommandResult<RecallData> {
   return {
     data: {
       command: "trajectory.recall",
@@ -72,14 +77,25 @@ export async function runTrajectoryRecall(
   const root = context.workspaceRoot;
   const task = String(input.flags["task"] ?? "");
   const k = Math.max(1, Math.min(20, Number(input.flags["k"] ?? 5) || 5));
-  const pathTerms = new Set(String(input.flags["paths"] ?? "").toLowerCase().split(/[\s,]+/).filter((t) => t.length > 2));
+  const pathTerms = new Set(
+    String(input.flags["paths"] ?? "")
+      .toLowerCase()
+      .split(/[\s,]+/)
+      .filter((t) => t.length > 2),
+  );
   if (!task) {
-    return { data: { command: "trajectory.recall", status: "ok", task: "", k, recallId: "", units: [] }, summary: "missing --task", exitCode: 1 };
+    return {
+      data: { command: "trajectory.recall", status: "ok", task: "", k, recallId: "", units: [] },
+      summary: "missing --task",
+      exitCode: 1,
+    };
   }
-  const indexSrc = await io.readFile(path.join(root, "docs", ".index", "trajectory", "units.yaml")).catch((e) => {
-    if (isEnoent(e)) return null;
-    throw e;
-  });
+  const indexSrc = await io
+    .readFile(path.join(root, "docs", ".index", "trajectory", "units.yaml"))
+    .catch((e) => {
+      if (isEnoent(e)) return null;
+      throw e;
+    });
   if (indexSrc === null) {
     return emptyResult(task, k, "TRAJ-01", "index missing — run trajectory.index");
   }
@@ -90,13 +106,23 @@ export async function runTrajectoryRecall(
     index = null;
   }
   if (index === null || typeof index !== "object" || !Array.isArray(index.units)) {
-    return emptyResult(task, k, "TRAJ-02", "index unparseable or not a unit index — rerun trajectory.index");
+    return emptyResult(
+      task,
+      k,
+      "TRAJ-02",
+      "index unparseable or not a unit index — rerun trajectory.index",
+    );
   }
   // Element-level validation — an array of garbage is still TRAJ-02, and a
   // partially-corrupt index yields only its well-formed units.
   const units = index.units.filter(isShardUnit);
   if (index.units.length > 0 && units.length === 0) {
-    return emptyResult(task, k, "TRAJ-02", "index holds no well-formed units — rerun trajectory.index");
+    return emptyResult(
+      task,
+      k,
+      "TRAJ-02",
+      "index holds no well-formed units — rerun trajectory.index",
+    );
   }
 
   // RFC-1475 F6 — TRAJ-02 covers every present-but-unusable index state:
@@ -113,13 +139,28 @@ export async function runTrajectoryRecall(
   }, "");
   const watermark = typeof index.sourceWatermark === "string" ? index.sourceWatermark : null;
   if (units.length === 0) {
-    return emptyResult(task, k, "TRAJ-02", "index is empty — run trajectory.index after green sessions exist");
+    return emptyResult(
+      task,
+      k,
+      "TRAJ-02",
+      "index is empty — run trajectory.index after green sessions exist",
+    );
   }
   if (!watermark) {
-    return emptyResult(task, k, "TRAJ-02", "index predates watermark support — rerun trajectory.index");
+    return emptyResult(
+      task,
+      k,
+      "TRAJ-02",
+      "index predates watermark support — rerun trajectory.index",
+    );
   }
   if (newestSource > watermark) {
-    return emptyResult(task, k, "TRAJ-02", `index stale — watermark ${watermark} predates ${newestSource}; rerun trajectory.index`);
+    return emptyResult(
+      task,
+      k,
+      "TRAJ-02",
+      `index stale — watermark ${watermark} predates ${newestSource}; rerun trajectory.index`,
+    );
   }
 
   // RFC-1475 F10 — per-producer trust: aggregate helped/(helped+hurt) per
@@ -139,27 +180,50 @@ export async function runTrajectoryRecall(
     return bucket.helped / (bucket.helped + bucket.hurt);
   };
 
-  const taskTokens = new Set(task.toLowerCase().split(/[^a-z0-9_.-]+/).filter((t) => t.length > 2));
-  const scored = units.map((u) => {
-    const reasons: string[] = [];
-    let score = 0;
-    const sit = `${u.situation.taskKind} ${u.situation.recentActions.join(" ")}`.toLowerCase();
-    const hits = [...taskTokens].filter((t) => sit.includes(t) || u.text.toLowerCase().includes(t)).length;
-    if (hits > 0) { reasons.push(`lexical:${hits}`); score += hits * 2; }
-    const pathOverlap = u.situation.touchedPathClasses.filter((p) => [...pathTerms].some((t) => p.includes(t))).length;
-    if (pathOverlap > 0) { reasons.push(`path:${pathOverlap}`); score += pathOverlap * 3; }
-    // Sparse buckets score at the neutral 0.5 trust the RFC promises — an
-    // unlabeled producer must not rank below a fresh one (labeled or not,
-    // the trust term always applies).
-    const trust = bucketTrust(u);
-    reasons.push(`trust:${trust.toFixed(2)}`);
-    score += trust * 2;
-    score += u.utilityScore * 0.5;
-    const days = u.producer.completedAt ? Math.max(0, (Date.now() - new Date(u.producer.completedAt).getTime()) / 86_400_000) : 365;
-    const recency = Math.max(0, 1 - days / 365);
-    if (recency > 0.5) { reasons.push(`recent:${days.toFixed(0)}d`); score += recency; }
-    return { ...u, score: Number(score.toFixed(3)), reasons };
-  }).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, k);
+  const taskTokens = new Set(
+    task
+      .toLowerCase()
+      .split(/[^a-z0-9_.-]+/)
+      .filter((t) => t.length > 2),
+  );
+  const scored = units
+    .map((u) => {
+      const reasons: string[] = [];
+      let score = 0;
+      const sit = `${u.situation.taskKind} ${u.situation.recentActions.join(" ")}`.toLowerCase();
+      const hits = [...taskTokens].filter(
+        (t) => sit.includes(t) || u.text.toLowerCase().includes(t),
+      ).length;
+      if (hits > 0) {
+        reasons.push(`lexical:${hits}`);
+        score += hits * 2;
+      }
+      const pathOverlap = u.situation.touchedPathClasses.filter((p) =>
+        [...pathTerms].some((t) => p.includes(t)),
+      ).length;
+      if (pathOverlap > 0) {
+        reasons.push(`path:${pathOverlap}`);
+        score += pathOverlap * 3;
+      }
+      // Sparse buckets score at the neutral 0.5 trust the RFC promises — an
+      // unlabeled producer must not rank below a fresh one (labeled or not,
+      // the trust term always applies).
+      const trust = bucketTrust(u);
+      reasons.push(`trust:${trust.toFixed(2)}`);
+      score += trust * 2;
+      score += u.utilityScore * 0.5;
+      const days = u.producer.completedAt
+        ? Math.max(0, (Date.now() - new Date(u.producer.completedAt).getTime()) / 86_400_000)
+        : 365;
+      const recency = Math.max(0, 1 - days / 365);
+      if (recency > 0.5) {
+        reasons.push(`recent:${days.toFixed(0)}d`);
+        score += recency;
+      }
+      return { ...u, score: Number(score.toFixed(3)), reasons };
+    })
+    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+    .slice(0, k);
 
   // Journal the recall — append-only recalls.jsonl (RFC-1475 F11); the
   // marginal-utility measurement needs the invocation record.
@@ -167,15 +231,18 @@ export async function runTrajectoryRecall(
   for (const warning of journalRead.warnings) context.logger.warn(warning);
   const journalTruncated = journalRead.truncated;
   if (journalTruncated) {
-    context.logger.warn("TRAJ-06 recalls.jsonl carried a truncated or malformed tail record — partial record dropped, journal survives");
+    context.logger.warn(
+      "TRAJ-06 recalls.jsonl carried a truncated or malformed tail record — partial record dropped, journal survives",
+    );
   }
   const dayKey = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const recallId = `R-${dayKey}-${String(nextRecallSeq(journalRead.records)).padStart(2, "0")}-${createHashFallback(task).slice(0, 4)}`;
-  await appendJsonl(
-    io,
-    path.join(root, "docs", ".index", "trajectory", "recalls.jsonl"),
-    { id: recallId, task, unitsReturned: scored.map((u) => u.id), at: new Date().toISOString() },
-  );
+  await appendJsonl(io, path.join(root, "docs", ".index", "trajectory", "recalls.jsonl"), {
+    id: recallId,
+    task,
+    unitsReturned: scored.map((u) => u.id),
+    at: new Date().toISOString(),
+  });
 
   return {
     data: {
@@ -186,7 +253,14 @@ export async function runTrajectoryRecall(
       recallId,
       units: scored,
       diagnostics: journalTruncated
-        ? [{ ruleId: "TRAJ-06", severity: "warning", message: "recalls.jsonl carried a truncated or malformed tail record — partial record dropped, journal survives" }]
+        ? [
+            {
+              ruleId: "TRAJ-06",
+              severity: "warning",
+              message:
+                "recalls.jsonl carried a truncated or malformed tail record — partial record dropped, journal survives",
+            },
+          ]
         : undefined,
     },
     summary: `${scored.length}/${units.length} unit(s) recalled for "${task.slice(0, 50)}" (recall ${recallId})`,

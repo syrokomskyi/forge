@@ -11,7 +11,7 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
 <KEY_DECISIONS>
   <item>Hooks live in &lt;repo&gt;/hooks (committed), never .git/hooks — worktrees check out committed content (AUDIT-RFC-1486-G1).</item>
   <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
-  <item>Fixtures exclude docs/.index/ via info/exclude like the real .gitignore — the kernel counters journal regenerates it on every rule evaluation, and unignored it rides the flow.open sweep into branch trees and collides merges.</item>
+  <item>Fixtures exclude docs/.index/ via info/exclude like .gitignore — unignored it would ride the flow.open sweep and collide merges.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>

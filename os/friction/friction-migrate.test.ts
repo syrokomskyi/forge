@@ -1,3 +1,14 @@
+/*
+<MODULE_CONTRACT>
+<purpose>Unit tests for friction.migrate — legacy split (AC-5) — covers the friction migrate suite surface and its observable contract.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
+*/
+
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";

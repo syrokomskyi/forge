@@ -13,6 +13,8 @@
   <item>No Studio Gate surface — the developer server is a separate registration (DNA-56).</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 
 export const AGENT_TOOLS_SCHEMA = "forge/agent-tools@1";

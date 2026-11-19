@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>Registers forgeTrajectoryModule — the trajectory.index, trajectory.recall, and trajectory.outcome.record commands that retrieve procedure units from green-verified sessions.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Extraction and scoring live in the handlers — this file only registers the module.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -48,7 +48,13 @@ export const forgeTrajectoryModule: ForgeModule = {
         export: { kind: "string", description: "Write a forge/trajectory-shard@1 file." },
         import: { kind: "string", description: "Merge a vendored shard read-only." },
       },
-      reads: ["docs/sessions/**/*.md", "missions/*/evidence/validation-report.json", "docs/.index/trajectory/*.jsonl", "docs/.index/trajectory/*.yaml", "forge.yaml"],
+      reads: [
+        "docs/sessions/**/*.md",
+        "missions/*/evidence/validation-report.json",
+        "docs/.index/trajectory/*.jsonl",
+        "docs/.index/trajectory/*.yaml",
+        "forge.yaml",
+      ],
       writes: ["docs/.index/trajectory/**", "docs/.index/trajectory/units.yaml"],
       generates: [{ path: "docs/.index/trajectory/units.yaml", phase: "on-demand" as const }],
       execute: runTrajectoryIndex,
@@ -57,7 +63,11 @@ export const forgeTrajectoryModule: ForgeModule = {
       name: "trajectory.recall",
       coverage: "operator" as const,
       contract: "trajectory",
-      rules: [{ id: "TRAJ-01", severity: "error" }, { id: "TRAJ-02", severity: "error" }, { id: "TRAJ-06", severity: "warning" }],
+      rules: [
+        { id: "TRAJ-01", severity: "error" },
+        { id: "TRAJ-02", severity: "error" },
+        { id: "TRAJ-06", severity: "warning" },
+      ],
       mutatesState: true,
       // A journaled invocation must never replay — the kernel result cache
       // would skip both the recalls.jsonl append and the TRAJ-02 staleness gate.
@@ -71,7 +81,12 @@ export const forgeTrajectoryModule: ForgeModule = {
         paths: { kind: "string", description: "Path terms to boost (files being edited)." },
         k: { kind: "string", description: "Top-k units (default 5)." },
       },
-      reads: ["docs/.index/trajectory/units.yaml", "docs/.index/trajectory/*.jsonl", "docs/.index/trajectory/*.yaml", "docs/sessions/**/*.md"],
+      reads: [
+        "docs/.index/trajectory/units.yaml",
+        "docs/.index/trajectory/*.jsonl",
+        "docs/.index/trajectory/*.yaml",
+        "docs/sessions/**/*.md",
+      ],
       writes: ["docs/.index/trajectory/recalls.jsonl"],
       generates: [],
       execute: runTrajectoryRecall,
@@ -80,7 +95,12 @@ export const forgeTrajectoryModule: ForgeModule = {
       name: "trajectory.outcome.record",
       coverage: "operator" as const,
       contract: "trajectory",
-      rules: [{ id: "TRAJ-01", severity: "error" }, { id: "TRAJ-02", severity: "error" }, { id: "TRAJ-05", severity: "error" }, { id: "TRAJ-06", severity: "warning" }],
+      rules: [
+        { id: "TRAJ-01", severity: "error" },
+        { id: "TRAJ-02", severity: "error" },
+        { id: "TRAJ-05", severity: "error" },
+        { id: "TRAJ-06", severity: "warning" },
+      ],
       mutatesState: true,
       cacheable: false,
       description:
@@ -93,8 +113,16 @@ export const forgeTrajectoryModule: ForgeModule = {
         hurt: { kind: "boolean", description: "The recall hurt." },
         note: { kind: "string", description: "Free-text annotation." },
       },
-      reads: ["docs/.index/trajectory/*.jsonl", "docs/.index/trajectory/*.yaml", "docs/.index/trajectory/units.yaml"],
-      writes: ["docs/.index/trajectory/units.yaml", "docs/.index/trajectory/outcomes.jsonl", "docs/.index/trajectory/recalls.jsonl"],
+      reads: [
+        "docs/.index/trajectory/*.jsonl",
+        "docs/.index/trajectory/*.yaml",
+        "docs/.index/trajectory/units.yaml",
+      ],
+      writes: [
+        "docs/.index/trajectory/units.yaml",
+        "docs/.index/trajectory/outcomes.jsonl",
+        "docs/.index/trajectory/recalls.jsonl",
+      ],
       generates: [],
       execute: runOutcomeRecord,
     },

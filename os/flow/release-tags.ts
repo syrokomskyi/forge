@@ -14,8 +14,8 @@ Lightweight tags are invisible to release lines by design.</purpose>
   <item>`--merged HEAD` scopes to reachable tags only: a tag on an abandoned side branch must not become the baseline.</item>
   <item>`%(objecttype)` + `%(*objectname)` distinguishes annotated (`tag`) from lightweight (`commit`) — only annotated tags carry a line.</item>
   <item>Highest reachable wins over nearest: the historical `forge@0.15.0` predates real `forge@9.x` tags and must not lower the reported version.</item>
-  <item>listLegacyTags (RFC-1498) is reporting-only: one for-each-ref pass with NUL-delimited records (contents is multi-line) classifies prefix+semver-matching tags the reader does not honour — never rewrites them.</item>
-  <item>RELEASE_TAG_SCHEMA_LINE is exported (RFC-1511): the annotation contract stays in one place — os/system consumers import it rather than duplicating the regex.</item>
+  <item>listLegacyTags is reporting-only — one for-each-ref pass with NUL records classifies non-honoured tags, never rewrites.</item>
+  <item>RELEASE_TAG_SCHEMA_LINE is exported — the annotation contract lives in one place for os/system consumers.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
@@ -157,9 +157,7 @@ export async function listLegacyTags(
     const contents = rec.slice(secondSep + 1);
     const name = refname.startsWith("refs/tags/") ? refname.slice("refs/tags/".length) : refname;
     const line = lines.find(
-      (l) =>
-        name.startsWith(l.tagPrefix) &&
-        parseVersion(name.slice(l.tagPrefix.length)) !== null,
+      (l) => name.startsWith(l.tagPrefix) && parseVersion(name.slice(l.tagPrefix.length)) !== null,
     );
     if (line === undefined) continue;
     if (objecttype === "tag") {
@@ -227,6 +225,13 @@ export async function writeReleaseTag(
   io: WorkspaceIO,
   spec: ReleaseTagSpec,
 ): Promise<{ exitCode: number | null; stderr: string }> {
-  const result = await git(repoRoot, io, ["tag", "-a", spec.name, spec.target, "-m", spec.annotation]);
+  const result = await git(repoRoot, io, [
+    "tag",
+    "-a",
+    spec.name,
+    spec.target,
+    "-m",
+    spec.annotation,
+  ]);
   return { exitCode: result.exitCode, stderr: result.stderr };
 }

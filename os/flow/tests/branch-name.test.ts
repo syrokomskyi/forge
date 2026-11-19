@@ -4,6 +4,9 @@
 returns null for every invalid row of the shared name table
 (tests/fixtures/branch-names.yaml); formatFlowBranch round-trips valid names
 and renders the date in UTC.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 1 — fixed branch-model grammar, marker detection contracts, git helpers</item>
@@ -111,14 +114,10 @@ describe("formatFlowBranch", () => {
   it("throws on out-of-range seq and malformed slug", () => {
     const date = new Date(Date.UTC(2026, 10, 1));
     for (const seq of [0, 100, -1, 1.5]) {
-      expect(() =>
-        formatFlowBranch({ kind: "task", date, seq, slug: "abc" }),
-      ).toThrow(/seq/);
+      expect(() => formatFlowBranch({ kind: "task", date, seq, slug: "abc" })).toThrow(/seq/);
     }
     for (const slug of ["ab", "a_b", "ABC", "a".repeat(49), "a-"]) {
-      expect(() =>
-        formatFlowBranch({ kind: "task", date, seq: 1, slug }),
-      ).toThrow(/slug/);
+      expect(() => formatFlowBranch({ kind: "task", date, seq: 1, slug })).toThrow(/slug/);
     }
   });
 });
@@ -129,7 +128,16 @@ describe("isValidFlowDate", () => {
       expect(isValidFlowDate(ok), ok).toBe(true);
     }
     // 99 is a valid 2-digit year (2099-12-31): YYMMDD has no century pivot.
-    for (const bad of ["261332", "260230", "260229", "230229", "261100", "261131", "abcdef", "26110"]) {
+    for (const bad of [
+      "261332",
+      "260230",
+      "260229",
+      "230229",
+      "261100",
+      "261131",
+      "abcdef",
+      "26110",
+    ]) {
       expect(isValidFlowDate(bad), bad).toBe(false);
     }
   });

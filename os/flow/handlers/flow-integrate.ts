@@ -13,12 +13,12 @@ at cleanup without moving develop again.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The integration lock covers steps 1–5 only — cleanup (step 6) is idempotent and needs no serialization, so a crashed holder cannot wedge the queue (AUDIT G2).</item>
-  <item>Every git call after worktree removal runs with -C &lt;primary&gt; — the caller's cwd may be the removed directory (AUDIT G3/G4).</item>
-  <item>Rerun detection is `isAncestor(branchTip, develop)` on a registered entry — develop already containing the branch means the merge landed; only cleanup remains (AC-9).</item>
-  <item>FLOW-INT-07 covers develop moving between rebase and merge despite the lock — the branch stays rebased; a rerun rebases onto the new tip.</item>
-  <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
-  <item>docs.archive's deferred owner record clears only when every deferred owner ran in the fold — a notRunnable-skipped owner keeps `.git/forge/deferred-regen.json` for a runnable fold rather than silently dropping the deferral (RFC-1602).</item>
+  <item>The integration lock covers steps 1–5 — cleanup is idempotent, so a crashed holder cannot wedge the queue.</item>
+  <item>Git calls after worktree removal run with -C &lt;primary&gt; — the caller's cwd may be the removed directory.</item>
+  <item>Rerun detection is isAncestor(branchTip, develop) on a registered entry — a contained tip means merge done.</item>
+  <item>A develop move between rebase and merge despite the lock lands FLOW-INT-07 — reruns rebase onto the new tip.</item>
+  <item>Task-file preservation runs before teardown, owner.kind task only — copy failure refuses cleanup (FLOW-INT-04), report survives.</item>
+  <item>docs.archive's deferral clears only when every deferred owner ran — a skipped owner keeps .git/forge/deferred-regen.json.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1598: generated-conflict auto-resolve runs the owner generator inside a detached checked-out side (theirs → ours → take-theirs deferral), never the mixed mid-rebase index (RFC-1598)</item>

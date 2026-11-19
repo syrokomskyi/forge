@@ -10,8 +10,8 @@ worktree, allowlisted to the declared generated-path owners only.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Spawn over in-process dispatch: the kernel invoke port delegates through its own executor, but the standalone CLI has no registry surface reachable from os/ — `pnpm exec werkstatt run` resolves the worktree's own engine build, matching how an operator would run the owner command by hand.</item>
-  <item>The allowlist is caller-derived (verdict.owners), not a static table — classifyRebaseConflicts only ever names commands recovered from generated markers or GENERATED_BASENAME_OWNERS, so the spawn surface stays bounded by the declaration layer.</item>
+  <item>Spawn over in-process dispatch — the standalone CLI has no registry surface; `pnpm exec werkstatt run` resolves the worktree's engine.</item>
+  <item>The allowlist is caller-derived (verdict.owners) — classifyRebaseConflicts names only recovered/generated-marker owners.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1545: standalone invoke adapter for declared-generated rebase conflict regeneration under the forge CLI</item>

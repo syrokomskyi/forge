@@ -15,6 +15,8 @@
   <item>No raw-argv passthrough — args is a flag-keyed object only (RFC implementation note).</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 
 import { spawn } from "node:child_process";

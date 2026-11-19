@@ -5,6 +5,9 @@
 and FLOW-05 (invalid marker) in governed repositories, and returns an exempt
 verdict with no diagnostics for a valid forge.generated.yaml — all in
 throwaway repos.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 3 — flow.check handler tests</item>
@@ -25,12 +28,7 @@ import { ambientIo } from "../../../src/utils/io.ts";
 import { formatFlowBranch } from "../branch-name.ts";
 import { collectFlowCheck } from "../handlers/flow-check.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
-import {
-  gitExec,
-  initRepo,
-  installGuard,
-  MANAGED_BLOCK,
-} from "./helpers.ts";
+import { gitExec, initRepo, installGuard, MANAGED_BLOCK } from "./helpers.ts";
 
 const dirs: string[] = [];
 
@@ -47,8 +45,7 @@ async function governedRepo(): Promise<string> {
   return dir;
 }
 
-const VALID_MARKER =
-  'schema: "forge/generated@1"\ngenerator: "extract"\nsource: "werkstatt"\n';
+const VALID_MARKER = 'schema: "forge/generated@1"\ngenerator: "extract"\nsource: "werkstatt"\n';
 
 describe("collectFlowCheck", () => {
   it("reports FLOW-01 naming a stray local branch (AC-9)", async () => {
@@ -165,9 +162,7 @@ describe("collectFlowCheck", () => {
     });
     await gitExec(repo, ["branch", stray, "develop"]);
     const { diagnostics } = await collectFlowCheck(repo, ambientIo);
-    const flow07 = diagnostics.filter(
-      (d) => d.ruleId === "FLOW-07" && d.message.includes(stray),
-    );
+    const flow07 = diagnostics.filter((d) => d.ruleId === "FLOW-07" && d.message.includes(stray));
     expect(flow07.length).toBe(1);
     expect(flow07[0]!.severity).toBe("warning");
     expect(flow07[0]!.message).toContain("no registry entry and no worktree");

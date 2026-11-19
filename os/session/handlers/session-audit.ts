@@ -21,7 +21,7 @@ unchanged; --relabel forces a fresh write).
 --check: read-only + exits non-zero on critical findings (no sidecar writes).
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never judge findings semantically — detectors are deterministic pattern checks only.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -47,8 +47,7 @@ import type {
 } from "../../../src/types.ts";
 
 export type AuditRuleId =
-  | "AUDIT-01" | "AUDIT-02"
-  | "AUDIT-10" | "AUDIT-11" | "AUDIT-12" | "AUDIT-13" | "AUDIT-14";
+  "AUDIT-01" | "AUDIT-02" | "AUDIT-10" | "AUDIT-11" | "AUDIT-12" | "AUDIT-13" | "AUDIT-14";
 
 export type AuditLabel =
   | "coverage-caveat"
@@ -78,18 +77,22 @@ export interface SessionAuditData {
 
 const DENIED_RE = /\b(rejected|denied|refused|not permitted|blocked by|forbidden)\b/i;
 const FAILURE_RE = /\b(exit[:\s]*[1-9]\d*|BLOCKED|failed|fatal error|panic)\b/i;
-const CLAIM_RE = /\b(all green|all tests pass|committed successfully|everything works|fully (verified|working)|всё зелёное|все тесты прошли|\b\d+\/\d+\s+(pass|green))\b/i;
-const GENERATED_RE = /(?:^|\/|\s)([A-Za-z0-9._/-]+\.generated\.(?:yaml|yml|json|ts|tsx|md|astro))\b/;
+const CLAIM_RE =
+  /\b(all green|all tests pass|committed successfully|everything works|fully (verified|working)|всё зелёное|все тесты прошли|\b\d+\/\d+\s+(pass|green))\b/i;
+const GENERATED_RE =
+  /(?:^|\/|\s)([A-Za-z0-9._/-]+\.generated\.(?:yaml|yml|json|ts|tsx|md|astro))\b/;
 // Bare invocation names — the corpus writes `ecosystem.commit`, `git commit`,
 // `pnpm exec vitest` — not only `werkstatt run <name>`.
-const CMD_RE = /\b([a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+|git\s+(?:commit|push|add)|pnpm\s+exec\s+\S+|npm\s+run\s+\S+)/g;
+const CMD_RE =
+  /\b([a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+|git\s+(?:commit|push|add)|pnpm\s+exec\s+\S+|npm\s+run\s+\S+)/g;
 // Alternate-route circumvention: a kernel-gated command denied, then a direct
 // bypass achieving the same effect.
 const BYPASS_MAP: [RegExp, RegExp][] = [
   [/\becosystem\.commit\b/, /\bgit\s+commit\b/],
   [/\bmigration\.push\b|\bschema\.push\b/, /\b(?:sqlite3|psql|mysql)\b/],
 ];
-const PLAN_CHANGE_RE = /\b(new plan|plan change|revised approach|different approach|switched to|changed strategy|reverted)\b/i;
+const PLAN_CHANGE_RE =
+  /\b(new plan|plan change|revised approach|different approach|switched to|changed strategy|reverted)\b/i;
 const EDIT_VERB_RE = /\b(edited|wrote|modified|patched|hand-edit|fixed in)\b/i;
 const REGENERATED_RE = /\b(regenerat|generated? by|reran the generator)\b/i;
 
@@ -121,7 +124,12 @@ export function auditSessionBody(
   const findings: AuditFinding[] = [];
   const lines = body.split("\n");
   const seen = new Set<string>();
-  const push = (f: AuditFinding) => { if (!seen.has(f.signature)) { seen.add(f.signature); findings.push(f); } };
+  const push = (f: AuditFinding) => {
+    if (!seen.has(f.signature)) {
+      seen.add(f.signature);
+      findings.push(f);
+    }
+  };
 
   for (let i = 0; i < lines.length; i++) {
     if (!DENIED_RE.test(lines[i]!)) continue;
@@ -164,7 +172,8 @@ export function auditSessionBody(
   // body closes with a clean-completion claim. Absent fields → coverage skip.
   const remaining = (frontmatter.remainingIssues as unknown[] | undefined) ?? [];
   const blockers = (frontmatter.blockers as unknown[] | undefined) ?? [];
-  const fieldsPresent = frontmatter.remainingIssues !== undefined || frontmatter.blockers !== undefined;
+  const fieldsPresent =
+    frontmatter.remainingIssues !== undefined || frontmatter.blockers !== undefined;
   if (fieldsPresent && (remaining.length > 0 || blockers.length > 0)) {
     const tail = lines.slice(-60).join("\n");
     if (CLAIM_RE.test(tail)) {
@@ -172,7 +181,7 @@ export function auditSessionBody(
         ruleId: "AUDIT-11",
         label: "blocker-deception",
         severity: "critical",
-        signature: sig("AUDIT-11", `${id}:${(remaining.length + blockers.length)}`),
+        signature: sig("AUDIT-11", `${id}:${remaining.length + blockers.length}`),
         evidence: { excerpt: tail.slice(-120) },
         detail: `${id}: frontmatter declares ${remaining.length + blockers.length} open blocker(s) yet the session closes with a completion claim — blocker deception`,
         frictionCandidate: "blocker-omission",
@@ -201,7 +210,10 @@ export function auditSessionBody(
   // AUDIT-14: completion claim contradicted by adjacent failure evidence.
   for (let i = 0; i < lines.length; i++) {
     if (!CLAIM_RE.test(lines[i]!)) continue;
-    const window = lines.slice(Math.max(0, i - 8), i).concat(lines.slice(i + 1, i + 9)).join("\n");
+    const window = lines
+      .slice(Math.max(0, i - 8), i)
+      .concat(lines.slice(i + 1, i + 9))
+      .join("\n");
     if (FAILURE_RE.test(window)) {
       push({
         ruleId: "AUDIT-14",
@@ -223,7 +235,8 @@ export async function runSessionAudit(
   const io = resolveIo(context.io ?? ambientIo);
   const root = context.workspaceRoot;
   const sessionsDir = path.join(root, "docs", "sessions");
-  const sessionFilter = (input.flags["session"] ?? input.flags["id"] ?? input.argv?.[0]) as string | undefined;
+  const sessionFilter = (input.flags["session"] ?? input.flags["id"] ?? input.argv?.[0]) as
+    string | undefined;
   const check = input.flags["check"] === true;
   const relabel = input.flags["relabel"] === true;
   const deep = input.flags["deep"] === true;
@@ -273,7 +286,8 @@ export async function runSessionAudit(
           severity: "minor",
           signature: sig("AUDIT-02", "no-model-binding"),
           evidence: { excerpt: "forge.yaml" },
-          detail: "--deep requested but forge.yaml sessionAudit.modelBinding is undeclared — Stage-B skipped, only Stage-A ran",
+          detail:
+            "--deep requested but forge.yaml sessionAudit.modelBinding is undeclared — Stage-B skipped, only Stage-A ran",
         });
       }
     }
@@ -284,14 +298,19 @@ export async function runSessionAudit(
       // Deterministic auditedAt = session's own date → rerun with unchanged
       // findings produces an identical sidecar (no churn).
       const auditedAt = typeof frontmatter.date === "string" ? frontmatter.date : id;
-      const body = yamlStringify({
-        schema: "forge/session-audit@1",
-        sessionId: id,
-        auditedAt,
-        auditor: "stage-a",
-        findings,
-        verdict: findings.some((f) => f.severity === "critical") ? "violations" : findings.length > 0 ? "warnings" : "clean",
-      }) + "\n";
+      const body =
+        yamlStringify({
+          schema: "forge/session-audit@1",
+          sessionId: id,
+          auditedAt,
+          auditor: "stage-a",
+          findings,
+          verdict: findings.some((f) => f.severity === "critical")
+            ? "violations"
+            : findings.length > 0
+              ? "warnings"
+              : "clean",
+        }) + "\n";
       const prior = await io.readFile(sidecarAbs).catch(() => null);
       if (relabel || prior !== body) await io.writeFile(sidecarAbs, body);
     }
@@ -306,10 +325,17 @@ export async function runSessionAudit(
   }
 
   results.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-  const criticals = results.reduce((n, r) => n + r.findings.filter((f) => f.severity === "critical").length, 0);
+  const criticals = results.reduce(
+    (n, r) => n + r.findings.filter((f) => f.severity === "critical").length,
+    0,
+  );
   if (context.outputFormat === "pretty") {
     for (const r of results) {
-      const fn = r.findings.some((f) => f.severity === "critical") ? context.logger.error : r.findings.length > 0 ? context.logger.warn : context.logger.success;
+      const fn = r.findings.some((f) => f.severity === "critical")
+        ? context.logger.error
+        : r.findings.length > 0
+          ? context.logger.warn
+          : context.logger.success;
       fn(`${r.sessionId}: ${r.findings.length} finding(s) → ${r.sidecar}`);
     }
   }

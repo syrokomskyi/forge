@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1471 session.audit tests — command-level: audits sessions, writes sidecars deterministically (auditedAt = session date, no churn), --check is read-only + exits non-zero on critical findings.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -63,22 +63,40 @@ afterEach(async () => {
 
 describe("session.audit command (RFC-1471)", () => {
   test("audits all sessions, writes sidecars, --check exits non-zero on critical findings", async () => {
-    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-aaaaaa.md"), CIRCUMVENTION_SESSION);
+    await writeFile(
+      join(root, "docs", "sessions", "2026-10-31-12-00-00-aaaaaa.md"),
+      CIRCUMVENTION_SESSION,
+    );
     await writeFile(join(root, "docs", "sessions", "2026-10-31-12-30-00-bbbbbb.md"), CLEAN_SESSION);
     const res = await runSessionAudit(flags({ check: true }), ctx());
     expect(res.data?.length).toBe(2);
-    expect(res.data?.find((r) => r.sessionId === "sess-circ")?.findings.some((f) => f.ruleId === "AUDIT-10")).toBe(true);
+    expect(
+      res.data
+        ?.find((r) => r.sessionId === "sess-circ")
+        ?.findings.some((f) => f.ruleId === "AUDIT-10"),
+    ).toBe(true);
     expect(res.exitCode).toBe(1);
     // --check is read-only — no sidecar written
-    await expect(readFile(join(root, "docs", "sessions", "audit", "sess-circ.audit.yaml"))).rejects.toThrow();
+    await expect(
+      readFile(join(root, "docs", "sessions", "audit", "sess-circ.audit.yaml")),
+    ).rejects.toThrow();
   });
 
   test("sidecar writes are deterministic — auditedAt = session date, unchanged rerun produces no diff", async () => {
-    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-aaaaaa.md"), CIRCUMVENTION_SESSION);
+    await writeFile(
+      join(root, "docs", "sessions", "2026-10-31-12-00-00-aaaaaa.md"),
+      CIRCUMVENTION_SESSION,
+    );
     await runSessionAudit(flags({}), ctx());
-    const first = await readFile(join(root, "docs", "sessions", "audit", "sess-circ.audit.yaml"), "utf8");
+    const first = await readFile(
+      join(root, "docs", "sessions", "audit", "sess-circ.audit.yaml"),
+      "utf8",
+    );
     await runSessionAudit(flags({}), ctx());
-    const second = await readFile(join(root, "docs", "sessions", "audit", "sess-circ.audit.yaml"), "utf8");
+    const second = await readFile(
+      join(root, "docs", "sessions", "audit", "sess-circ.audit.yaml"),
+      "utf8",
+    );
     expect(first).toBe(second);
     expect(first).toContain("auditedAt: 2026-10-31");
     expect(first).toContain("auditor: stage-a");

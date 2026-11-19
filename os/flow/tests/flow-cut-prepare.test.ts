@@ -17,8 +17,8 @@ rerun-safe.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Hooks are written untracked into the primary's hooks/ — runFlowScript reads the primary's copy, so no adoption commit is needed for them.</item>
-  <item>Extract failure is injected via a .fail-extract marker the fake checks in $PWD (cwd = primary); verify failure via hooks/extract-verify.sh exiting non-zero.</item>
+  <item>Hooks are written untracked into primary's hooks/ — runFlowScript reads the primary copy, no adoption commit needed.</item>
+  <item>Extract failure injects via a .fail-extract marker in $PWD; verify failure via hooks/extract-verify.sh exiting non-zero.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1502: step 1 — release-prepare + pre-tag verify tests</item>
@@ -176,8 +176,12 @@ describe("flow.cut — release-prepare hook and pre-tag verify (RFC-1502)", () =
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-CUT-13");
     expect(data.diagnostics[0]?.message).toContain("lib");
     expect(await sha(repo, "develop")).toBe(tipBefore);
-    expect((await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/tags/lib@2.0.1"])).exitCode).not.toBe(0);
-    expect((await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/tags/v0.1.1"])).exitCode).not.toBe(0);
+    expect(
+      (await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/tags/lib@2.0.1"])).exitCode,
+    ).not.toBe(0);
+    expect(
+      (await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/tags/v0.1.1"])).exitCode,
+    ).not.toBe(0);
     const branches = (await gitExec(repo, ["branch", "--list", "auto/*"])).stdout.trim();
     expect(branches).toBe("");
   }, 30_000);
@@ -229,11 +233,21 @@ describe("flow.cut — release-prepare hook and pre-tag verify (RFC-1502)", () =
     dirs.push(wt);
     await commitIn(wt, "hotfix.txt", "fix");
 
-    await writeHook(repo, "release-prepare", "#!/bin/sh\nset -eu\necho fix-prepared >> tracked.txt\n");
+    await writeHook(
+      repo,
+      "release-prepare",
+      "#!/bin/sh\nset -eu\necho fix-prepared >> tracked.txt\n",
+    );
 
     const common = await commonGitDir(ambientIo, repo);
-    const entry = (await readRegistry(ambientIo, common)).branches.find((b) => b.name === fixBranch);
-    const data = await runFixCut(repo, ambientIo, { entry: entry!, linesGiven: false, dryRun: false });
+    const entry = (await readRegistry(ambientIo, common)).branches.find(
+      (b) => b.name === fixBranch,
+    );
+    const data = await runFixCut(repo, ambientIo, {
+      entry: entry!,
+      linesGiven: false,
+      dryRun: false,
+    });
 
     expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(data.released).toBe(true);
@@ -254,10 +268,16 @@ describe("flow.cut — release-prepare hook and pre-tag verify (RFC-1502)", () =
 
     await writeHook(repo, "release-prepare", "#!/bin/sh\necho boom >&2\nexit 2\n");
     const common = await commonGitDir(ambientIo, repo);
-    const entry = (await readRegistry(ambientIo, common)).branches.find((b) => b.name === fixBranch);
+    const entry = (await readRegistry(ambientIo, common)).branches.find(
+      (b) => b.name === fixBranch,
+    );
     const tipBefore = await sha(repo, fixBranch);
 
-    const failed = await runFixCut(repo, ambientIo, { entry: entry!, linesGiven: false, dryRun: false });
+    const failed = await runFixCut(repo, ambientIo, {
+      entry: entry!,
+      linesGiven: false,
+      dryRun: false,
+    });
     expect(failed.released).toBe(false);
     expect(failed.diagnostics[0]?.ruleId).toBe("FLOW-CUT-12");
     // Rolled back: tip unchanged, worktree clean — a re-run cannot hit
@@ -266,8 +286,16 @@ describe("flow.cut — release-prepare hook and pre-tag verify (RFC-1502)", () =
     expect((await gitExec(wt, ["status", "--porcelain"])).stdout.trim()).toBe("");
 
     // Re-run with a working hook — no manual recovery needed.
-    await writeHook(repo, "release-prepare", "#!/bin/sh\nset -eu\necho fix-prepared >> tracked.txt\n");
-    const retried = await runFixCut(repo, ambientIo, { entry: entry!, linesGiven: false, dryRun: false });
+    await writeHook(
+      repo,
+      "release-prepare",
+      "#!/bin/sh\nset -eu\necho fix-prepared >> tracked.txt\n",
+    );
+    const retried = await runFixCut(repo, ambientIo, {
+      entry: entry!,
+      linesGiven: false,
+      dryRun: false,
+    });
     expect(retried.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(retried.released).toBe(true);
   }, 60_000);
@@ -277,7 +305,11 @@ describe("flow.cut — release-prepare hook and pre-tag verify (RFC-1502)", () =
     const first = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
     expect(first.released).toBe(true);
 
-    const fix = await fixFlow(repo, ambientIo, { slug: "fix-rollback13", brief: "t", dryRun: false });
+    const fix = await fixFlow(repo, ambientIo, {
+      slug: "fix-rollback13",
+      brief: "t",
+      dryRun: false,
+    });
     const fixBranch = fix.branch!;
     const wt = fix.worktree!;
     dirs.push(wt);
@@ -286,10 +318,16 @@ describe("flow.cut — release-prepare hook and pre-tag verify (RFC-1502)", () =
 
     await writeHook(repo, "extract-verify", "#!/bin/sh\necho verify-boom >&2\nexit 4\n");
     const common = await commonGitDir(ambientIo, repo);
-    const entry = (await readRegistry(ambientIo, common)).branches.find((b) => b.name === fixBranch);
+    const entry = (await readRegistry(ambientIo, common)).branches.find(
+      (b) => b.name === fixBranch,
+    );
     const tipBefore = await sha(repo, fixBranch);
 
-    const failed = await runFixCut(repo, ambientIo, { entry: entry!, linesGiven: false, dryRun: false });
+    const failed = await runFixCut(repo, ambientIo, {
+      entry: entry!,
+      linesGiven: false,
+      dryRun: false,
+    });
     expect(failed.released).toBe(false);
     expect(failed.diagnostics[0]?.ruleId).toBe("FLOW-CUT-13");
     // The failed chore(release) commit is gone — a re-run cannot produce an
@@ -298,7 +336,11 @@ describe("flow.cut — release-prepare hook and pre-tag verify (RFC-1502)", () =
     expect((await gitExec(wt, ["status", "--porcelain"])).stdout.trim()).toBe("");
 
     await rm(join(repo, "hooks", "extract-verify.sh"));
-    const retried = await runFixCut(repo, ambientIo, { entry: entry!, linesGiven: false, dryRun: false });
+    const retried = await runFixCut(repo, ambientIo, {
+      entry: entry!,
+      linesGiven: false,
+      dryRun: false,
+    });
     expect(retried.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(retried.released).toBe(true);
   }, 60_000);

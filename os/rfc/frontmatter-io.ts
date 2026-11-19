@@ -10,7 +10,6 @@ circular import between the two.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0521: added getRfcStatusById and loadRfcStatusMap helpers for plan/audit archive commands.</item>
   <item>RFC-0755: readAndParseRfc now returns { fileName, error } on YAML parse failure instead of undefined.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -22,7 +21,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
   <item>RFC-1534: frontmatterSource captured on both parse paths (probe-meta marker scan); mergeFrontmatterListEntry / appendRfcFrontmatterListEntry — line-level list merge preserving comments and key order (F-0056 discipline, never a YAML.stringify round-trip).</item>
-  <history>RFC-0268</history>
+  <history>RFC-0268, RFC-0521</history>
 </CHANGE_SUMMARY>
 */
 
@@ -85,7 +84,11 @@ export function mergeFrontmatterListEntry(
     } else {
       insertAt = keyIdx + 1;
       while (insertAt < lines.length && /^\s+-\s+/.test(lines[insertAt]!)) {
-        existing.add(lines[insertAt]!.replace(/^\s+-\s+/, "").trim().replace(/^["']|["']$/g, ""));
+        existing.add(
+          lines[insertAt]!.replace(/^\s+-\s+/, "")
+            .trim()
+            .replace(/^["']|["']$/g, ""),
+        );
         insertAt++;
       }
     }

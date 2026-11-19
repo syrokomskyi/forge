@@ -8,7 +8,7 @@ the probe proves the gate still fires on its real scan path, not a fabricated
 fixture shape. mutatesState: true (in-tree writes, always restored).
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never invent probe targets — probes come only from the declared fixture inventory.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

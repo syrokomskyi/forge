@@ -5,6 +5,8 @@
   <item>No detached child — records are written by hand under a temp repo's common dir.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 // Test-Reason: requirement AC-1, AC-2, AC-3 (RFC-1575)
 import { spawnSync } from "node:child_process";

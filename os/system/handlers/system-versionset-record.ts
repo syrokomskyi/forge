@@ -12,11 +12,11 @@ file (DNA-106).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Checks run with argv vectors and no shell, cwd inside the detached tag worktree — the product's primary checkout stays on develop.</item>
+  <item>Checks run with argv vectors, no shell, cwd in the detached tag worktree — the primary stays on develop.</item>
   <item>The product's own hooks/worktree-setup.sh (from the primary, like flow.open) prepares each tag worktree before checks run.</item>
   <item>--dry-run validates the whole declaration layer (flags, scenarios, folders, tags) and stops before any worktree or write.</item>
-  <item>exec spawn rejections map to SYSTEM-VS-04 (distinct from timeout exitCode:null); each worktree removal failure maps to SYSTEM-VS-05 so one stuck removal never skips the rest.</item>
-  <item>%(refname) pins the tag match exactly — for-each-ref patterns are globs; folders lookup goes through Object.hasOwn so product ids like "constructor" stay legal.</item>
+  <item>Spawn rejections map to SYSTEM-VS-04 (timeout is exitCode:null); each removal failure maps to SYSTEM-VS-05.</item>
+  <item>%(refname) pins the tag match (for-each-ref patterns are globs); Object.hasOwn keeps ids like "constructor" legal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1511: step 3 — versionset.record handler</item>

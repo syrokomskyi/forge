@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1475 outcome-journal tests — append-only outcomes.jsonl (AC-7), truncated-tail TRAJ-06 tolerance, lazy YAML migration, TRAJ-05 unknown recall id (AC-9).</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -27,7 +27,15 @@ function ctx(): ForgeRuntimeContext {
   return {
     workspaceRoot: root,
     outputFormat: "json",
-    logger: { info() {}, warn(m: string) { warns.push(m); }, error() {}, success() {}, section() {} },
+    logger: {
+      info() {},
+      warn(m: string) {
+        warns.push(m);
+      },
+      error() {},
+      success() {},
+      section() {},
+    },
   } as unknown as ForgeRuntimeContext;
 }
 
@@ -42,7 +50,9 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "trajectory-outcome-"));
   warns = [];
   await mkdir(join(root, "docs", "sessions"), { recursive: true });
-  await writeFile(join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"), `---
+  await writeFile(
+    join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"),
+    `---
 id: s-green
 verdict: green
 taskKind: reconcile
@@ -50,7 +60,8 @@ commands: [mission.reconcile]
 date: 2026-10-30
 ---
 body
-`);
+`,
+  );
 });
 
 afterEach(async () => {
@@ -91,7 +102,7 @@ describe("outcomes.jsonl append-only journal (RFC-1475 AC-7)", () => {
     await mkdir(TRAJ_DIR(), { recursive: true });
     await writeFile(
       join(TRAJ_DIR(), "outcomes.yaml"),
-      "schema: forge/trajectory-outcomes@1\noutcomes:\n  - {recallId: R-1, helped: true, at: \"2026-10-01T00:00:00Z\"}\n  - {recallId: R-2, hurt: true, at: \"2026-10-02T00:00:00Z\"}\n",
+      'schema: forge/trajectory-outcomes@1\noutcomes:\n  - {recallId: R-1, helped: true, at: "2026-10-01T00:00:00Z"}\n  - {recallId: R-2, hurt: true, at: "2026-10-02T00:00:00Z"}\n',
     );
     const first = await readOutcomesJournal(root);
     expect(first.records.length).toBe(2);
@@ -168,7 +179,10 @@ describe("journal hardening edges (review round-1)", () => {
 
   test("array elements in YAML journal are never admitted — no unbounded re-append", async () => {
     await mkdir(TRAJ_DIR(), { recursive: true });
-    await writeFile(join(TRAJ_DIR(), "outcomes.yaml"), "outcomes:\n  - {recallId: R-1, helped: true}\n  - [a, b]\n");
+    await writeFile(
+      join(TRAJ_DIR(), "outcomes.yaml"),
+      "outcomes:\n  - {recallId: R-1, helped: true}\n  - [a, b]\n",
+    );
     const first = await readOutcomesJournal(root);
     expect(first.records.length).toBe(1);
     const lines = (await readFile(OUTCOMES_JSONL(), "utf8")).trim().split("\n");
@@ -181,7 +195,10 @@ describe("journal hardening edges (review round-1)", () => {
 
   test("non-array outcomes: value warns and migrates nothing", async () => {
     await mkdir(TRAJ_DIR(), { recursive: true });
-    await writeFile(join(TRAJ_DIR(), "outcomes.yaml"), "schema: x\noutcomes: a-string-not-a-list\n");
+    await writeFile(
+      join(TRAJ_DIR(), "outcomes.yaml"),
+      "schema: x\noutcomes: a-string-not-a-list\n",
+    );
     const read = await readOutcomesJournal(root);
     expect(read.records.length).toBe(0);
     expect(read.warnings.some((w) => w.includes("not a record list"))).toBe(true);
@@ -189,7 +206,10 @@ describe("journal hardening edges (review round-1)", () => {
 
   test("non-object JSONL lines are malformed records — dropped like corrupt lines", async () => {
     await mkdir(TRAJ_DIR(), { recursive: true });
-    await writeFile(OUTCOMES_JSONL(), `{"recallId":"R-1","helped":true}\n42\nnull\n{"recallId":"R-2","hurt":true}\n`);
+    await writeFile(
+      OUTCOMES_JSONL(),
+      `{"recallId":"R-1","helped":true}\n42\nnull\n{"recallId":"R-2","hurt":true}\n`,
+    );
     const read = await readOutcomesJournal(root);
     expect(read.records.length).toBe(2);
     // The last line is a valid object — mid-file non-objects are skipped, not truncation.

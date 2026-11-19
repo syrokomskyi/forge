@@ -2,8 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1592 gate.probe.catalog ratchet tests — PROBE-06 (unprobed rule outside the shrink-only baseline), PROBE-07 (stale baseline entry), PROBE-08 (--write-baseline refuses growth), PROBE-09 (expired/undeclared provisional surfaces).</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1592: probe-or-retire ratchet for blocking check rules
 

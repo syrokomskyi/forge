@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1469 gate.probe tests — check fires on the seeded violation (liveness), dead-gate fail detection, --list inventory.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

@@ -6,7 +6,7 @@ tmp-workspace and runtime-context helpers only. Nothing here re-implements
 production logic; expectations live in the *.acceptance.test.ts files.
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never re-implement verifier logic — this file builds fixtures only.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

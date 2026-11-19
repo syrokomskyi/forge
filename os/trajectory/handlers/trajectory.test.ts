@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1472 trajectory tests — green-admission gating, situation-similarity recall, outcome.record feeds utilityScore.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -36,7 +36,9 @@ function flags(f: Record<string, unknown> = {}) {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "trajectory-"));
   await mkdir(join(root, "docs", "sessions"), { recursive: true });
-  await writeFile(join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"), `---
+  await writeFile(
+    join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"),
+    `---
 id: s-green
 verdict: green
 taskKind: reconcile
@@ -46,8 +48,11 @@ filesChanged: [missions/dp7/wip.md]
 date: 2026-10-30
 ---
 body
-`);
-  await writeFile(join(root, "docs", "sessions", "2026-10-29-12-00-00-bbbbbb.md"), `---
+`,
+  );
+  await writeFile(
+    join(root, "docs", "sessions", "2026-10-29-12-00-00-bbbbbb.md"),
+    `---
 id: s-red
 verdict: red
 taskKind: deploy
@@ -55,7 +60,8 @@ commands: [mission.deploy]
 date: 2026-10-29
 ---
 body
-`);
+`,
+  );
 });
 
 afterEach(async () => {
@@ -74,7 +80,10 @@ describe("trajectory.index (RFC-1472)", () => {
 describe("trajectory.recall (RFC-1472)", () => {
   test("task-matched unit ranks top + journaled", async () => {
     await runTrajectoryIndex(flags({}), ctx());
-    const res = await runTrajectoryRecall(flags({ task: "reconcile diverged workpiece", k: 5 }), ctx());
+    const res = await runTrajectoryRecall(
+      flags({ task: "reconcile diverged workpiece", k: 5 }),
+      ctx(),
+    );
     expect(res.data?.units[0]?.producer.sessionId).toBe("s-green");
     expect(res.data?.recallId.length).toBeGreaterThan(0);
     expect(res.exitCode).toBe(0);
@@ -91,7 +100,10 @@ describe("trajectory.outcome.record (RFC-1472)", () => {
   test("helped label → utilityScore +1 on the recalled unit", async () => {
     await runTrajectoryIndex(flags({}), ctx());
     const recall = await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
-    const rec = await runOutcomeRecord(flags({ recall: recall.data?.recallId, helped: true }), ctx());
+    const rec = await runOutcomeRecord(
+      flags({ recall: recall.data?.recallId, helped: true }),
+      ctx(),
+    );
     expect(rec.data?.unitUpdates).toBe(1);
     const re2 = await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
     expect(re2.data?.units[0]?.usedBy.helped).toBe(1);

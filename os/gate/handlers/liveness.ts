@@ -9,12 +9,10 @@ gate.probe.catalog (ratchet) and checks.contribution.report (liveness field).</p
   <item>Probe execution and baseline persistence live in their own modules —
   this file only reads declared inventories and journal projections.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>A bound fixture whose last run failed/errored or that never ran is
-  NOT liveness evidence — state stays "none" until a run records "pass".</item>
-  <item>Under counters coverage "none" no firing records exist, so "fired" is
-  unreachable; partial coverage still trusts a recorded emission (positive
-  evidence) while absence stays untrusted → "none" unless a fixture proves it.</item>
+  <item>A fixture whose last run failed or never ran is not liveness evidence — state stays "none" until a pass.</item>
+  <item>Coverage "none" makes "fired" unreachable; partial trusts a recorded emission — absence stays "none" without fixture proof.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1592: shared liveness projection — fixture walk + RuleLiveness join for catalog and contribution consumers</item>

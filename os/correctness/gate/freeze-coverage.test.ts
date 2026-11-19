@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>RFC-1580 review REVIEW-CODE-2026-11-13-05 regressions — every frozen
+<purpose>Freeze-coverage regression tests (RFC-1580 REVIEW-CODE-2026-11-13-05) — every frozen
 item has a weakening test (captures, unreadable base manifest, source and
 statement, mode, allow-list, tier, deferred exemptions, new support files);
 L3 on data seams needs an attestation; anchor events must be verified on the

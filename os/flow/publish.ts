@@ -12,11 +12,11 @@ and return the RFC publications[] row for the journal.</purpose>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>Destination resolution mirrors the retired publish-forge.mjs (RFC-1499) resolveDest(): destBase/destName parsed from extract.config.yaml, anchored at dirname(primary), destBase default "packages".</item>
-  <item>Reconcile only on non-fast-forward (the same regex as the retired publish-forge.mjs, RFC-1499) — auth, hook and transient failures never trigger an ours-merge.</item>
-  <item>verifyLineAtRef (RFC-1502) extracts into an mkdtemp scratch via `--dest` — the configured destination is never touched — and a spawn failure of the repo-extract binary reports as a verification failure, not a crash.</item>
-  <item>preflight-extract-gates (RFC-1517) reads CHANGELOG.md and package.json AT `ref` via `git show` — never the working tree: during flow.cut the freshly-written version section lives only in the release commit, so a working-tree read would false-refuse every legitimate publish.</item>
-  <item>preflight fails open on unreadable git objects (missing CHANGELOG, unparseable package.json, unresolvable ref) — mirroring the post-extract gate's parity-note contract; a preflight must never block a publish it cannot judge.</item>
-  <item>RFC-1517 r1: the fixture scan enumerates `../` candidates AT `ref` via one `git grep -nI --full-name` — the extract materializes the ref's tree, so an untracked dist/ or a post-tag fix can't false-refuse or evade the way a working-tree walk did. Each candidate path is then judged by the same isShippedEntry/literalEscapesInLine core PKG-HEALTH-10 uses.</item>
+  <item>Reconcile runs only on non-fast-forward (retired publish-forge.mjs regex) — auth/transient failures never trigger ours-merge.</item>
+  <item>verifyLineAtRef extracts into an mkdtemp scratch via `--dest` — the configured destination stays untouched; spawn failure = verification failure.</item>
+  <item>preflight-extract-gates reads CHANGELOG/package.json AT `ref` via `git show` — working-tree reads false-refuse legitimate publishes.</item>
+  <item>preflight fails open on unreadable git objects — a preflight never blocks a publish it cannot judge.</item>
+  <item>The fixture scan enumerates `../` candidates AT `ref` via `git grep` — judged by the PKG-HEALTH-10 literal core (RFC-1517 r1).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1502: step 7 — remediation entries, docs, deviations, generated indexes</item>
@@ -71,16 +71,11 @@ export async function resolveExtractDest(
   const configPath = join(primary, dir, "extract.config.yaml");
   if (!(await io.exists(configPath))) return null;
   const raw = await io.readFile(configPath);
-  const unquote = (v: string | undefined): string | undefined =>
-    v?.replace(/^["']|["']$/g, "");
+  const unquote = (v: string | undefined): string | undefined => v?.replace(/^["']|["']$/g, "");
   const destBase = unquote(raw.match(/^destBase:\s*(\S+)\s*$/m)?.[1]);
   const destName = unquote(raw.match(/^destName:\s*(\S+)\s*$/m)?.[1]);
   if (destName === undefined) return null;
-  return resolve(
-    dirname(primary),
-    destBase ?? "packages",
-    destName,
-  );
+  return resolve(dirname(primary), destBase ?? "packages", destName);
 }
 
 /** The annotation's `level:` field — baseline tags are never published. */
@@ -319,7 +314,11 @@ export async function publishTag(
     "sh",
     [
       join(primary, "node_modules", ".bin", "repo-extract"),
-      "--config", `${dir}/extract.config.yaml`, "--ref", tag, "--no-push",
+      "--config",
+      `${dir}/extract.config.yaml`,
+      "--ref",
+      tag,
+      "--no-push",
     ],
     { cwd: primary },
   );
@@ -450,7 +449,13 @@ export async function verifyLineAtRef(
         "sh",
         [
           extractBin,
-          "--config", `${dir}/extract.config.yaml`, "--ref", ref, "--dest", scratch, "--no-push",
+          "--config",
+          `${dir}/extract.config.yaml`,
+          "--ref",
+          ref,
+          "--dest",
+          scratch,
+          "--no-push",
         ],
         { cwd: primary },
       );
@@ -462,8 +467,17 @@ export async function verifyLineAtRef(
       };
     }
     if (extract.exitCode !== 0) {
-      const last = extract.stderr.trim().split("\n").filter((l) => l.length > 0).slice(-1)[0] ?? "";
-      return { ok: false, skipped: false, detail: `repo-extract failed (exit ${extract.exitCode}): ${last}` };
+      const last =
+        extract.stderr
+          .trim()
+          .split("\n")
+          .filter((l) => l.length > 0)
+          .slice(-1)[0] ?? "";
+      return {
+        ok: false,
+        skipped: false,
+        detail: `repo-extract failed (exit ${extract.exitCode}): ${last}`,
+      };
     }
     const verify = await runFlowScript(io, "extract-verify", {
       primary,
@@ -475,7 +489,11 @@ export async function verifyLineAtRef(
       },
     });
     if (verify.status === "failed") {
-      return { ok: false, skipped: false, detail: `extract-verify failed (exit ${verify.exitCode}): ${verify.stderrTail}` };
+      return {
+        ok: false,
+        skipped: false,
+        detail: `extract-verify failed (exit ${verify.exitCode}): ${verify.stderrTail}`,
+      };
     }
     return { ok: true, skipped: false, detail: "" };
   } finally {

@@ -8,7 +8,7 @@ readers can no longer take the tail as latest. A crash-truncated final
 record is tolerated (dropped, still surfaced as truncatedTail in data).
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never rewrite journal records — validation reports drift; repair stays an operator decision.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -101,7 +101,9 @@ export async function runCountersValidate(
     inventoryIds = parsed
       ? new Set(
           (parsed.contracts ?? []).flatMap((c) =>
-            (c.validators ?? []).flatMap((v) => (v.rules ?? []).map((r) => `${c.contract}/${r.id}`)),
+            (c.validators ?? []).flatMap((v) =>
+              (v.rules ?? []).map((r) => `${c.contract}/${r.id}`),
+            ),
           ),
         )
       : undefined;

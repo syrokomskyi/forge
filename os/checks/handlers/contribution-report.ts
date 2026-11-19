@@ -16,7 +16,7 @@ earning|silent|redundant|guard (guard declared via checksContribution.guardRules
 producer-tail tolerated).
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never gate on its own output — this is a read-model, not a gate.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

@@ -29,8 +29,8 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 
-// @ai-invariant: The exception rules below are the canonical source for naming.convention.lint.
-// Update naming-conventions.md (packages/site-kernel/docs/) when these rules change.
+// @ai-invariant[INV-naming-01]: The exception rules below are the canonical source for naming.convention.lint.
+// Update naming-conventions.md (packages/site-kernel/docs/) when these rules change. (checked-by: test:packages/forge/os/naming/naming-convention.test.ts)
 
 // RFC-0360: Registered recursive roots — scanned recursively for filename violations.
 const NAMING_CONVENTION_RECURSIVE_ROOTS = [

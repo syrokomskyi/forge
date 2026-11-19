@@ -10,7 +10,7 @@ parity test proves both executions agree.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>YYMMDD is validated as a real UTC calendar date (leap years included) — a regex alone cannot express that, so the pattern check is followed by a Date round-trip.</item>
+  <item>YYMMDD validates as a real UTC calendar date — regex alone cannot express it, so a Date round-trip follows.</item>
   <item>Slug length 3–48 is enforced outside the pattern so the regex literal stays byte-identical between TypeScript and the shell guard.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
@@ -67,9 +67,7 @@ export function isValidFlowDate(yymmdd: string): boolean {
   if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return false;
   const date = new Date(Date.UTC(2000 + yy, mm - 1, dd));
   return (
-    date.getUTCFullYear() === 2000 + yy &&
-    date.getUTCMonth() === mm - 1 &&
-    date.getUTCDate() === dd
+    date.getUTCFullYear() === 2000 + yy && date.getUTCMonth() === mm - 1 && date.getUTCDate() === dd
   );
 }
 
@@ -104,8 +102,7 @@ export function classifyBranch(name: string): BranchClass {
   return {
     kind: "nonconforming",
     name,
-    reason:
-      "outside the fixed branch model grammar auto/<kind>-<YYMMDD>-<NN>-<slug> (RFC-1486)",
+    reason: "outside the fixed branch model grammar auto/<kind>-<YYMMDD>-<NN>-<slug> (RFC-1486)",
   };
 }
 

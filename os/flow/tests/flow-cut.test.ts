@@ -13,8 +13,8 @@ resume path (AC-5: subject-named tags missing → tail re-runs).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The adoption commit lands on develop BEFORE the guard install — pending work commits precede it so level calculation sees them; the hooks commit runs under FORGE_FLOW_OP=install exactly like flow.install's.</item>
-  <item>Resume is exercised by deleting the cut's tag and rewinding main — cheaper and more faithful than hand-building the intermediate state.</item>
+  <item>The adoption commit lands on develop BEFORE guard install — pending commits precede it so level calculation sees them.</item>
+  <item>Resume exercises by deleting the cut's tag and rewinding main — cheaper and more faithful than hand-built state.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
@@ -85,10 +85,7 @@ async function adoptedRepo(opts?: {
   const repo = await initRepo({ prefix: "flow-cut-" });
   dirs.push(repo);
   await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
-  await writeFile(
-    join(repo, "package.json"),
-    '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n',
-  );
+  await writeFile(join(repo, "package.json"), '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n');
   if (opts?.packageLine) {
     await writeFile(join(repo, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n');
     await mkdir(join(repo, "packages/lib"), { recursive: true });
@@ -158,7 +155,16 @@ describe("flow.cut — ordinary path", () => {
     const subject = (await gitExec(repo, ["log", "-1", "--format=%s", "develop"])).stdout;
     expect(subject.trim()).toBe("chore(release): v0.1.1");
     // Release branch + worktree are gone.
-    expect((await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/heads/auto/session-0-1-1-release-0-1-1"])).exitCode).not.toBe(0);
+    expect(
+      (
+        await gitExec(repo, [
+          "rev-parse",
+          "--verify",
+          "-q",
+          "refs/heads/auto/session-0-1-1-release-0-1-1",
+        ])
+      ).exitCode,
+    ).not.toBe(0);
   }, 30_000);
 
   it("refuses FLOW-CUT-01 in an unadopted repository", async () => {
@@ -173,7 +179,9 @@ describe("flow.cut — ordinary path", () => {
     const repo = await adoptedRepo();
     // Plumbing-commit main ahead of develop without touching worktrees.
     const tree = (await gitExec(repo, ["rev-parse", "main^{tree}"])).stdout.trim();
-    const hot = (await gitExec(repo, ["commit-tree", tree, "-p", "main", "-m", "main-hot"])).stdout.trim();
+    const hot = (
+      await gitExec(repo, ["commit-tree", tree, "-p", "main", "-m", "main-hot"])
+    ).stdout.trim();
     await gitExec(repo, ["update-ref", "refs/heads/main", hot]);
 
     const data = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
@@ -269,7 +277,9 @@ describe("flow.cut — ordinary path", () => {
     expect(data.released).toBe(false);
     expect(data.tags).toEqual(["v0.1.1"]);
     expect(await sha(repo, "develop")).toBe(before);
-    expect((await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/tags/v0.1.1"])).exitCode).not.toBe(0);
+    expect(
+      (await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/tags/v0.1.1"])).exitCode,
+    ).not.toBe(0);
   }, 20_000);
 
   it("cuts repo + package lines together via --lines (AC-1 shape)", async () => {

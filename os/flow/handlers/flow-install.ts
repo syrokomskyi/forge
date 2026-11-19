@@ -12,10 +12,10 @@ embedded flow.check report.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>develop checked out in a dirty linked worktree → FLOW-ADOPT-04; checked out cleanly → ff-merge inside that worktree (branch -f cannot move a checked-out ref).</item>
-  <item>develop checked out in a NON-primary worktree while the primary sits on main → FLOW-ADOPT-08: the adoption commit must land in the primary on develop, and git refuses a double checkout.</item>
+  <item>develop in a dirty linked worktree → FLOW-ADOPT-04; clean → ff-merge inside that worktree (branch -f cannot move it).</item>
+  <item>develop checked out non-primary while primary sits on main → FLOW-ADOPT-08 — the commit lands in primary; double checkout impossible.</item>
   <item>Step 8 passes FORGE_FLOW_OP=install only to the commit child — the closed vocabulary is the guard's own escape hatch (FI-4).</item>
-  <item>markerSource resolves at plan time (RFC-1498): a non-network origin warns in the step detail by kind, never by path, and execution reuses the planned value — one git call, no plan/execute drift.</item>
+  <item>markerSource resolves at plan time — non-network origins warn by kind, never path; execution reuses the planned value.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
@@ -83,11 +83,13 @@ import {
   type RejectedOriginKind,
 } from "../markers.ts";
 import { detectRepoKind } from "../repo-kind.ts";
+import { discoverReleaseLines, readLineVersionFile } from "../release-lines.ts";
 import {
-  discoverReleaseLines,
-  readLineVersionFile,
-} from "../release-lines.ts";
-import { listLegacyTags, listLineTags, releaseTagAnnotation, writeReleaseTag } from "../release-tags.ts";
+  listLegacyTags,
+  listLineTags,
+  releaseTagAnnotation,
+  writeReleaseTag,
+} from "../release-tags.ts";
 import { compareVersions, parseVersion } from "../semver.ts";
 import { collectFlowCheck, type FlowCheckData } from "./flow-check.ts";
 
@@ -268,8 +270,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   const mainExists = await branchExists(repoRoot, io, "main");
   const adoptedBefore =
     earlyHooksPath === "hooks" ||
-    (developExists &&
-      (await revListHasSubject(repoRoot, io, "develop", ADOPTION_COMMIT_SUBJECT)));
+    (developExists && (await revListHasSubject(repoRoot, io, "develop", ADOPTION_COMMIT_SUBJECT)));
   let developAction: DevelopAction | undefined;
   {
     if (!mainExists && !developExists) {
@@ -386,10 +387,18 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   let rerereAction: InstallPlan["rerereAction"];
   if (rerereEnabled === "true" && rerereAutoupdate === "true") {
     rerereAction = "already";
-    steps.push({ step: "rerere", status: "planned", detail: "rerere.enabled/.autoupdate already true" });
+    steps.push({
+      step: "rerere",
+      status: "planned",
+      detail: "rerere.enabled/.autoupdate already true",
+    });
   } else {
     rerereAction = "set";
-    steps.push({ step: "rerere", status: "planned", detail: "set rerere.enabled and rerere.autoupdate to true" });
+    steps.push({
+      step: "rerere",
+      status: "planned",
+      detail: "set rerere.enabled and rerere.autoupdate to true",
+    });
   }
 
   // 5. checkout — the primary must be on main or develop.
@@ -444,9 +453,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
         : "main";
 
   const guardIdentical = await guardFileMatches(async () =>
-    (await io.exists(join(primary, GUARD_FILE)))
-      ? io.readFile(join(primary, GUARD_FILE))
-      : null,
+    (await io.exists(join(primary, GUARD_FILE))) ? io.readFile(join(primary, GUARD_FILE)) : null,
   );
   const guardCommitted =
     hookBaseRef !== null && (await fileInTree(repoRoot, io, hookBaseRef, GUARD_FILE));
@@ -492,9 +499,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   });
 
   const preMergePath = join(primary, PREMERGE_FILE);
-  const preMergeExisting = (await io.exists(preMergePath))
-    ? await io.readFile(preMergePath)
-    : null;
+  const preMergeExisting = (await io.exists(preMergePath)) ? await io.readFile(preMergePath) : null;
   const preMergeCommitted =
     hookBaseRef !== null && (await fileInTree(repoRoot, io, hookBaseRef, PREMERGE_FILE));
   let preMergeChange: PreCommitChange;
@@ -519,9 +524,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   });
 
   const prePushPath = join(primary, PREPUSH_FILE);
-  const prePushExisting = (await io.exists(prePushPath))
-    ? await io.readFile(prePushPath)
-    : null;
+  const prePushExisting = (await io.exists(prePushPath)) ? await io.readFile(prePushPath) : null;
   const prePushCommitted =
     hookBaseRef !== null && (await fileInTree(repoRoot, io, hookBaseRef, PREPUSH_FILE));
   let prePushChange: PreCommitChange;
@@ -937,8 +940,7 @@ export async function executeInstall(
     }
   } else {
     const existing = (await io.exists(preCommitPath)) ? await io.readFile(preCommitPath) : null;
-    const next =
-      existing === null ? renderManagedPreCommit() : mergeManagedBlock(existing);
+    const next = existing === null ? renderManagedPreCommit() : mergeManagedBlock(existing);
     if (next === null) {
       if (!plan.preCommitCommitted) {
         hooksNeedCommit = true;
@@ -958,10 +960,18 @@ export async function executeInstall(
       }
       const chmod = await chmodHook(io, preCommitPath);
       if (chmod.exitCode !== 0) {
-        return failStep("pre-commit", `chmod 0755 ${PRECOMMIT_FILE} failed: ${chmod.stderr.trim()}`);
+        return failStep(
+          "pre-commit",
+          `chmod 0755 ${PRECOMMIT_FILE} failed: ${chmod.stderr.trim()}`,
+        );
       }
       hooksNeedCommit = true;
-      setStep(plan, "pre-commit", "done", `${plan.preCommitChange}d managed block in hooks/pre-commit`);
+      setStep(
+        plan,
+        "pre-commit",
+        "done",
+        `${plan.preCommitChange}d managed block in hooks/pre-commit`,
+      );
     }
   }
 
@@ -970,7 +980,12 @@ export async function executeInstall(
   if (plan.preMergeChange === "identical") {
     if (!plan.preMergeCommitted) {
       hooksNeedCommit = true;
-      setStep(plan, "pre-merge-commit", "done", "managed block already correct — staged for commit");
+      setStep(
+        plan,
+        "pre-merge-commit",
+        "done",
+        "managed block already correct — staged for commit",
+      );
     } else {
       setStep(plan, "pre-merge-commit", "skipped", "managed block already present");
     }
@@ -983,7 +998,12 @@ export async function executeInstall(
     if (next === null) {
       if (!plan.preMergeCommitted) {
         hooksNeedCommit = true;
-        setStep(plan, "pre-merge-commit", "done", "managed block already correct — staged for commit");
+        setStep(
+          plan,
+          "pre-merge-commit",
+          "done",
+          "managed block already correct — staged for commit",
+        );
       } else {
         setStep(plan, "pre-merge-commit", "skipped", "managed block already present");
       }
@@ -999,10 +1019,18 @@ export async function executeInstall(
       }
       const chmod = await chmodHook(io, preMergePath);
       if (chmod.exitCode !== 0) {
-        return failStep("pre-merge-commit", `chmod 0755 ${PREMERGE_FILE} failed: ${chmod.stderr.trim()}`);
+        return failStep(
+          "pre-merge-commit",
+          `chmod 0755 ${PREMERGE_FILE} failed: ${chmod.stderr.trim()}`,
+        );
       }
       hooksNeedCommit = true;
-      setStep(plan, "pre-merge-commit", "done", `${plan.preMergeChange}d managed block in hooks/pre-merge-commit`);
+      setStep(
+        plan,
+        "pre-merge-commit",
+        "done",
+        `${plan.preMergeChange}d managed block in hooks/pre-merge-commit`,
+      );
     }
   }
 
@@ -1033,10 +1061,7 @@ export async function executeInstall(
         await io.mkdir(join(primary, "hooks"));
         await io.writeFile(prePushPath, next.endsWith("\n") ? next : `${next}\n`);
       } catch (err) {
-        return failStep(
-          "pre-push",
-          `writing ${PREPUSH_FILE} failed: ${(err as Error).message}`,
-        );
+        return failStep("pre-push", `writing ${PREPUSH_FILE} failed: ${(err as Error).message}`);
       }
       const chmod = await chmodHook(io, prePushPath);
       if (chmod.exitCode !== 0) {
@@ -1058,7 +1083,10 @@ export async function executeInstall(
         await io.mkdir(join(primary, m.dir));
         await io.writeFile(join(primary, m.dir, MARKER_FILE), markerContent(`${source}#${m.dir}`));
       } catch (err) {
-        return failStep("markers", `writing ${m.dir}/${MARKER_FILE} failed: ${(err as Error).message}`);
+        return failStep(
+          "markers",
+          `writing ${m.dir}/${MARKER_FILE} failed: ${(err as Error).message}`,
+        );
       }
     }
     hooksNeedCommit = true;

@@ -10,7 +10,6 @@ Also loads the decision-ledger sibling (RFC-1250).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1140: initial manifest loader and validator.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
@@ -29,7 +28,7 @@ gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
   <item>RFC-1534: QUEUE-05 decision-ledger collision diagnostic names the next free Q-id computed at read time (max numeric suffix + 1).</item>
-  <history>RFC-1250</history>
+  <history>RFC-1140, RFC-1250</history>
 </CHANGE_SUMMARY>
 */
 

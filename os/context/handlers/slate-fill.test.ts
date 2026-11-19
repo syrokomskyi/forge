@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1470 slate-fill tests — budget enforcement: units fill the token budget in rank order; skipped count is honest; a unit exceeding remaining budget is skipped not truncated.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -15,7 +15,12 @@ import { scoreUnit } from "./context-assemble.ts";
 import type { ContextUnit } from "./index-build.ts";
 
 const u = (id: string, text: string, kind = "friction" as const, tokens = 100): ContextUnit => ({
-  id, kind, source: `test#${id}`, tokens, text, meta: {},
+  id,
+  kind,
+  source: `test#${id}`,
+  tokens,
+  text,
+  meta: {},
 });
 
 describe("slate fill (RFC-1470)", () => {

@@ -9,6 +9,8 @@ as primary dirt.</purpose>
   <item>No flow-command behavior — os/flow suites own that.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 
 import { afterAll, describe, expect, it } from "vitest";

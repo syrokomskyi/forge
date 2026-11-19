@@ -11,6 +11,8 @@
     werkstatt-site/src/checks/tests/worktree-gate-regen-binding.test.ts.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 // Test-Reason: requirement AC-1 (RFC-1619)
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";

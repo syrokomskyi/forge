@@ -11,7 +11,7 @@ named scenario with sha256 evidence per scenario.</purpose>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>A check is { product, argv, timeoutSec } run with no shell — argv vectors only (DNA-89).</item>
-  <item>evidence maps scenario id to sha256 of that scenario's concatenated check logs — a set exists only for a run that passed (DNA-106).</item>
+  <item>evidence maps scenario id → sha256 of concatenated check logs — a set exists only for a passing run.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1511: step 2 — scenario and version-set schemas</item>

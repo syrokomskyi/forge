@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1468 knowledge.rebuild tests — marker-region rewrite from source rows, --check drift detection (orphan/missing), human-owned content outside markers untouched.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -72,7 +72,10 @@ describe("knowledge.rebuild (RFC-1468)", () => {
   });
 
   test("AC-4: --check exits non-zero on drift and writes nothing", async () => {
-    const res = await runKnowledgeRebuild(flags({ target: ".agents/memory/MEMORY.md", check: true }), ctx());
+    const res = await runKnowledgeRebuild(
+      flags({ target: ".agents/memory/MEMORY.md", check: true }),
+      ctx(),
+    );
     expect(res.data?.status).toBe("drift");
     expect(res.data?.diagnostics.some((d) => d.ruleId === "REBUILD-ORPHAN")).toBe(true);
     expect(res.exitCode).toBe(1);

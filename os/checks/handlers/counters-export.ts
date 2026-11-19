@@ -14,7 +14,7 @@ merge(committed, covered-projection) against the committed file (COUNT-03
 staleness, same freshness contract as other generated artifacts).
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never mutate the counters journal — export is a read-only projection into the committed artifact.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

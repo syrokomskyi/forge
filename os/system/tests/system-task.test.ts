@@ -3,6 +3,9 @@
 <purpose>RFC-1509 acceptance tests for system.task.create and
 system.task.move — id allocation, schema refusals, the transition table,
 ready-checks (brief, dependencies, edges) and the version-set gate.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 5 — create/move acceptance tests</item>
@@ -25,7 +28,6 @@ import {
   makeSystemRepo,
   readyBrief,
   taskYaml,
-
   VALID_EDGES_YAML,
   VALID_PRODUCTS_YAML,
   VALID_SYSTEM_YAML,
@@ -73,7 +75,11 @@ describe("system.task.create", () => {
     const root = await repoWithMap();
     const result = await runSystemTaskCreate(input({ ...CREATE_FLAGS }), makeContext(root));
     expect(result.exitCode).toBe(0);
-    const { task } = await readTask(root, (await import("../../../src/utils/io.ts")).resolveIo(undefined), "T-0001");
+    const { task } = await readTask(
+      root,
+      (await import("../../../src/utils/io.ts")).resolveIo(undefined),
+      "T-0001",
+    );
     expect(task).not.toBeNull();
     expect(task!.state).toBe("proposed");
     expect(task!.brief).toBe("queue/briefs/T-0001.md");
@@ -209,7 +215,11 @@ forbidden:
       makeContext(root),
     );
     expect(result.exitCode).toBe(0);
-    expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-04" && d.severity === "warning")).toBe(true);
+    expect(
+      result.data?.diagnostics.some(
+        (d) => d.ruleId === "SYSTEM-TASK-04" && d.severity === "warning",
+      ),
+    ).toBe(true);
     expect(result.data?.moved).toBe(true);
   });
 
@@ -264,7 +274,8 @@ forbidden:
   it("integrated → verified requires --version-set listing the product", async () => {
     const root = await repoWithMap({
       "queue/tasks/T-0001.yaml": taskYaml({ state: "integrated" }),
-      "system/version-sets/VS-0001.yaml": "schema: forge/version-set@1\nid: VS-0001\nproducts: [beta]\n",
+      "system/version-sets/VS-0001.yaml":
+        "schema: forge/version-set@1\nid: VS-0001\nproducts: [beta]\n",
     });
     const missing = await runSystemTaskMove(
       input({ task: "T-0001", to: "verified" }),

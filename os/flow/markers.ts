@@ -11,8 +11,8 @@ that repository from the flow guard.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>"Valid" is the strict content contract: parseable YAML carrying schema forge/generated@1 and generator repo-extract — the flow.check FLOW-10 wording matches exactly this test.</item>
-  <item>`source` accepts only network origins (RFC-1498): http/https/ssh/git schemes or scp form, userinfo stripped; a local path or file:// URL falls back to the directory basename and reports its rejection kind — the path is never written into a marker.</item>
+  <item>"Valid" = parseable YAML with schema forge/generated@1 and generator repo-extract — the FLOW-10 wording matches.</item>
+  <item>`source` accepts only network origins (http/https/ssh/git or scp form); local paths fall back to the directory basename.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 2 — extract markers (flow.install step, FLOW-10, FLOW-PUSH-06 input)</item>

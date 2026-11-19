@@ -11,7 +11,7 @@ the branch worktree and the declared FLOW_* environment.</purpose>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>Scripts run as `sh &lt;primary&gt;/hooks/&lt;name&gt;.sh` through io.exec with an argument vector — no shell interpolation (DNA-89, AUDIT-RFC-1487-G1).</item>
-  <item>Absent script → skipped; a script present in the branch worktree but absent in the primary is skipped identically — only develop's version gates.</item>
+  <item>Absent script → skipped; branch-only scripts skip identically — only develop's version gates.</item>
   <item>stderrTail is the last 40 lines — enough for the report without flooding it (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
@@ -86,6 +86,18 @@ export async function runFlowScript(
       ? (result.stdout.match(/^gate-report: (\S+)\s*$/m)?.[1] ?? null)
       : undefined;
   return result.exitCode === 0
-    ? { status: "done", exitCode: result.exitCode, stderrTail: tail, stdout, ...(reportPath !== undefined ? { reportPath } : {}) }
-    : { status: "failed", exitCode: result.exitCode, stderrTail: tail, stdout, ...(reportPath !== undefined ? { reportPath } : {}) };
+    ? {
+        status: "done",
+        exitCode: result.exitCode,
+        stderrTail: tail,
+        stdout,
+        ...(reportPath !== undefined ? { reportPath } : {}),
+      }
+    : {
+        status: "failed",
+        exitCode: result.exitCode,
+        stderrTail: tail,
+        stdout,
+        ...(reportPath !== undefined ? { reportPath } : {}),
+      };
 }

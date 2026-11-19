@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1470 context.slate.eval tests — recall@budget over the devset; missing index/devset block honestly.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -35,7 +35,9 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "slate-eval-"));
   await mkdir(join(root, "docs", ".index", "context"), { recursive: true });
   await mkdir(join(root, "docs", "context-devset"), { recursive: true });
-  await writeFile(join(root, "docs", ".index", "context", "index.yaml"), `schema: forge/context-index@1
+  await writeFile(
+    join(root, "docs", ".index", "context", "index.yaml"),
+    `schema: forge/context-index@1
 units:
   - id: "friction:F-0009"
     kind: friction
@@ -43,11 +45,15 @@ units:
     tokens: 50
     text: "F-0009 [process]: scar bullets accumulate without a migration path"
     meta: {}
-`);
-  await writeFile(join(root, "docs", "context-devset", "t1.yaml"), `task: migrate friction scars
+`,
+  );
+  await writeFile(
+    join(root, "docs", "context-devset", "t1.yaml"),
+    `task: migrate friction scars
 requiredUnits:
   - "friction:F-0009"
-`);
+`,
+  );
 });
 
 afterEach(async () => {

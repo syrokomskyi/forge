@@ -13,6 +13,8 @@
   <item>No hand-maintained schemas — a wrong flag spec is fixed on the command, not here.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 
 import { join } from "node:path";

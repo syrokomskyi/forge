@@ -12,8 +12,8 @@ forge/journal.jsonl.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>A schema-invalid registry throws FlowRegistrySchemaError — every flow command surfaces it as FLOW-07 naming the file; a damaged registry is never silently rewritten.</item>
-  <item>Registry updates hold a 10 s O_EXCL lock and write via temp file + rename — parallel sessions never observe a torn file (AC-8).</item>
+  <item>A schema-invalid registry throws FlowRegistrySchemaError — commands surface it as FLOW-07; never silently rewritten.</item>
+  <item>Registry updates hold a 10 s O_EXCL lock + temp-file rename — parallel sessions never see a torn file.</item>
   <item>`held` is typed null now — the wave-2 outbound RFC widens it to { heldAt, riskCategory, reason }.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>

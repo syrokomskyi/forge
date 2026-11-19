@@ -5,6 +5,8 @@
   <item>No --detach mechanics — RFC-1568's gate-run tests own spawning and records.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 // Test-Reason: requirement AC-1 (RFC-1573)
 import { describe, expect, it } from "vitest";
@@ -16,7 +18,10 @@ describe("RFC-1573: flow detachable declarations", () => {
     const mod = await createForgeFlowModule();
     for (const name of ["flow.cut", "flow.backmerge", "flow.integrate"]) {
       const cmd = mod.commands.find((c) => c.name === name);
-      expect(cmd?.detachable, `${name} reaches integrateFlowBranch and must declare detachable: true`).toBe(true);
+      expect(
+        cmd?.detachable,
+        `${name} reaches integrateFlowBranch and must declare detachable: true`,
+      ).toBe(true);
     }
   });
 
@@ -25,7 +30,10 @@ describe("RFC-1573: flow detachable declarations", () => {
     for (const name of ["flow.open", "flow.fix", "flow.status", "flow.digest"]) {
       const cmd = mod.commands.find((c) => c.name === name);
       expect(cmd, `${name} must stay registered`).toBeDefined();
-      expect(cmd?.detachable, `${name} returns quickly and must not be detachable (RFC-1573 non-goal)`).toBeUndefined();
+      expect(
+        cmd?.detachable,
+        `${name} returns quickly and must not be detachable (RFC-1573 non-goal)`,
+      ).toBeUndefined();
     }
   });
 });

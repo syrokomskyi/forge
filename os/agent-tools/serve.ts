@@ -13,6 +13,8 @@
   <item>No filesystem writes — a stale generated file regenerates in memory only.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 
 import { join } from "node:path";

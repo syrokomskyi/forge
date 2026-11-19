@@ -6,7 +6,7 @@ enumerating exactly 3 inputs through exhaustive(), used to exercise the
 proved path and the cardinality gate.
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

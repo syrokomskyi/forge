@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>Register forgeContextModule — context.index.build, context.assemble, context.slate.eval (RFC-1470): task-time context slate retrieval.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Indexing and scoring live in the handlers — this file only registers the module.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

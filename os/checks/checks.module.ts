@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>Register forgeChecksModule — checks.contribution.report (RFC-1473) per-rule marginal-contribution read-model for gate-catalog maintenance, plus the RFC-1474 counters surface: checks.counters.export (deterministic per-rule totals projection) and checks.counters.validate (journal integrity gate vs the validator inventory).</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Do not implement check logic — handlers own the behavior; this file only registers the module.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

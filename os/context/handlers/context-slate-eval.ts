@@ -7,7 +7,7 @@ the fraction of required units the slate contains. This is the RFC's own
 acceptance instrument and the regression gate for every ranker change.
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never index or assemble contexts — eval is a read-only harness over the dev set.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -46,16 +46,28 @@ export async function runSlateEval(
   const io = resolveIo(context.io ?? ambientIo);
   const root = context.workspaceRoot;
   const budget = Math.max(1, Number(input.flags["budget"] ?? 4000) || 4000);
-  const indexSrc = await io.readFile(path.join(root, "docs", ".index", "context", "index.yaml")).catch(() => null);
+  const indexSrc = await io
+    .readFile(path.join(root, "docs", ".index", "context", "index.yaml"))
+    .catch(() => null);
   if (indexSrc === null) {
-    return { data: { command: "context.slate.eval", status: "ok", tasks: 0, recall: 0, perTask: [] }, summary: "CONTEXT-01 index missing — run context.index.build", exitCode: 1 };
+    return {
+      data: { command: "context.slate.eval", status: "ok", tasks: 0, recall: 0, perTask: [] },
+      summary: "CONTEXT-01 index missing — run context.index.build",
+      exitCode: 1,
+    };
   }
-  const units = ((yamlParse(indexSrc) as { units?: ContextUnit[] } | null)?.units ?? []);
+  const units = (yamlParse(indexSrc) as { units?: ContextUnit[] } | null)?.units ?? [];
   const devsetDir = path.join(root, "docs", "context-devset");
-  const entries = await io.readdir(devsetDir).catch(() => [] as { name: string; isDirectory: boolean }[]);
+  const entries = await io
+    .readdir(devsetDir)
+    .catch(() => [] as { name: string; isDirectory: boolean }[]);
   const tasks = entries.filter((e) => !e.isDirectory && e.name.endsWith(".yaml"));
   if (tasks.length === 0) {
-    return { data: { command: "context.slate.eval", status: "ok", tasks: 0, recall: 0, perTask: [] }, summary: "devset empty — docs/context-devset/*.yaml", exitCode: 1 };
+    return {
+      data: { command: "context.slate.eval", status: "ok", tasks: 0, recall: 0, perTask: [] },
+      summary: "devset empty — docs/context-devset/*.yaml",
+      exitCode: 1,
+    };
   }
 
   const perTask: EvalData["perTask"] = [];
@@ -65,7 +77,9 @@ export async function runSlateEval(
     const d = yamlParse(src) as { task?: string; requiredUnits?: string[] } | null;
     if (!d?.task || !Array.isArray(d.requiredUnits)) continue;
     const taskTokens = tokenize(d.task);
-    const scored = units.map((u) => ({ u, ...scoreUnit(u, taskTokens, new Set()) })).sort((a, b) => b.score - a.score || a.u.id.localeCompare(b.u.id));
+    const scored = units
+      .map((u) => ({ u, ...scoreUnit(u, taskTokens, new Set()) }))
+      .sort((a, b) => b.score - a.score || a.u.id.localeCompare(b.u.id));
     const slateIds = new Set<string>();
     const groupSeen = new Set<string>();
     let used = 0;
@@ -79,11 +93,23 @@ export async function runSlateEval(
       slateIds.add(s.u.source);
     }
     const found = d.requiredUnits.filter((r) => slateIds.has(r)).length;
-    perTask.push({ task: tf.name, recall: d.requiredUnits.length > 0 ? found / d.requiredUnits.length : 1, found, required: d.requiredUnits.length });
+    perTask.push({
+      task: tf.name,
+      recall: d.requiredUnits.length > 0 ? found / d.requiredUnits.length : 1,
+      found,
+      required: d.requiredUnits.length,
+    });
   }
-  const recall = perTask.length > 0 ? perTask.reduce((s, t) => s + t.recall, 0) / perTask.length : 0;
+  const recall =
+    perTask.length > 0 ? perTask.reduce((s, t) => s + t.recall, 0) / perTask.length : 0;
   return {
-    data: { command: "context.slate.eval", status: "ok", tasks: perTask.length, recall: Number(recall.toFixed(3)), perTask },
+    data: {
+      command: "context.slate.eval",
+      status: "ok",
+      tasks: perTask.length,
+      recall: Number(recall.toFixed(3)),
+      perTask,
+    },
     summary: `${perTask.length} task(s): recall@${budget} = ${(recall * 100).toFixed(1)}%`,
     exitCode: 0,
   };

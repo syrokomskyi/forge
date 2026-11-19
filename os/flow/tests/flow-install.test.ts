@@ -7,6 +7,9 @@ primary refuses FLOW-ADOPT-03, a master-only repo refuses FLOW-ADOPT-06, a
 custom pre-commit gains the block right after its shebang, --dry-run mutates
 nothing, and a fresh adoption ends on develop with the two committed hook
 files.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
@@ -28,11 +31,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { ForgeRuntimeContext } from "../../../src/types.ts";
 import { ambientIo } from "../../../src/utils/io.ts";
-import {
-  executeInstall,
-  planInstall,
-  runFlowInstall,
-} from "../handlers/flow-install.ts";
+import { executeInstall, planInstall, runFlowInstall } from "../handlers/flow-install.ts";
 import { ADOPTION_COMMIT_SUBJECT, MANAGED_BLOCK } from "../guard-files.ts";
 import { gitExec, initRepo } from "./helpers.ts";
 
@@ -159,17 +158,15 @@ describe("flow.install — adoption", () => {
     await gitExec(repo, ["switch", "-c", "develop"]);
     await commitOn(repo, "dev-only.txt", "work");
     await gitExec(repo, ["switch", "main"]);
-    const refsBefore = (
-      await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)"])
-    ).stdout;
+    const refsBefore = (await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)"]))
+      .stdout;
     const plan = await planInstall(repo, ambientIo);
     expect(plan.refusal?.ruleId).toBe("FLOW-ADOPT-01");
     expect(plan.refusal?.message).toContain("1 commit");
     const refused = plan.steps.find((s) => s.status === "refused");
     expect(refused?.step).toBe("develop");
-    const refsAfter = (
-      await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)"])
-    ).stdout;
+    const refsAfter = (await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)"]))
+      .stdout;
     expect(refsAfter).toBe(refsBefore);
     expect(await ambientIo.exists(join(repo, "hooks", "flow-guard.sh"))).toBe(false);
     expect(await ambientIo.exists(join(repo, "hooks", "pre-commit"))).toBe(false);
@@ -185,7 +182,10 @@ describe("flow.install — adoption", () => {
     expect(subject.stdout.trim()).toBe(ADOPTION_COMMIT_SUBJECT);
 
     const show = await gitExec(repo, ["show", "--stat", "--format=", "HEAD"]);
-    const files = show.stdout.trim().split("\n").filter((l) => l.includes("|"));
+    const files = show.stdout
+      .trim()
+      .split("\n")
+      .filter((l) => l.includes("|"));
     expect(files.map((l) => l.split("|")[0]!.trim())).toEqual([
       "hooks/flow-guard.sh",
       "hooks/pre-commit",
@@ -288,7 +288,9 @@ describe("flow.install — adoption", () => {
     const plan = await planInstall(repo, ambientIo);
     expect(plan.refusal).toBeNull();
     await executeInstall(plan, ambientIo);
-    expect((await gitExec(repo, ["cat-file", "-e", "develop:hooks/flow-guard.sh"])).exitCode).toBe(0);
+    expect((await gitExec(repo, ["cat-file", "-e", "develop:hooks/flow-guard.sh"])).exitCode).toBe(
+      0,
+    );
     expect((await gitExec(repo, ["cat-file", "-e", "develop:hooks/pre-commit"])).exitCode).toBe(0);
   });
 
@@ -307,16 +309,14 @@ describe("flow.install — adoption", () => {
 describe("runFlowInstall — dry run and refusal surface", () => {
   it("--dry-run plans every step and changes nothing", async () => {
     const repo = await governedRepo();
-    const before = (
-      await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)"])
-    ).stdout;
+    const before = (await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)"]))
+      .stdout;
     const result = await runFlowInstall({ argv: [], flags: {} }, context(repo, true));
     expect(result.exitCode).toBe(0);
     expect(result.data?.dryRun).toBe(true);
     expect(result.data?.steps.some((s) => s.step === "develop")).toBe(true);
-    const after = (
-      await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)"])
-    ).stdout;
+    const after = (await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)"]))
+      .stdout;
     expect(after).toBe(before);
     expect(await ambientIo.exists(join(repo, "hooks"))).toBe(false);
     expect((await gitExec(repo, ["config", "--get", "core.hooksPath"])).exitCode).toBe(1);

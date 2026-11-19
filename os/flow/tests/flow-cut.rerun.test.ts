@@ -9,7 +9,7 @@ tagged tail completes exactly the named tags (fingerprints → main → tags).</
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Resume states are built by running a real cut and then breaking the tail (tag delete, main rewind) — the post-step-4 state is always faithful.</item>
+  <item>Resume states build by running a real cut then breaking the tail (tag delete, main rewind) — always faithful.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 4 — resume-path tests split out per the RFC file table</item>

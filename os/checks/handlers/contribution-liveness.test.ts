@@ -2,8 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1592 checks.contribution.report liveness tests — every rule record carries liveness: fixture (bound fixture + passing probe run), fired (counters diagnostic), none (no evidence).</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1592: contribution liveness join — fixture/fired/none per rule record</item>
   <item>RFC-1592: probe-or-retire ratchet for blocking check rules

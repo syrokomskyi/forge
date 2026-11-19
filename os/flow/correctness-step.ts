@@ -11,7 +11,7 @@ the result into a FLOW-INT-18 refusal or warning.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>A missing primary binary, a spawn failure, unparseable output, or a failing gate refuse; only a primary install that answers "Unknown command: correctness.gate" (it predates RFC-1580) degrades to a FLOW-INT-18 warning — refusing would deadlock the very forge upgrade that installs the gate.</item>
+  <item>Refuse on missing binary/spawn/parse/gate failure; "Unknown command" degrades — refusal would deadlock the installing upgrade.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1580: initial correctness step.</item>

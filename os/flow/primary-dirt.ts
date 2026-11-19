@@ -9,10 +9,11 @@ the foreignDirt audit attribution.</purpose>
   <item>No dirty-path classification — the DirtyClass vocabulary stays in dirty-classify.ts.</item>
   <item>No refusal policy — flow.open decides when mid-operation state refuses; this module only detects and moves dirt.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Primary restore uses `git reset -q HEAD -- &lt;path&gt;` + `git checkout-index -f -- &lt;path&gt;` — never `git checkout --`/`git restore`/`git reset --hard`, which the agent-session guard intercepts (superfolder AGENTS).</item>
-  <item>Swept content lands STAGED in the worktree — the documented "moves uncommitted files into the index" contract collapses staged+unstaged state into one staged change per path.</item>
-  <item>foreignDirt attribution matches governance-id tokens from dirty paths against session briefs — a single unambiguous match or owningSession: null; intents are not recorded, so nothing stronger is pretended.</item>
+  <item>Primary restore uses `git reset -q HEAD -- &lt;path&gt;` + `checkout-index -f` — never checkout/restore/reset --hard (session guard).</item>
+  <item>Swept content lands STAGED — the "moves uncommitted files into the index" contract collapses both states per path.</item>
+  <item>foreignDirt matches dirty-path governance ids against session briefs — a single unambiguous match, else owningSession: null.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1599: sweep mechanics + foreignDirt audit for primary-checkout dirt</item>

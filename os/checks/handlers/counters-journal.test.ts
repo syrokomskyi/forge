@@ -5,7 +5,7 @@ docs/.index/checks/counters.jsonl, outcome computation per declared rule, and
 executor-hook semantics (dryRun suppression, non-fatal append failure,
 truncated-tail tolerance).</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -47,7 +47,10 @@ afterEach(async () => {
 
 describe("recordRuleEvaluations", () => {
   test("AC-1: appends one JSONL line per record", async () => {
-    await recordRuleEvaluations(root, [rec(), rec({ ruleId: "gate/GATE-CMP-02", outcome: "diagnostic" })]);
+    await recordRuleEvaluations(root, [
+      rec(),
+      rec({ ruleId: "gate/GATE-CMP-02", outcome: "diagnostic" }),
+    ]);
     const src = await readFile(join(root, COUNTERS_JOURNAL_PATH), "utf8");
     const lines = src.trim().split("\n");
     expect(lines).toHaveLength(2);
@@ -135,7 +138,13 @@ describe("readCountersJournal", () => {
       file,
       [
         JSON.stringify(rec({ ruleId: "a/A-1" })),
-        JSON.stringify({ runId: "x", ruleId: "undefined/X-1", contract: "undefined", outcome: "bogus", at: "not-a-date" }),
+        JSON.stringify({
+          runId: "x",
+          ruleId: "undefined/X-1",
+          contract: "undefined",
+          outcome: "bogus",
+          at: "not-a-date",
+        }),
         "",
       ].join("\n"),
     );
@@ -166,7 +175,12 @@ describe("computeRunOutcomes", () => {
       at: "2026-10-31T23:00:00.000Z",
     });
     expect(records).toHaveLength(2);
-    expect(records[0]).toMatchObject({ ruleId: "gate/GATE-CMP-01", contract: "gate", outcome: "pass", runId: "run-1" });
+    expect(records[0]).toMatchObject({
+      ruleId: "gate/GATE-CMP-01",
+      contract: "gate",
+      outcome: "pass",
+      runId: "run-1",
+    });
     expect(records[1]).toMatchObject({ ruleId: "gate/GATE-CMP-02", outcome: "diagnostic" });
   });
 
@@ -197,7 +211,13 @@ describe("computeRunOutcomes", () => {
 
   test("undefined/empty rules yield no records", () => {
     expect(
-      computeRunOutcomes({ runId: "r", contract: "c", rules: undefined, diagnosticRuleIds: new Set(), at: "2026-11-01T00:00:00.000Z" }),
+      computeRunOutcomes({
+        runId: "r",
+        contract: "c",
+        rules: undefined,
+        diagnosticRuleIds: new Set(),
+        at: "2026-11-01T00:00:00.000Z",
+      }),
     ).toEqual([]);
   });
 });

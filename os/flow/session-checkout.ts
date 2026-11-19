@@ -10,9 +10,9 @@ checkout owns a write, given the invocation cwd.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Attribution precedence: the registry `owner` field is authoritative (durable, lock-written at flow.open); the WERKSTATT_AGENT_ID env is only a fallback hint for pre-registry contexts. Disagreement between the two is a refusal, never a guess.</item>
-  <item>Exactly one live session worktree is unambiguous attribution — an owner.id of "unspecified" still routes, because no other session can own the write.</item>
-  <item>No registered session worktree at all → kind "primary" — the solo primary flow that worked before keeps working (degrade, never block).</item>
+  <item>Attribution precedence: registry `owner` is authoritative; WERKSTATT_AGENT_ID is a pre-registry fallback — disagreement refuses.</item>
+  <item>Exactly one live session worktree is unambiguous attribution — even an owner.id of "unspecified" routes.</item>
+  <item>No registered session worktree → kind "primary" — the solo primary flow keeps working (degrade, never block).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1536: owning-checkout resolution for session-artifact writes</item>

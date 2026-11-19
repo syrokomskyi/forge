@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1471 session.audit.report tests — sidecar aggregation into docs/metrics/session-audit.generated.yaml, --window filter, unlinked finding classes.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -57,14 +57,20 @@ afterEach(async () => {
 
 describe("session.audit.report (RFC-1471)", () => {
   test("aggregates sidecars into the metrics artifact + reports unlinked finding classes", async () => {
-    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-aaaaaa.md"), CIRCUMVENTION_SESSION);
+    await writeFile(
+      join(root, "docs", "sessions", "2026-10-31-12-00-00-aaaaaa.md"),
+      CIRCUMVENTION_SESSION,
+    );
     await runSessionAudit(flags({}), ctx());
     const res = await runSessionAuditReport(flags({}), ctx());
     expect(res.data?.sessionsAudited).toBe(1);
     expect(res.data?.verdicts.violations).toBe(1);
     expect(res.data?.byRule.some((r) => r.ruleId === "AUDIT-10")).toBe(true);
     expect(res.data?.unlinkedFindings).toContain("AUDIT-10");
-    const metrics = await readFile(join(root, "docs", "metrics", "session-audit.generated.yaml"), "utf8");
+    const metrics = await readFile(
+      join(root, "docs", "metrics", "session-audit.generated.yaml"),
+      "utf8",
+    );
     expect(metrics).toContain("AUDIT-10");
   });
 });

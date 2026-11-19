@@ -6,7 +6,7 @@ the marginal-utility feedback loop: labels feed utilityScore re-ranking and
 per-producer trust (helped/(helped+hurt)).
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never extract units or score recalls — this handler only records utility labels.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -22,7 +22,13 @@ per-producer trust (helped/(helped+hurt)).
 import path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-import { appendJsonl, isEnoent, journalUnitIds, readOutcomesJournal, readRecallsJournal } from "./journal-io.ts";
+import {
+  appendJsonl,
+  isEnoent,
+  journalUnitIds,
+  readOutcomesJournal,
+  readRecallsJournal,
+} from "./journal-io.ts";
 import type { ProcedureUnit } from "./trajectory-index.ts";
 import { isShardUnit } from "./trajectory-index.ts";
 import type {
@@ -52,17 +58,38 @@ export async function runOutcomeRecord(
   const hurt = input.flags["hurt"] === true;
   const note = String(input.flags["note"] ?? "");
   if (!recallId || (!helped && !hurt)) {
-    return { data: { command: "trajectory.outcome.record", status: "ok", recallId, helped: 0, hurt: 0, unitUpdates: 0 }, summary: "missing --recall or --helped/--hurt", exitCode: 1 };
+    return {
+      data: {
+        command: "trajectory.outcome.record",
+        status: "ok",
+        recallId,
+        helped: 0,
+        hurt: 0,
+        unitUpdates: 0,
+      },
+      summary: "missing --recall or --helped/--hurt",
+      exitCode: 1,
+    };
   }
   const journalRead = await readRecallsJournal(root, io);
   const outcomesRead = await readOutcomesJournal(root, io);
-  for (const warning of [...journalRead.warnings, ...outcomesRead.warnings]) context.logger.warn(warning);
+  for (const warning of [...journalRead.warnings, ...outcomesRead.warnings])
+    context.logger.warn(warning);
   const journalTruncated = journalRead.truncated || outcomesRead.truncated;
   const traj06 = journalTruncated
-    ? [{ ruleId: "TRAJ-06", severity: "warning", message: "trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives" }]
+    ? [
+        {
+          ruleId: "TRAJ-06",
+          severity: "warning",
+          message:
+            "trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives",
+        },
+      ]
     : [];
   if (journalTruncated) {
-    context.logger.warn("TRAJ-06 trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives");
+    context.logger.warn(
+      "TRAJ-06 trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives",
+    );
   }
   const recall = journalRead.records.find((r) => r.id === recallId);
   if (!recall) {
@@ -74,7 +101,10 @@ export async function runOutcomeRecord(
         helped: 0,
         hurt: 0,
         unitUpdates: 0,
-        diagnostics: [{ ruleId: "TRAJ-05", severity: "error", message: `recall ${recallId} not found` }, ...traj06],
+        diagnostics: [
+          { ruleId: "TRAJ-05", severity: "error", message: `recall ${recallId} not found` },
+          ...traj06,
+        ],
       },
       summary: `TRAJ-05 recall ${recallId} not found`,
       exitCode: 1,
@@ -94,7 +124,10 @@ export async function runOutcomeRecord(
         helped: 0,
         hurt: 0,
         unitUpdates: 0,
-        diagnostics: [{ ruleId: "TRAJ-01", severity: "error", message: "units index missing" }, ...traj06],
+        diagnostics: [
+          { ruleId: "TRAJ-01", severity: "error", message: "units index missing" },
+          ...traj06,
+        ],
       },
       summary: "TRAJ-01 units index missing",
       exitCode: 1,
@@ -106,9 +139,10 @@ export async function runOutcomeRecord(
   } catch {
     parsed = null;
   }
-  const units = parsed !== null && typeof parsed === "object" && Array.isArray(parsed.units)
-    ? parsed.units.filter(isShardUnit)
-    : null;
+  const units =
+    parsed !== null && typeof parsed === "object" && Array.isArray(parsed.units)
+      ? parsed.units.filter(isShardUnit)
+      : null;
   if (units === null || units.length === 0) {
     return {
       data: {
@@ -118,7 +152,14 @@ export async function runOutcomeRecord(
         helped: 0,
         hurt: 0,
         unitUpdates: 0,
-        diagnostics: [{ ruleId: "TRAJ-02", severity: "error", message: "units index unparseable, empty, or not a unit index — rerun trajectory.index" }, ...traj06],
+        diagnostics: [
+          {
+            ruleId: "TRAJ-02",
+            severity: "error",
+            message: "units index unparseable, empty, or not a unit index — rerun trajectory.index",
+          },
+          ...traj06,
+        ],
       },
       summary: "TRAJ-02 units index unusable",
       exitCode: 1,
@@ -140,14 +181,20 @@ export async function runOutcomeRecord(
   // RFC-1475 F11 — append-only outcomes.jsonl: appendFile only, never
   // read-modify-write; the eager units.yaml update keeps recall-time
   // trust buckets fresh without an index rebuild (plan step 4).
-  await appendJsonl(
-    io,
-    path.join(root, "docs", ".index", "trajectory", "outcomes.jsonl"),
-    { recallId, helped, hurt, note, at: new Date().toISOString() },
-  );
+  await appendJsonl(io, path.join(root, "docs", ".index", "trajectory", "outcomes.jsonl"), {
+    recallId,
+    helped,
+    hurt,
+    note,
+    at: new Date().toISOString(),
+  });
   await io.writeFile(
     indexRel,
-    yamlStringify({ schema: "forge/trajectory-index@1", sourceWatermark: parsed?.sourceWatermark, units }) + "\n",
+    yamlStringify({
+      schema: "forge/trajectory-index@1",
+      sourceWatermark: parsed?.sourceWatermark,
+      units,
+    }) + "\n",
   );
   return {
     data: {

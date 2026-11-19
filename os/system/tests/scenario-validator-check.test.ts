@@ -3,6 +3,8 @@
 <purpose>RFC-1541 AC-4..AC-6, AC-14 — the validator check kind over the shared conformance path, and its SYSTEM-MAP-07 lint.</purpose>
 <non-goals><item>Conformance leg semantics are owned by RFC-1365/1539 tests.</item></non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 // @vitest-environment node
 import { readFile } from "node:fs/promises";

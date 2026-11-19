@@ -8,7 +8,7 @@ tags are `vX.Y.Z` and `<package>@X.Y.Z`, nothing else ever matches.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Strict `^\d+\.\d+\.\d+$` — a pre-release or build suffix would silently break the tag-name match, so it is a parse failure, never normalized.</item>
+  <item>Strict `^\d+\.\d+\.\d+$` — pre-release/build suffixes are parse failures, never normalized.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 1 — strict X.Y.Z parse/compare/bump</item>

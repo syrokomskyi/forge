@@ -14,7 +14,7 @@ X-RFC trailers. Diagnostics: FLOW-VER-01 (no baseline tag), FLOW-VER-02
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Derived version is anchored to the last tag, never the version file — the file is a release-time write and diverging is a FLOW-08 finding, not a second anchor.</item>
+  <item>Derived version anchors to the last tag, never the version file — divergence is a FLOW-08 finding.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 4 — flow.version handler</item>
@@ -35,11 +35,7 @@ import { resolveIo } from "../../../src/utils/io.ts";
 import { git, requireGit, topLevel } from "../git.ts";
 import { deriveLineVersion } from "../line-version.ts";
 import { pendingLevel } from "../release-level.ts";
-import {
-  discoverReleaseLines,
-  readLineVersionFile,
-  type ReleaseLine,
-} from "../release-lines.ts";
+import { discoverReleaseLines, readLineVersionFile, type ReleaseLine } from "../release-lines.ts";
 import type { ReleaseLevel } from "../semver.ts";
 
 export interface FlowVersionLineReport {
@@ -83,8 +79,7 @@ export async function collectFlowVersion(
   const { lines, diagnostics: discoveryDiagnostics } = await discoverReleaseLines(repoRoot, io);
   diagnostics.push(...discoveryDiagnostics);
 
-  const selected =
-    onlyLine === null ? lines : lines.filter((line) => line.id === onlyLine);
+  const selected = onlyLine === null ? lines : lines.filter((line) => line.id === onlyLine);
   if (onlyLine !== null && selected.length === 0) {
     diagnostics.push({
       ruleId: "FLOW-VER-04",
@@ -128,13 +123,7 @@ async function buildLineReport(
   const { commitsSince, dirty } = derived_;
   const derived = derived_.source === "release-tag" && head !== null ? derived_.version : null;
 
-  const pending = await pendingLevel(
-    line,
-    since,
-    io,
-    repoRoot,
-    derived_.lastTag?.version ?? null,
-  );
+  const pending = await pendingLevel(line, since, io, repoRoot, derived_.lastTag?.version ?? null);
   diagnostics.push(...pending.diagnostics);
 
   return {
@@ -144,9 +133,7 @@ async function buildLineReport(
     paths: line.paths,
     currentVersion,
     lastTag: derived_.lastTag?.name ?? null,
-    lastVersion: derived_.lastTag
-      ? derived_.lastTag.name.slice(line.tagPrefix.length)
-      : null,
+    lastVersion: derived_.lastTag ? derived_.lastTag.name.slice(line.tagPrefix.length) : null,
     commitsSince,
     head,
     dirty,

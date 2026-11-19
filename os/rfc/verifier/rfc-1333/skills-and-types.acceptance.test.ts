@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>Unit tests for RFC-1333 skills/types — covers the skills and types acceptance suite surface and its observable contract.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

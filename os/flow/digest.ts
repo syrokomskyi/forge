@@ -11,11 +11,11 @@ flow.push must quote.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The unpushed tail's anchor (origin tip, or the oldest unpushed commit's parent) counts as a valid record base — the RFC's "base and tip on the tail" reads the tail including its anchor, else every first item above a push would be unattributed.</item>
-  <item>Overlapping journal records are resolved newest-tail-first: records claim tail commits from the highest tip downward, so a stale record can never cover commits a newer record owns.</item>
-  <item>The remote tag set comes from `git ls-remote --tags origin` whenever origin exists (read-only, allowed under --no-fetch); when it fails, a tag is remote-known iff its commit is an ancestor of a remote-tracking tip — a tag on an already-pushed commit is then indistinguishable from a pushed one.</item>
+  <item>The unpushed tail's anchor (origin tip or oldest unpushed parent) counts as record base.</item>
+  <item>Overlapping journal records resolve newest-tail-first — a stale record never covers commits a newer owns.</item>
+  <item>Remote tags come from `git ls-remote --tags origin`; on failure remote-known = commit is ancestor of remote tip.</item>
   <item>RFC frontmatter is read only via listRfcFiles/readRfcFrontmatter (RFC-1465 door) — never re-parsed locally.</item>
-  <item>tagTriggers (RFC-1498) is part of digestId input: a workflow-file change between digest and push must invalidate the quoted id. Unparseable workflows and ununderstood patterns warn FLOW-11 and match nothing — never block the digest.</item>
+  <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
@@ -123,11 +123,7 @@ const RFC_DIR = "docs/rfcs";
 const DEFAULT_SPECS_DIR = "docs/specs";
 const DEFAULT_INVARIANTS_FILE = "docs/architecture-dna.md";
 
-async function revParse(
-  repoRoot: string,
-  io: WorkspaceIO,
-  ref: string,
-): Promise<string | null> {
+async function revParse(repoRoot: string, io: WorkspaceIO, ref: string): Promise<string | null> {
   const result = await git(repoRoot, io, ["rev-parse", "--verify", "--quiet", ref]);
   return result.exitCode === 0 ? result.stdout.trim() || null : null;
 }
@@ -147,7 +143,10 @@ async function unpushedCommits(
       : ["rev-list", ...order, branch, "--not", "--remotes=origin"];
   const result = await git(repoRoot, io, args);
   if (result.exitCode !== 0) return [];
-  return result.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  return result.stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
 }
 
 /** forge.yaml `paths.specsDir` and `bindings.paths.invariantsFile` with the RFC-1491 defaults. */
@@ -194,7 +193,8 @@ async function correctnessTrailOf(
     const [sha, subject, body] = chunk.replace(/^\s+/, "").split("\x1f");
     if (!sha || body === undefined) continue;
     const weak = /^X-Correctness-Weakening:\s*(.+)$/m.exec(body);
-    if (weak) trail.weakenings.push({ sha: sha.trim(), subject: subject ?? "", reason: weak[1]!.trim() });
+    if (weak)
+      trail.weakenings.push({ sha: sha.trim(), subject: subject ?? "", reason: weak[1]!.trim() });
     if (/^X-Expectation-Origin:\s*independent-verifier\s*$/m.test(body)) {
       const report = /^X-Verifier-Report:\s*(\S+)\s*$/m.exec(body)?.[1] ?? null;
       trail.verifierCommits.push({ sha: sha.trim(), subject: subject ?? "", report });
@@ -246,10 +246,11 @@ async function rfcFacts(
     }
     const parsed = await readRfcFrontmatter(rfcDirPath, fileName);
     const fm =
-      parsed && "parsed" in parsed
-        ? (parsed.parsed.frontmatter as Record<string, unknown>)
-        : {};
-    const idExact = String(fm["id"] ?? "").trim().toUpperCase() === id;
+      parsed && "parsed" in parsed ? (parsed.parsed.frontmatter as Record<string, unknown>) : {};
+    const idExact =
+      String(fm["id"] ?? "")
+        .trim()
+        .toUpperCase() === id;
     const bump = typeof fm["versionBump"] === "string" ? fm["versionBump"] : null;
     const commands = fm["commands"];
     const removed =
@@ -257,7 +258,7 @@ async function rfcFacts(
       typeof commands === "object" &&
       commands !== null &&
       Array.isArray((commands as { removed?: unknown }).removed) &&
-      ((commands as { removed: unknown[] }).removed.length > 0);
+      (commands as { removed: unknown[] }).removed.length > 0;
     facts.set(id, {
       versionBump: idExact ? bump : null,
       commandsRemoved: removed,
@@ -277,7 +278,9 @@ async function jsonAtRef(
   if (result.exitCode !== 0) return null;
   try {
     const parsed = JSON.parse(result.stdout) as unknown;
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
     return null;
   }
@@ -350,12 +353,16 @@ async function classifyItem(
   const names = await git(repoRoot, io, ["diff", "--name-only", base, tip]);
   const files =
     names.exitCode === 0
-      ? names.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0)
+      ? names.stdout
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0)
       : [];
   const specsPrefix = `${specsDir.replace(/\/+$/, "")}/`;
   if (
     files.some(
-      (f) => f.startsWith(specsPrefix) || f.endsWith(".schema.json") || f.split("/").includes("schemas"),
+      (f) =>
+        f.startsWith(specsPrefix) || f.endsWith(".schema.json") || f.split("/").includes("schemas"),
     )
   ) {
     flags.add("contract");
@@ -462,7 +469,10 @@ async function tagReachableFromRemote(
     "refs/remotes/origin",
   ]);
   if (tips.exitCode !== 0) return false;
-  for (const tip of tips.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0)) {
+  for (const tip of tips.stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)) {
     const ancestor = await git(repoRoot, io, ["merge-base", "--is-ancestor", tag, tip]);
     if (ancestor.exitCode === 0) return true;
   }
@@ -646,15 +656,19 @@ export async function collectDigest(
   const developRemote = await revParse(repoRoot, io, "refs/remotes/origin/develop");
   const mainRemote = await revParse(repoRoot, io, "refs/remotes/origin/main");
 
-  const developTail = developLocal === null ? [] : await unpushedCommits(repoRoot, io, "develop", developRemote);
-  const mainTail = mainLocal === null ? [] : await unpushedCommits(repoRoot, io, "main", mainRemote);
+  const developTail =
+    developLocal === null ? [] : await unpushedCommits(repoRoot, io, "develop", developRemote);
+  const mainTail =
+    mainLocal === null ? [] : await unpushedCommits(repoRoot, io, "main", mainRemote);
 
   // --- items: journal-attributed segments of the develop tail ---------------
   // Segments follow develop's first-parent chain: a back-merge brings main's
   // commits in through its second parent, and a fix cut's range lives on
   // main — index spans over the full (date-ordered) list would misattribute.
   const developChain =
-    developLocal === null ? [] : await unpushedCommits(repoRoot, io, "develop", developRemote, true);
+    developLocal === null
+      ? []
+      : await unpushedCommits(repoRoot, io, "develop", developRemote, true);
   const common = await commonGitDir(io, repoRoot);
   const journal = await readJournal(io, common);
   const tailIndex = new Map(developChain.map((sha, i) => [sha, i]));
@@ -694,7 +708,9 @@ export async function collectDigest(
   const items: FlowDigestItem[] = [];
   for (const segment of segments) {
     const base =
-      segment.from === 0 ? (boundary ?? "4b825dc642cb6eb9a060e54bf8d69288fbee4904") : developChain[segment.from - 1]!;
+      segment.from === 0
+        ? (boundary ?? "4b825dc642cb6eb9a060e54bf8d69288fbee4904")
+        : developChain[segment.from - 1]!;
     const tip = developChain[segment.to]!;
     const meta = await commitMeta(repoRoot, io, base, tip);
     const cls = await classifyItem(repoRoot, io, base, tip, meta.rfcs, specsDir, invariantsFile);
@@ -774,11 +790,8 @@ export async function collectDigest(
     if ((await tagAnnotationLevel(repoRoot, io, tag)) === "baseline") continue;
     pendingCandidates.push({ tag, line: line.id });
   }
-  const plan = planPublications(
-    pendingCandidates,
-    publishedTags,
-    retiredTags,
-    (tag, line) => versionOfTag(lines, tag, line),
+  const plan = planPublications(pendingCandidates, publishedTags, retiredTags, (tag, line) =>
+    versionOfTag(lines, tag, line),
   );
   const pendingPublications = plan.attempt;
   const supersededPublications = plan.superseded;

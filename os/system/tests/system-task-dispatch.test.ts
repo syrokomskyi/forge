@@ -3,6 +3,9 @@
 <purpose>RFC-1509 acceptance tests for system.task.dispatch — product
 resolution, edge gates, brief leak checks, branch/worktree creation,
 git-exclusion of .forge/task/ and the launcher argv.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 5 — dispatch acceptance tests</item>
@@ -148,7 +151,7 @@ forbidden:
   it("a brief leaking another product's folder refuses (SYSTEM-TASK-06)", async () => {
     const beta = await makeProduct("forge-beta-");
     const { systemRoot } = await dispatchFixture({
-      "system/products.local.yaml": localMapFor({ alpha: (await makeProduct()), beta }),
+      "system/products.local.yaml": localMapFor({ alpha: await makeProduct(), beta }),
       "queue/briefs/T-0001.md": readyBrief() + `\nSibling checkout: ${beta}\n`,
     });
     const result = await runSystemTaskDispatch(input({ task: "T-0001" }), makeContext(systemRoot));
@@ -233,7 +236,9 @@ forbidden:
     );
     expect(result.exitCode).toBe(1);
     expect(
-      result.data?.diagnostics.some((d) => d.ruleId === "FLOW-OPEN-06" || d.ruleId === "FLOW-OPEN-01"),
+      result.data?.diagnostics.some(
+        (d) => d.ruleId === "FLOW-OPEN-06" || d.ruleId === "FLOW-OPEN-01",
+      ),
     ).toBe(true);
   });
 
@@ -254,7 +259,7 @@ forbidden:
     const beta = path.join(betaParent, "beta-checkout");
     await (await import("node:fs/promises")).mkdir(beta, { recursive: true });
     const { systemRoot } = await dispatchFixture({
-      "system/products.local.yaml": localMapFor({ alpha: (await makeProduct()), beta }),
+      "system/products.local.yaml": localMapFor({ alpha: await makeProduct(), beta }),
       "queue/briefs/T-0001.md": readyBrief() + `\nSibling checkout lives at ${beta}\n`,
     });
     const result = await runSystemTaskDispatch(input({ task: "T-0001" }), makeContext(systemRoot));
@@ -277,6 +282,10 @@ forbidden:
     expect(result.exitCode).toBe(0);
     expect(result.data?.dispatched).toBe(true);
     expect(result.data?.launcherExit).toBe(3);
-    expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-09" && d.severity === "warning")).toBe(true);
+    expect(
+      result.data?.diagnostics.some(
+        (d) => d.ruleId === "SYSTEM-TASK-09" && d.severity === "warning",
+      ),
+    ).toBe(true);
   });
 });

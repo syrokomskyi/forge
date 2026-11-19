@@ -13,20 +13,19 @@ hooks/worktree-setup.sh.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>NN is kind-agnostic: the highest NN for today's date across every auto name source — the daily sequence stays unique regardless of kind (RFC literal).</item>
-  <item>Branch-name collisions on `worktree add -b` retry with the next NN at most 3 times — the NN race between parallel opens resolves without a lock held across git calls.</item>
-  <item>A failed setup script is reported, never rolled back — the worktree and registry entry stay, and the command exits 1 (DNA-106).</item>
-  <item>RFC-1599's sweep + mid-operation refusal is opt-in via FlowOpenCoreOptions.sweepPrimary — only the flow.open command path sets it; internal opens (flow.cut release, flow.fix, backmerge port) keep the RFC-1536 warn-only contract because their branches must never adopt unrelated uncommitted paths.</item>
-  <item>Untracked repo-identity files (forge.yaml, forge.generated.yaml) are never swept — moving an in-flight adoption marker would demote the primary to ungoverned until the session integrates (detectRepoKind keys on the file itself); tracked modifications still sweep, leaving the committed base behind.</item>
+  <item>NN is kind-agnostic: the highest NN for today's date across every auto name source — daily sequence stays unique.</item>
+  <item>Branch-name collisions retry with the next NN at most 3 times — the parallel-open race resolves locklessly.</item>
+  <item>A failed setup script is reported, never rolled back — worktree and registry entry stay; exit 1.</item>
+  <item>The sweep + mid-operation refusal is opt-in via FlowOpenCoreOptions.sweepPrimary — internal opens keep warn-only (RFC-1599).</item>
+  <item>Untracked repo-identity files (forge.yaml, forge.generated.yaml) never sweep — moving one would demote the primary.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>ADR-0124: enable git rerere in flow-managed repositories</item>
   <item>RFC-1599: FLOW-OPEN-01 becomes the documented sweep — every tracked-dirt + non-ignored-untracked path moves into the new worktree's index and the primary restores to HEAD via checkout-index; a mid-operation primary (merge/rebase/cherry-pick) refuses without mutating either checkout</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1536: evidence — routing/warning tests, FLOW-OPEN-10 validation renumber, owning-worktree doc rule, frictions F-0091/F-0096/F-0106/F-0119 addressed</item>
   <item>RFC-1533: pending-branch summary + primaryMutations on the result; FLOW-OPEN-02 freed for the registry-unreadable warning (refusal renumbered to FLOW-OPEN-11)</item>
   <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
-  <history>RFC-1487, RFC-1490</history>
+  <history>ADR-0124, RFC-1487, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 

@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1472 trajectory tests — green-admission gating, situation-similarity recall, outcome.record feeds utilityScore.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -17,7 +17,6 @@ import { tmpdir } from "node:os";
 import { runTrajectoryIndex } from "./trajectory-index.ts";
 import { runTrajectoryRecall } from "./trajectory-recall.ts";
 import { runOutcomeRecord } from "./outcome-record.ts";
-
 
 import type { ForgeRuntimeContext } from "../../../src/types.ts";
 
@@ -38,7 +37,9 @@ function flags(f: Record<string, unknown> = {}) {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "trajectory-"));
   await mkdir(join(root, "docs", "sessions", "archive"), { recursive: true });
-  await writeFile(join(root, "docs", "sessions", "archive", "2026-08-01-12-00-00-cccccc.md"), `---
+  await writeFile(
+    join(root, "docs", "sessions", "archive", "2026-08-01-12-00-00-cccccc.md"),
+    `---
 id: s-archived
 commits: [abc123]
 commands: [mission.close]
@@ -46,8 +47,11 @@ types: [archive]
 date: 2026-08-01
 ---
 body
-`);
-  await writeFile(join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"), `---
+`,
+  );
+  await writeFile(
+    join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"),
+    `---
 id: s-green
 verdict: green
 taskKind: reconcile
@@ -57,8 +61,11 @@ filesChanged: [missions/dp7/wip.md]
 date: 2026-10-30
 ---
 body
-`);
-  await writeFile(join(root, "docs", "sessions", "2026-10-29-12-00-00-bbbbbb.md"), `---
+`,
+  );
+  await writeFile(
+    join(root, "docs", "sessions", "2026-10-29-12-00-00-bbbbbb.md"),
+    `---
 id: s-red
 verdict: red
 taskKind: deploy
@@ -66,7 +73,8 @@ commands: [mission.deploy]
 date: 2026-10-29
 ---
 body
-`);
+`,
+  );
 });
 
 afterEach(async () => {
@@ -93,7 +101,10 @@ describe("trajectory.index (RFC-1472)", () => {
     await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
     // Record helped on the unit, rebuild, assert the stat survived.
     const recall = await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
-    const rec = await runOutcomeRecord(flags({ recall: recall.data?.recallId, helped: true }), ctx());
+    const rec = await runOutcomeRecord(
+      flags({ recall: recall.data?.recallId, helped: true }),
+      ctx(),
+    );
     expect(rec.data?.unitUpdates).toBe(2);
     await runTrajectoryIndex(flags({}), ctx());
     const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
@@ -124,10 +135,16 @@ describe("RFC-1475 — sourceWatermark + JSONL replay", () => {
     const recall = await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
     await runOutcomeRecord(flags({ recall: recall.data?.recallId, helped: true }), ctx());
     // Journals are JSONL now — one record per line, no YAML rewrite.
-    const outcomes = await readFile(join(root, "docs", ".index", "trajectory", "outcomes.jsonl"), "utf8");
+    const outcomes = await readFile(
+      join(root, "docs", ".index", "trajectory", "outcomes.jsonl"),
+      "utf8",
+    );
     expect(outcomes.trim().split("\n").length).toBe(1);
     expect(JSON.parse(outcomes.trim()).recallId).toBe(recall.data?.recallId);
-    const recalls = await readFile(join(root, "docs", ".index", "trajectory", "recalls.jsonl"), "utf8");
+    const recalls = await readFile(
+      join(root, "docs", ".index", "trajectory", "recalls.jsonl"),
+      "utf8",
+    );
     expect(recalls.trim().split("\n").length).toBe(1);
     // Rebuild replays from the JSONL journals.
     await runTrajectoryIndex(flags({}), ctx());
@@ -144,18 +161,35 @@ describe("RFC-1475 — sourceWatermark + JSONL replay", () => {
       join(root, shard),
       stringify({
         schema: "forge/trajectory-shard@1",
-        units: [{
-          id: "trajectory:vendored",
-          kind: "trajectory",
-          situation: { taskKind: "reconcile", touchedPathClasses: [], recentActions: ["reconcile"] },
-          continuation: { commandSequence: ["mission.reconcile"], decisions: [], outcomeHash: "abc123" },
-          producer: { workshopId: "other-shop", sessionId: "v1", completedAt: "2026-10-01", verdictRef: "verdict:green", sessionClass: "adhoc", origin: "vendored" },
-          source: "shard",
-          tokens: 10,
-          text: "reconcile vendored",
-          usedBy: { recalled: 0, helped: 0, hurt: 0 },
-          utilityScore: 0,
-        }],
+        units: [
+          {
+            id: "trajectory:vendored",
+            kind: "trajectory",
+            situation: {
+              taskKind: "reconcile",
+              touchedPathClasses: [],
+              recentActions: ["reconcile"],
+            },
+            continuation: {
+              commandSequence: ["mission.reconcile"],
+              decisions: [],
+              outcomeHash: "abc123",
+            },
+            producer: {
+              workshopId: "other-shop",
+              sessionId: "v1",
+              completedAt: "2026-10-01",
+              verdictRef: "verdict:green",
+              sessionClass: "adhoc",
+              origin: "vendored",
+            },
+            source: "shard",
+            tokens: 10,
+            text: "reconcile vendored",
+            usedBy: { recalled: 0, helped: 0, hurt: 0 },
+            utilityScore: 0,
+          },
+        ],
       }) + "\n",
     );
     await runTrajectoryIndex(flags({ import: shard }), ctx());
@@ -169,7 +203,10 @@ describe("RFC-1475 — sourceWatermark + JSONL replay", () => {
   });
 
   test("workshopId resolves from forge.yaml project.name — not a hardcoded literal", async () => {
-    await writeFile(join(root, "forge.yaml"), "schema: forge/config@1\nproject: {name: test-shop}\npaths: {}\n");
+    await writeFile(
+      join(root, "forge.yaml"),
+      "schema: forge/config@1\nproject: {name: test-shop}\npaths: {}\n",
+    );
     await runTrajectoryIndex(flags({}), ctx());
     const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
     expect(index).toContain("workshopId: test-shop");
@@ -197,7 +234,9 @@ describe("RFC-1475 — sourceWatermark + JSONL replay", () => {
   });
 
   test("malformed frontmatter element types cannot crash extraction (R4-1)", async () => {
-    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-dddddd.md"), `---
+    await writeFile(
+      join(root, "docs", "sessions", "2026-10-31-12-00-00-dddddd.md"),
+      `---
 id: s-weird
 verdict: green
 taskKind: reconcile
@@ -206,7 +245,8 @@ files: [42, {a: 1}, null]
 date: 2026-10-31
 ---
 body
-`);
+`,
+    );
     const res = await runTrajectoryIndex(flags({}), ctx());
     expect(res.exitCode).toBe(0);
     expect(res.data?.admitted).toBe(3);
@@ -233,8 +273,13 @@ body
 
   test("shard export rewrites artifact-path verdictRefs to portable verdict:<value>", async () => {
     await mkdir(join(root, "missions", "dp7", "evidence"), { recursive: true });
-    await writeFile(join(root, "missions", "dp7", "evidence", "validation-report.json"), JSON.stringify({ verdict: "green" }));
-    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-eeeeee.md"), `---
+    await writeFile(
+      join(root, "missions", "dp7", "evidence", "validation-report.json"),
+      JSON.stringify({ verdict: "green" }),
+    );
+    await writeFile(
+      join(root, "docs", "sessions", "2026-10-31-12-00-00-eeeeee.md"),
+      `---
 id: s-mission
 types: [mission]
 commits: [abc123]
@@ -242,7 +287,8 @@ files: [missions/dp7/wip.md]
 date: 2026-10-31
 ---
 body
-`);
+`,
+    );
     const out = "docs/.index/trajectory/export.yaml";
     await runTrajectoryIndex(flags({ export: out }), ctx());
     const shard = await readFile(join(root, out), "utf8");
