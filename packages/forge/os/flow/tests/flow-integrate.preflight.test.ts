@@ -9,11 +9,11 @@ git/status/invoke seams.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
+  <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
   <history>RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -155,6 +155,41 @@ function baseOpts(overrides: Partial<Parameters<typeof runIntegratePreflight>[0]
     ...overrides,
   };
 }
+
+describe("RFC-1622 preflight deferral", () => {
+  it("defers the render only with a resolvable generator", async () => {
+    const invokes: string[] = [];
+    const result = await runIntegratePreflight(
+      baseOpts({
+        deferManifestValidation: true,
+        commandRegistry: registryWith([...ALL_VALIDATORS, "ecosystem.manifest.generate"]),
+        invoke: async (name) => {
+          invokes.push(name);
+          return { ok: true, exitCode: 0 };
+        },
+      }),
+      stubDeps({}),
+    );
+    expect(result.ok).toBe(true);
+    expect(invokes).toEqual(["friction.validate"]);
+  });
+
+  it("retains validation when the generator is unavailable", async () => {
+    const invokes: string[] = [];
+    const result = await runIntegratePreflight(
+      baseOpts({
+        deferManifestValidation: true,
+        invoke: async (name) => {
+          invokes.push(name);
+          return { ok: true, exitCode: 0 };
+        },
+      }),
+      stubDeps({}),
+    );
+    expect(result.ok).toBe(true);
+    expect(invokes).toEqual(["ecosystem.manifest.validate", "friction.validate"]);
+  });
+});
 
 describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
   it("a dirty worktree refuses FLOW-INT-01 before any validator runs", async () => {

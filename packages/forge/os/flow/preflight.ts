@@ -14,7 +14,6 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0000: skip rfc-0000 template in integrate preflight id extraction; regen ecosystem manifest; file F-0207</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
 
 flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
@@ -48,7 +47,8 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
   werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
   the 'recurrences' wording the addressed-match routing test pins</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
-  <history>ADR-0129, ADR-0130, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
+  <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
+  <history>ADR-0129, ADR-0130, RFC-0000, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -897,6 +897,8 @@ export async function runIntegratePreflight(
     /** Already-computed statusDirty() of the branch worktree. */
     worktreeDirty: { entries: string[]; toleratedState: string[] };
     invoke?: ForgeInvokeCommand;
+    /** A runnable post-rebase manifest owner will perform validation. */
+    deferManifestValidation?: boolean;
     /**
      * RFC-1543 AC-4: seconds to wait for live foreign claim-holders before
      * FLOW-INT-03 refuses — default 600, 0 restores fail-fast.
@@ -1157,7 +1159,11 @@ export async function runIntegratePreflight(
   // does the owner command regenerate in place and the validator re-run —
   // a coexisting refusal below must skip the regeneration entirely.
   let manifestDrift: { summary?: string; exitCode?: number } | undefined;
-  if (resolvable("ecosystem.manifest.validate")) {
+  if (opts.deferManifestValidation && resolvable("ecosystem.manifest.generate")) {
+    opts.onProgress?.(
+      "preflight: ecosystem manifest validation deferred to post-rebase regeneration",
+    );
+  } else if (resolvable("ecosystem.manifest.validate")) {
     checked.push("ecosystem.manifest.validate");
     const result = await opts.invoke!("ecosystem.manifest.validate", {});
     if (result.ok === false || (result.exitCode !== undefined && result.exitCode !== 0)) {
