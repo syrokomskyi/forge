@@ -12,9 +12,9 @@ Idempotent: no legacy file and no qa-log.md files reports migrated: 0.</purpose>
   edits; this command covers the runtime .agents/skills surface every
   consumer workshop shares.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Records land before the legacy file is removed — a failed write
-  leaves the legacy file intact (never a half-split registry).</item>
+  <item>Records land before the legacy file removes — a failed write never leaves a half-split registry.</item>
   <item>A qa-log.md reappearing after qa-log/legacy.md exists merges in
   chronological order (existing legacy first) — never silently drops the
   older log.</item>

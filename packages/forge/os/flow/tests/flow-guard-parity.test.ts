@@ -4,6 +4,9 @@
 the literal regex text inside assets/flow-guard.sh is byte-identical to
 FLOW_BRANCH_PATTERN, and the installed guard's verdict on every creatable
 branch name of the shared table equals classifyBranch's.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 2 — shell/TypeScript grammar parity test</item>
@@ -23,12 +26,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { classifyBranch, FLOW_BRANCH_PATTERN } from "../branch-name.ts";
 import { ambientIo } from "../../../src/utils/io.ts";
-import {
-  checkoutOrCreate,
-  GUARD_ASSET,
-  initRepo,
-  runGuardDirect,
-} from "./helpers.ts";
+import { checkoutOrCreate, GUARD_ASSET, initRepo, runGuardDirect } from "./helpers.ts";
 
 interface NameRow {
   name: string;
@@ -70,54 +68,58 @@ describe("guard/TypeScript grammar parity", () => {
   // The row loop spawns real `git`/`sh` processes — comfortably over the
   // 5s default timeout the root vitest config applies under
   // `rfc.acceptance.run`'s repo-root probe invocation.
-  it("guard verdicts equal classifyBranch on every creatable table row", { timeout: 120_000 }, async () => {
-    // One throwaway repo; the guard file is invoked directly (no hooksPath
-    // needed) — the guard resolves the repo through cwd/git rev-parse.
-    repo = await initRepo({ prefix: "flow-parity-" });
-    const hooksDir = join(repo, "hooks");
-    await mkdir(hooksDir, { recursive: true });
-    await copyFile(GUARD_ASSET, join(hooksDir, "flow-guard.sh"));
+  it(
+    "guard verdicts equal classifyBranch on every creatable table row",
+    { timeout: 120_000 },
+    async () => {
+      // One throwaway repo; the guard file is invoked directly (no hooksPath
+      // needed) — the guard resolves the repo through cwd/git rev-parse.
+      repo = await initRepo({ prefix: "flow-parity-" });
+      const hooksDir = join(repo, "hooks");
+      await mkdir(hooksDir, { recursive: true });
+      await copyFile(GUARD_ASSET, join(hooksDir, "flow-guard.sh"));
 
-    const skipped: string[] = [];
-    // Case-insensitive ref backends (Windows, default macOS) cannot hold a
-    // second spelling of a ref the table already probed — `AUTO/x` and
-    // `auto/X` are the same ref there. The grammar/classify check still
-    // runs for every row; only the git probe is deduplicated.
-    const probed = new Set<string>();
-    for (const row of table.rows) {
-      if (!row.ref_ok) {
-        skipped.push(row.name);
-        continue;
+      const skipped: string[] = [];
+      // Case-insensitive ref backends (Windows, default macOS) cannot hold a
+      // second spelling of a ref the table already probed — `AUTO/x` and
+      // `auto/X` are the same ref there. The grammar/classify check still
+      // runs for every row; only the git probe is deduplicated.
+      const probed = new Set<string>();
+      for (const row of table.rows) {
+        if (!row.ref_ok) {
+          skipped.push(row.name);
+          continue;
+        }
+        const cls = classifyBranch(row.name);
+        const expectedRule =
+          cls.kind === "protected"
+            ? "FLOW-GUARD-01"
+            : cls.kind === "nonconforming"
+              ? "FLOW-GUARD-02"
+              : null;
+        expect(expectedRule, `classifyBranch("${row.name}") must agree with the table`).toBe(
+          row.rule,
+        );
+        const caseKey = row.name.toLowerCase();
+        if (probed.has(caseKey)) continue;
+        probed.add(caseKey);
+        await checkoutOrCreate(repo, row.name);
+        const result = await runGuardDirect(repo, { FORGE_FLOW_OP: "" });
+        if (expectedRule === null) {
+          expect(result.exitCode, `guard must allow "${row.name}": ${result.stderr}`).toBe(0);
+        } else {
+          expect(result.exitCode, `guard must refuse "${row.name}"`).toBe(1);
+          expect(result.stderr, `guard rule for "${row.name}"`).toContain(`${expectedRule}:`);
+        }
       }
-      const cls = classifyBranch(row.name);
-      const expectedRule =
-        cls.kind === "protected"
-          ? "FLOW-GUARD-01"
-          : cls.kind === "nonconforming"
-            ? "FLOW-GUARD-02"
-            : null;
-      expect(expectedRule, `classifyBranch("${row.name}") must agree with the table`).toBe(
-        row.rule,
-      );
-      const caseKey = row.name.toLowerCase();
-      if (probed.has(caseKey)) continue;
-      probed.add(caseKey);
-      await checkoutOrCreate(repo, row.name);
-      const result = await runGuardDirect(repo, { FORGE_FLOW_OP: "" });
-      if (expectedRule === null) {
-        expect(result.exitCode, `guard must allow "${row.name}": ${result.stderr}`).toBe(0);
-      } else {
-        expect(result.exitCode, `guard must refuse "${row.name}"`).toBe(1);
-        expect(result.stderr, `guard rule for "${row.name}"`).toContain(`${expectedRule}:`);
-      }
-    }
 
-    // Rows git cannot create as refs are exactly the uncreatable names — and
-    // each of them is a refuse verdict (never an allow we failed to probe).
-    const uncreatable = table.rows.filter((row) => !row.ref_ok).map((row) => row.name);
-    expect(skipped).toEqual(uncreatable);
-    for (const name of skipped) {
-      expect(classifyBranch(name).kind, `uncreatable "${name}"`).toBe("nonconforming");
-    }
-  });
+      // Rows git cannot create as refs are exactly the uncreatable names — and
+      // each of them is a refuse verdict (never an allow we failed to probe).
+      const uncreatable = table.rows.filter((row) => !row.ref_ok).map((row) => row.name);
+      expect(skipped).toEqual(uncreatable);
+      for (const name of skipped) {
+        expect(classifyBranch(name).kind, `uncreatable "${name}"`).toBe("nonconforming");
+      }
+    },
+  );
 });

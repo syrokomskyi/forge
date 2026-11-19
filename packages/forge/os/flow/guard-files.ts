@@ -9,8 +9,8 @@ reader and the insert/replace/verify operations shared by flow.check
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The managed block is always inserted directly after the shebang so it runs before any custom hook body that might exec something else first.</item>
-  <item>The asset is read via import.meta.url so the same bytes are checked (FLOW-03), installed (flow.install) and parity-tested — one source of truth, no formatter may rewrite it.</item>
+  <item>The managed block inserts directly after the shebang — it runs before any custom hook body.</item>
+  <item>The asset resolves via import.meta.url so identical bytes are checked, installed and parity-tested — no formatter rewrites.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
@@ -129,21 +129,14 @@ export function renderManagedPreCommit(): string {
  *   markers, keep the markers' position.
  * - Identical → returns null (caller reports `skipped`).
  */
-export function mergeManagedBlockForMode(
-  content: string,
-  mode: GuardMode,
-): string | null {
+export function mergeManagedBlockForMode(content: string, mode: GuardMode): string | null {
   const block = managedBlock(mode);
   const begin = content.indexOf(GUARD_BEGIN_MARKER);
   const end = content.indexOf(GUARD_END_MARKER);
   if (begin !== -1 && end !== -1 && begin < end) {
     const existing = content.slice(begin, end + GUARD_END_MARKER.length);
     if (existing === block.trimEnd()) return null;
-    return (
-      content.slice(0, begin) +
-      block.trimEnd() +
-      content.slice(end + GUARD_END_MARKER.length)
-    );
+    return content.slice(0, begin) + block.trimEnd() + content.slice(end + GUARD_END_MARKER.length);
   }
   if (content.startsWith("#!")) {
     const newline = content.indexOf("\n");
@@ -164,9 +157,7 @@ export function mergeManagedBlock(content: string): string | null {
  * caller's file access (working tree or `git show HEAD:<file>` for bare
  * repositories); null means the file is absent.
  */
-export async function guardFileMatches(
-  read: () => Promise<string | null>,
-): Promise<boolean> {
+export async function guardFileMatches(read: () => Promise<string | null>): Promise<boolean> {
   const installed = await read();
   return installed !== null && installed === readGuardAsset();
 }

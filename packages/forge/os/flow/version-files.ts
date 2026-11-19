@@ -12,7 +12,7 @@ maps it to FLOW-CUT-11).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Textual first-`"version"`-key replacement: a JSON round-trip would reformat the file; the post-write JSON deep-equal is the safety net that catches a nested `"version"` (e.g. under engines) hit by accident.</item>
+  <item>Textual first-`"version"`-key replacement — JSON round-trips reformat; the post-write deep-equal catches nested hits.</item>
   <item>`syncedVersion` is a YAML scalar — regex the whole line keeping leading indentation so comments elsewhere in forge.yaml survive.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
@@ -70,7 +70,9 @@ export async function writeLineVersion(
   if (match === null || match.index === undefined) {
     throw new VersionWriteError(line.versionFile, "no top-level '\"version\"' key found");
   }
-  const after = before.slice(0, match.index) + `"version": "${nextVersion}"` +
+  const after =
+    before.slice(0, match.index) +
+    `"version": "${nextVersion}"` +
     before.slice(match.index + match[0].length);
   let afterDoc: Record<string, unknown>;
   try {

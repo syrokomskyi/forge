@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1470 AC-7: the assemble path completes with zero model calls — the handlers must not import any model/embedding provider.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -18,7 +18,8 @@ import { fileURLToPath } from "node:url";
 const dir = dirname(fileURLToPath(import.meta.url));
 const HANDLERS = readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
 
-const MODEL_PROVIDER_RE = /openai|anthropic|@cf\/|workers-ai|@anthropic|embedding(-|_)?gemma|huggingface|@huggingface|inference\.js|transformers\.js|api\.(openai|anthropic|google)/i;
+const MODEL_PROVIDER_RE =
+  /openai|anthropic|@cf\/|workers-ai|@anthropic|embedding(-|_)?gemma|huggingface|@huggingface|inference\.js|transformers\.js|api\.(openai|anthropic|google)/i;
 
 describe("AC-7: assemble path carries zero model-provider imports", () => {
   test("no handler imports a model/embedding provider", () => {
@@ -29,7 +30,11 @@ describe("AC-7: assemble path carries zero model-provider imports", () => {
         if (MODEL_PROVIDER_RE.test(m[1]!)) offenders.push(`${f} → ${m[1]}`);
       }
       // No fetch/http calls to model endpoints.
-      if (/fetch\(\s*['"]https:\/\/(api\.openai|api\.anthropic|generativelanguage|api-inference)/.test(src)) {
+      if (
+        /fetch\(\s*['"]https:\/\/(api\.openai|api\.anthropic|generativelanguage|api-inference)/.test(
+          src,
+        )
+      ) {
         offenders.push(`${f} → model endpoint fetch`);
       }
     }

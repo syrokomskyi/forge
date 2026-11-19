@@ -12,10 +12,10 @@ conflicted port still reports released: true (DNA-106 per step).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Touched package lines come from `git diff --name-only baseSha..fixTip` intersected with each line's paths — the fix commits declare what they release (AC-15).</item>
-  <item>The fix cut never fast-forwards develop — it update-refs main at the fix tip, then delegates the port to backmergeFlow so the conflict path reports released + backmerge: conflict.</item>
-  <item>RFC-1502: the fix release commit uses the same `add -u` staging + FLOW-CUT-14 untracked removal as the ordinary cut, and verifies named package lines at the fix tip before any ref moves.</item>
-  <item>RFC-1502 r1: a refused fix cut rolls the branch back to its pre-release tip via `update-ref` + `read-tree --reset -u HEAD` (the session guard blocks reset --hard/restore/checkout --), so FLOW-CUT-12/13 stay rerun-safe without removing the fix worktree.</item>
+  <item>Touched package lines come from `git diff baseSha..fixTip` intersected with line paths — commits declare their release.</item>
+  <item>The fix cut never fast-forwards develop — it update-refs main at the tip, then delegates the port to backmergeFlow.</item>
+  <item>The fix release commit reuses `add -u` staging + FLOW-CUT-14 removal, and verifies named lines at the fix tip.</item>
+  <item>A refused fix cut rolls back via `update-ref` + `read-tree --reset -u` (reset --hard is guard-blocked) — rerun-safe.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
@@ -68,10 +68,7 @@ import type { FlowCutData } from "./flow-cut.ts";
 import { plannedExtractVerifySteps, toFlowCutLines } from "./flow-cut.ts";
 import { isFlowAdopted } from "../index.ts";
 import type { CutLine } from "./flow-cut.ts";
-import {
-  INTEGRATE_LOCK_STALE_MS,
-  INTEGRATE_LOCK_WAIT_MS,
-} from "./flow-integrate.ts";
+import { INTEGRATE_LOCK_STALE_MS, INTEGRATE_LOCK_WAIT_MS } from "./flow-integrate.ts";
 import { openFlowBranchCore } from "./flow-open.ts";
 
 export interface FlowFixData {
@@ -238,7 +235,11 @@ export async function runFixCut(
   });
 
   if (opts.linesGiven) {
-    return cutRefuse("FLOW-CUT-09", "--lines is not valid for a fix release", "the fix's touched lines are derived from its commits — drop --lines");
+    return cutRefuse(
+      "FLOW-CUT-09",
+      "--lines is not valid for a fix release",
+      "the fix's touched lines are derived from its commits — drop --lines",
+    );
   }
   const live = await worktreeList(repoRoot, io);
   const liveFix = live.find((w) => w.branch === entry.name);
@@ -251,7 +252,11 @@ export async function runFixCut(
   }
   const fixWt = liveFix.path;
   if (!(await io.exists(fixWt))) {
-    return cutRefuse("FLOW-07", `fix worktree ${fixWt} does not exist`, "inspect with flow.status — a stale entry may need flow.discard");
+    return cutRefuse(
+      "FLOW-07",
+      `fix worktree ${fixWt} does not exist`,
+      "inspect with flow.status — a stale entry may need flow.discard",
+    );
   }
   // The release commit stages tracked changes only (git add -u, RFC-1502) —
   // the dirty check still reports untracked files so the operator sees what
@@ -275,7 +280,11 @@ export async function runFixCut(
     (await git(repoRoot, io, ["rev-list", "--count", `${baseSha}..${fixTip0}`])).stdout.trim() || 0,
   );
   if (beyond === 0) {
-    return cutRefuse("FLOW-CUT-04", "the fix branch carries no commits beyond its base", "commit the patch inside the fix worktree first");
+    return cutRefuse(
+      "FLOW-CUT-04",
+      "the fix branch carries no commits beyond its base",
+      "commit the patch inside the fix worktree first",
+    );
   }
 
   // Level gate: the fix commits' X-RFC trailers must not demand minor/major.
@@ -293,7 +302,10 @@ export async function runFixCut(
   // Touched lines: repository line plus package lines whose paths the fix
   // commits touch.
   const touched = await git(repoRoot, io, ["diff", "--name-only", `${baseSha}..${fixTip0}`]);
-  const touchedPaths = touched.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const touchedPaths = touched.stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
   const selected = [
     repoLine,
     ...lines.filter(
@@ -307,14 +319,32 @@ export async function runFixCut(
   for (const line of selected) {
     const tags = await listLineTags(repoRoot, line, io, fixTip0);
     if (tags.lastTag === null) {
-      return cutRefuse("FLOW-CUT-04", `release line '${line.id}' has no baseline tag`, "cut the line's baseline via an ordinary release first");
+      return cutRefuse(
+        "FLOW-CUT-04",
+        `release line '${line.id}' has no baseline tag`,
+        "cut the line's baseline via an ordinary release first",
+      );
     }
     const next = formatVersion(bumpVersion(tags.lastTag.version, "patch"));
     const tagName = `${line.tagPrefix}${next}`;
-    if ((await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/tags/${tagName}`])).exitCode === 0) {
-      return cutRefuse("FLOW-CUT-06", `target tag ${tagName} already exists`, "pick a different version or delete the stray tag");
+    if (
+      (await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/tags/${tagName}`]))
+        .exitCode === 0
+    ) {
+      return cutRefuse(
+        "FLOW-CUT-06",
+        `target tag ${tagName} already exists`,
+        "pick a different version or delete the stray tag",
+      );
     }
-    cutLines.push({ line, tag: tagName, level: "patch", nextVersion: next, previousTag: tags.lastTag.name, rfcs: [] });
+    cutLines.push({
+      line,
+      tag: tagName,
+      level: "patch",
+      nextVersion: next,
+      previousTag: tags.lastTag.name,
+      rfcs: [],
+    });
   }
   const tagList = cutLines.map((c) => c.tag);
   const subject = `chore(release): ${tagList.join(", ")}`;
@@ -345,7 +375,12 @@ export async function runFixCut(
   try {
     return await withFlowLock(
       lockPath,
-      { waitMs: INTEGRATE_LOCK_WAIT_MS, staleMs: INTEGRATE_LOCK_STALE_MS, progressEveryMs: 60_000, onProgress: opts.onProgress },
+      {
+        waitMs: INTEGRATE_LOCK_WAIT_MS,
+        staleMs: INTEGRATE_LOCK_STALE_MS,
+        progressEveryMs: 60_000,
+        onProgress: opts.onProgress,
+      },
       async () => {
         // Rebase onto main when main moved since the fix opened.
         const mainNow = (await git(repoRoot, io, ["rev-parse", "main"])).stdout.trim();
@@ -398,7 +433,11 @@ export async function runFixCut(
           }
         } catch (error) {
           if (error instanceof VersionWriteError) {
-            return cutRefuse("FLOW-CUT-11", error.message, "fix the version file so the top-level version field is the release version");
+            return cutRefuse(
+              "FLOW-CUT-11",
+              error.message,
+              "fix the version file so the top-level version field is the release version",
+            );
           }
           throw error;
         }
@@ -457,7 +496,11 @@ export async function runFixCut(
         const body = cutLines.map((c) => `${c.tag} patch ${c.previousTag ?? "null"}`).join("\n");
         const commit = await gitCommit(fixWt, io, ["commit", "-m", `${subject}\n\n${body}`], "cut");
         if (commit.exitCode !== 0) {
-          return cutRefuse("FLOW-CUT-01", `release commit failed: ${commit.stderr.trim()}`, "inspect the fix worktree state");
+          return cutRefuse(
+            "FLOW-CUT-01",
+            `release commit failed: ${commit.stderr.trim()}`,
+            "inspect the fix worktree state",
+          );
         }
         fixTip = (await git(repoRoot, io, ["rev-parse", entry.name])).stdout.trim();
 
@@ -504,30 +547,50 @@ export async function runFixCut(
         });
         const fingerprints: Record<string, string> = {};
         if (fpResult.status === "failed") {
-          return cutRefuse("FLOW-CUT-08", `hooks/release-fingerprints.sh failed (exit ${fpResult.exitCode}): ${fpResult.stderrTail}`, "fix the fingerprint hook and re-run flow.cut — main has not moved");
+          return cutRefuse(
+            "FLOW-CUT-08",
+            `hooks/release-fingerprints.sh failed (exit ${fpResult.exitCode}): ${fpResult.stderrTail}`,
+            "fix the fingerprint hook and re-run flow.cut — main has not moved",
+          );
         }
         if (fpResult.status === "done") {
           const { parse: yamlParse } = await import("yaml");
           try {
             const parsed: unknown = yamlParse(fpResult.stdout);
             if (parsed !== null && (typeof parsed !== "object" || Array.isArray(parsed))) {
-              return cutRefuse("FLOW-CUT-08", "release-fingerprints stdout is not a flat YAML mapping", "emit only 'key: value' string pairs");
+              return cutRefuse(
+                "FLOW-CUT-08",
+                "release-fingerprints stdout is not a flat YAML mapping",
+                "emit only 'key: value' string pairs",
+              );
             }
             for (const [k, v] of Object.entries((parsed ?? {}) as Record<string, unknown>)) {
               if (typeof v !== "string") {
-                return cutRefuse("FLOW-CUT-08", "release-fingerprints stdout is not a flat YAML mapping", "emit only 'key: value' string pairs");
+                return cutRefuse(
+                  "FLOW-CUT-08",
+                  "release-fingerprints stdout is not a flat YAML mapping",
+                  "emit only 'key: value' string pairs",
+                );
               }
               fingerprints[k] = v;
             }
           } catch {
-            return cutRefuse("FLOW-CUT-08", "release-fingerprints stdout is not valid YAML", "emit only 'key: value' string pairs");
+            return cutRefuse(
+              "FLOW-CUT-08",
+              "release-fingerprints stdout is not valid YAML",
+              "emit only 'key: value' string pairs",
+            );
           }
         }
 
         // Atomic main update.
         const upd = await git(repoRoot, io, ["update-ref", "refs/heads/main", fixTip, mainNow]);
         if (upd.exitCode !== 0) {
-          return cutRefuse("FLOW-CUT-01", `update-ref main failed: ${upd.stderr.trim()}`, "inspect refs/heads/main");
+          return cutRefuse(
+            "FLOW-CUT-01",
+            `update-ref main failed: ${upd.stderr.trim()}`,
+            "inspect refs/heads/main",
+          );
         }
 
         // Tags at the fix tip.
@@ -546,7 +609,11 @@ export async function runFixCut(
             }),
           });
           if (wr.exitCode !== 0) {
-            return cutRefuse("FLOW-CUT-01", `tag ${c.tag} failed: ${wr.stderr.trim()}`, "inspect the tag state");
+            return cutRefuse(
+              "FLOW-CUT-01",
+              `tag ${c.tag} failed: ${wr.stderr.trim()}`,
+              "inspect the tag state",
+            );
           }
         }
 
@@ -589,7 +656,9 @@ export async function runFixCut(
         }
 
         const mainGains = Number(
-          (await git(primary, io, ["rev-list", "--count", `${mainNow}..${fixTip}`])).stdout.trim() || 0,
+          (
+            await git(primary, io, ["rev-list", "--count", `${mainNow}..${fixTip}`])
+          ).stdout.trim() || 0,
         );
         return {
           ...base,
@@ -711,6 +780,11 @@ export async function runFlowFix(
     nextSteps:
       refused || !data.opened
         ? []
-        : [{ action: `commit the patch inside ${data.worktree}, then run flow.cut there`, kind: "required" }],
+        : [
+            {
+              action: `commit the patch inside ${data.worktree}, then run flow.cut there`,
+              kind: "required",
+            },
+          ],
   };
 }

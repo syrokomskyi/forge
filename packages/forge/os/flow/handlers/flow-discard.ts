@@ -13,7 +13,7 @@ the registry entry and journals the operator's reason.</purpose>
   <item>Dirty check runs before the teardown script — a discard we will refuse on dirt never executes repository code.</item>
   <item>`git branch -D` (not -d): a discarded branch is by definition unmerged.</item>
   <item>All post-removal git calls run with -C &lt;primary&gt; — the caller's cwd may be the removed worktree (AUDIT G3).</item>
-  <item>Task-file preservation runs BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses the discard (FLOW-DIS-02) so the branch and its evidence survive (RFC-1509 Q-16).</item>
+  <item>Task-file preservation runs before teardown, owner.kind task only — a copy failure refuses the discard (FLOW-DIS-02).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
@@ -101,7 +101,7 @@ export async function discardFlowBranch(
     return refuse(
       "FLOW-DIS-04",
       "--reason is required — the journal records why the work was dropped",
-      "re-run with --reason \"<operator's words>\"",
+      're-run with --reason "<operator\'s words>"',
     );
   }
 
@@ -120,7 +120,9 @@ export async function discardFlowBranch(
     entry = (await readRegistry(io, common)).branches.find((b) => b.name === branch) ?? null;
   } catch (error) {
     if (error instanceof FlowRegistrySchemaError) {
-      return refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`, { branch });
+      return refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`, {
+        branch,
+      });
     }
     throw error;
   }
@@ -147,9 +149,7 @@ export async function discardFlowBranch(
 
   const worktreePresent = worktree !== null && (await io.exists(worktree));
   if (opts.dryRun) {
-    const dirty = worktreePresent
-      ? (await statusDirty(worktree, io)).entries
-      : [];
+    const dirty = worktreePresent ? (await statusDirty(worktree, io)).entries : [];
     return {
       branch,
       discarded: false,

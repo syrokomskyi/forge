@@ -14,7 +14,7 @@ FLOW-VER-02.</purpose>
 <KEY_DECISIONS>
   <item>extract.config.yaml is the publishability fact (operator decision 2026-11-01) — not independentVersionPackages, which lists only packages/forge.</item>
   <item>Basename collision is an error diagnostic, not a silent merge: two dirs would emit the same tag prefix.</item>
-  <item>Return carries `diagnostics` next to `lines` — FLOW-VER-02 must reach flow.version's diagnostic surface; the RFC sketch shows only the line list.</item>
+  <item>Return carries `diagnostics` beside `lines` — FLOW-VER-02 must reach flow.version's surface.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 1 — release-line discovery via pnpm-workspace globs + extract.config.yaml</item>
@@ -127,9 +127,9 @@ export async function discoverReleaseLines(
   if (await io.exists(join(repoRoot, WORKSPACE_FILE))) {
     let parsed: { packages?: unknown } | null = null;
     try {
-      parsed = parseYaml(await io.readFile(join(repoRoot, WORKSPACE_FILE))) as
-        | { packages?: unknown }
-        | null;
+      parsed = parseYaml(await io.readFile(join(repoRoot, WORKSPACE_FILE))) as {
+        packages?: unknown;
+      } | null;
     } catch {
       diagnostics.push(
         diagnostic(
@@ -205,4 +205,3 @@ export async function readLineVersionFile(
     return null;
   }
 }
-

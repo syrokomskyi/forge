@@ -12,9 +12,9 @@ file is written.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The reservation file is shared local state, never a tracked artifact — it lives under the common git dir next to forge/registry.yaml.</item>
+  <item>The reservation file is shared local state under the common git dir, never a tracked artifact.</item>
   <item>Entries carry `kind` so the RFC and ADR namespaces share one file without sharing a number space (Q-2).</item>
-  <item>An unwritable surface degrades to the pre-RFC level: allocation falls back to max(scans)+1 with a warning — draft creation never hard-fails on the reservation layer.</item>
+  <item>An unwritable surface degrades to max(scans)+1 with a warning — draft creation never hard-fails on reservations.</item>
   <item>A reservation whose draft never lands stays a harmless gap; flow.integrate prunes only its own session's entries.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>

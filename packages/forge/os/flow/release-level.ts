@@ -10,7 +10,7 @@ next release version it implies.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>`patch` is the floor for any commit — a change merged without an X-RFC trailer still levels the line; `none` only when zero commits touched the line.</item>
+  <item>`patch` is the floor for any commit — `none` only when zero commits touched the line.</item>
   <item>Missing/unreadable RFC file counts as `patch` plus a FLOW-VER-03 warning — the RFC contract, and a safer under- than over-statement.</item>
   <item>RFC frontmatter is read only via `listRfcFiles`/`readAndParseRfc` (RFC-1465) — never re-parsed locally.</item>
 </KEY_DECISIONS>
@@ -29,13 +29,7 @@ import { listRfcFiles, readAndParseRfc, rfcFileMatchesId } from "../rfc/frontmat
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
 import { git } from "./git.ts";
 import type { ReleaseLine } from "./release-lines.ts";
-import {
-  bumpVersion,
-  formatVersion,
-  maxLevel,
-  type ReleaseLevel,
-  type SemVer,
-} from "./semver.ts";
+import { bumpVersion, formatVersion, maxLevel, type ReleaseLevel, type SemVer } from "./semver.ts";
 
 export interface PendingLevel {
   line: string;
@@ -114,7 +108,9 @@ export async function pendingLevel(
       // authoritative; a mismatch counts as missing.
       const frontmatterId =
         parsed && "parsed" in parsed
-          ? String(parsed.parsed.frontmatter["id"] ?? "").trim().toUpperCase()
+          ? String(parsed.parsed.frontmatter["id"] ?? "")
+              .trim()
+              .toUpperCase()
           : "";
       if (!parsed || !("parsed" in parsed) || frontmatterId !== id) {
         diagnostics.push({
@@ -146,4 +142,3 @@ export async function pendingLevel(
     diagnostics,
   };
 }
-

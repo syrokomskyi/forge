@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>os/agent barrel — re-exports the forgeAgentModule and delegate handlers for kernel/module-map resolution and engine-side tests.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Do not implement delegate logic — this file only re-exports the agent surface.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

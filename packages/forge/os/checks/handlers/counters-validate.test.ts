@@ -5,7 +5,7 @@ COUNT-01 blocks when a record's ruleId resolves to no inventory rule (or a
 malformed middle line exists), COUNT-02 blocks on non-monotonic `at` append
 order; clean journal exits 0.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -78,7 +78,9 @@ describe("checks.counters.validate", () => {
   test("clean journal exits 0", async () => {
     await seedJournal([
       JSON.stringify(rec({ at: "2026-10-31T20:00:00.000Z" })),
-      JSON.stringify(rec({ ruleId: "gate/GATE-CMP-02", outcome: "diagnostic", at: "2026-10-31T21:00:00.000Z" })),
+      JSON.stringify(
+        rec({ ruleId: "gate/GATE-CMP-02", outcome: "diagnostic", at: "2026-10-31T21:00:00.000Z" }),
+      ),
     ]);
     const result = await runCountersValidate(flags(), ctx());
     expect(result.exitCode).toBe(0);
@@ -117,7 +119,11 @@ describe("checks.counters.validate", () => {
     ]);
     const result = await runCountersValidate(flags(), ctx());
     expect(result.exitCode).toBe(1);
-    expect(result.data!.diagnostics!.some((d) => d.ruleId === "COUNT-01" && d.message.includes("malformed"))).toBe(true);
+    expect(
+      result.data!.diagnostics!.some(
+        (d) => d.ruleId === "COUNT-01" && d.message.includes("malformed"),
+      ),
+    ).toBe(true);
   });
 
   test("AC-4: COUNT-02 blocks on non-monotonic at append order", async () => {
@@ -165,11 +171,18 @@ describe("checks.counters.validate", () => {
   });
 
   test("malformed inventory surfaces COUNT-01, not a thrown crash", async () => {
-    await writeFile(join(root, "docs", "validator-inventory.generated.yaml"), "contracts: [unclosed");
+    await writeFile(
+      join(root, "docs", "validator-inventory.generated.yaml"),
+      "contracts: [unclosed",
+    );
     await seedJournal([JSON.stringify(rec())]);
     const result = await runCountersValidate(flags(), ctx());
     expect(result.exitCode).toBe(1);
-    expect(result.data!.diagnostics!.some((d) => d.ruleId === "COUNT-01" && d.message.includes("malformed"))).toBe(true);
+    expect(
+      result.data!.diagnostics!.some(
+        (d) => d.ruleId === "COUNT-01" && d.message.includes("malformed"),
+      ),
+    ).toBe(true);
   });
 
   test("empty-document inventory surfaces COUNT-01 — null doc is an unavailable universe", async () => {
@@ -177,6 +190,8 @@ describe("checks.counters.validate", () => {
     await seedJournal([JSON.stringify(rec())]);
     const result = await runCountersValidate(flags(), ctx());
     expect(result.exitCode).toBe(1);
-    expect(result.data!.diagnostics!.some((d) => d.ruleId === "COUNT-01" && d.message.includes("empty"))).toBe(true);
+    expect(
+      result.data!.diagnostics!.some((d) => d.ruleId === "COUNT-01" && d.message.includes("empty")),
+    ).toBe(true);
   });
 });

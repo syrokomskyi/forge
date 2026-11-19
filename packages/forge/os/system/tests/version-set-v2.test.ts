@@ -3,6 +3,8 @@
 <purpose>RFC-1541 AC-1..AC-3 — version-set@2 contracts resolved from root lockfile importers; @1 files stay readable; SYSTEM-VS-06.</purpose>
 <non-goals><item>Check kinds are covered by the validator/pin-drift test files.</item></non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 // @vitest-environment node
 import { readFile } from "node:fs/promises";

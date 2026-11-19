@@ -1,6 +1,9 @@
 /*
 <MODULE_CONTRACT>
-<purpose>RFC-1581: barrel for the forge-codebase module.</purpose>
+<purpose>Public barrel for the forge-codebase module — re-exports the codebase module factory, the codebase.measure handler, and shared measurement types.</purpose>
+<non-goals>
+  <item>Do not implement measurement logic — this file only re-exports the codebase surface.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1581: initial barrel.</item>

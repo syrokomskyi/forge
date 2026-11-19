@@ -10,9 +10,9 @@ locks broken, always released in finally. Used for the short registry lock
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Staleness reads the lock file's `at` timestamp, not mtime — a crashed holder leaves a frozen file whose content is authoritative (DNA-105).</item>
-  <item>Timeout throws LockTimeoutError naming the file — each command maps it to its own diagnostic (FLOW-07 for the registry, FLOW-INT-08 for integrate).</item>
-  <item>Refused attempts render the last observed holder via describeHeldLock — the `stale` disposition is near-unreachable from withFlowLock (age-stale locks are broken before the deadline check) and exists for callers classifying a lock they never waited on (RFC-1515).</item>
+  <item>Staleness reads the lock file's `at` timestamp, not mtime — a crashed holder's frozen content is authoritative.</item>
+  <item>Timeout throws LockTimeoutError naming the file — commands map it to their own diagnostics (FLOW-07, FLOW-INT-08).</item>
+  <item>Refused attempts render the holder via describeHeldLock — `stale` serves callers classifying a lock they never waited on.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1504: review fixes — single io.readFile parse per iteration, real ageMs on dead-holder onStale, atomic break claim</item>
@@ -248,11 +248,7 @@ export async function withFlowLock<T>(
       continue;
     }
     if (now() >= deadline) {
-      throw new LockTimeoutError(
-        lockPath,
-        now() - (deadline - opts.waitMs),
-        holder ?? undefined,
-      );
+      throw new LockTimeoutError(lockPath, now() - (deadline - opts.waitMs), holder ?? undefined);
     }
     if (opts.progressEveryMs && now() >= nextProgress) {
       opts.onProgress?.(`waiting for ${lockPath}`);

@@ -13,13 +13,10 @@ and lastSeen is set — per-record files only.</purpose>
   <item>No legacy-file writes — records still in LEGACY_FRICTION_FILE
   refuse with a friction.migrate hint (LegacyRecordMutationError).</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Flag vocabularies are checked before the id is reserved — an
-  invalid record never consumes an id; a post-reservation schema failure
-  burns the id as a harmless gap (RFC-1536 doctrine).</item>
-  <item>The reservation is appended BEFORE the record file is written,
-  so a concurrent friction.add in a sibling worktree sees the claim on
-  its next-id scan (AC-2).</item>
+  <item>Flag vocabularies check before id reservation — invalid records never consume ids; schema failures burn harmless gaps.</item>
+  <item>The reservation appends BEFORE the record writes — concurrent sibling-workspace adds see the claim on next-id scan.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1590: friction.add — governance-reserved ids, write-time

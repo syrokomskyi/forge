@@ -6,6 +6,9 @@ HEAD outside rebase/cherry-pick (FLOW-GUARD-03) and unknown FORGE_FLOW_OP
 values (FLOW-GUARD-04); it allows conforming auto branches, generated repos,
 the closed FORGE_FLOW_OP vocabulary and the unborn develop — proven by real
 `git commit` runs through core.hooksPath in throwaway repos.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 2 — guard behavior tests</item>
@@ -21,12 +24,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { writeFile } from "node:fs/promises";
 
-import {
-  gitExec,
-  initRepo,
-  installGuard,
-  tryCommit,
-} from "./helpers.ts";
+import { gitExec, initRepo, installGuard, tryCommit } from "./helpers.ts";
 
 const dirs: string[] = [];
 
@@ -36,10 +34,7 @@ afterEach(async () => {
   }
 });
 
-async function repoWithGuard(opts?: {
-  branch?: string;
-  seedCommit?: boolean;
-}): Promise<string> {
+async function repoWithGuard(opts?: { branch?: string; seedCommit?: boolean }): Promise<string> {
   const dir = await initRepo(opts);
   dirs.push(dir);
   await installGuard(dir);

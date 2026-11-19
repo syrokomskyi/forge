@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — werkstatt-engine clean
-
-Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>KERNEL-FLAG-02: Guard --id against non-string values (boolean/array from unvalidated flag input) — throws a clear flag error instead of TypeError in rfcFileMatchesId.</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
@@ -143,8 +140,7 @@ export async function runRfcValidate(
   // — the getter memoizes so every `## Deviations`-carrying RFC shares one
   // batched read instead of paying per-file `git show` calls (V-49).
   let committedReviewsPromise:
-    | Promise<Awaited<ReturnType<typeof collectCommittedReviews>>>
-    | undefined;
+    Promise<Awaited<ReturnType<typeof collectCommittedReviews>>> | undefined;
   const committedReviews = () => {
     committedReviewsPromise ??= (async () => {
       let reviewsDir: string | null = null;

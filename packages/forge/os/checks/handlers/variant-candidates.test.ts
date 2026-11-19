@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1473 variantCandidates tests — rules with ≥1 unique emitted finding join the variant-candidate list for sibling sweeps; silent/redundant rules are excluded.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -65,7 +65,11 @@ findings:
 `,
     );
     const res = await runContributionReport(flags({}), ctx());
-    expect(res.data?.variantCandidates.some((v) => v.rule === "FIRED-01" && v.siblingScope === "knowledge")).toBe(true);
+    expect(
+      res.data?.variantCandidates.some(
+        (v) => v.rule === "FIRED-01" && v.siblingScope === "knowledge",
+      ),
+    ).toBe(true);
     expect(res.data?.variantCandidates.some((v) => v.rule === "QUIET-01")).toBe(false);
   });
 });

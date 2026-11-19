@@ -10,7 +10,7 @@ patch-only level gate FLOW-CUT-10 and the --lines rejection FLOW-CUT-09.</purpos
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The fix-open fixture ends a completed ordinary cut so main sits exactly on the repository line's last-tag commit — FLOW-FIX-02's required baseline state.</item>
+  <item>The fix-open fixture completes an ordinary cut so main sits on the line's last-tag commit (FLOW-FIX-02's baseline).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 6 — fix open, patch release, and refusal tests</item>
@@ -54,10 +54,7 @@ async function releasedRepo(): Promise<string> {
   const repo = await initRepo({ prefix: "flow-fix-" });
   dirs.push(repo);
   await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
-  await writeFile(
-    join(repo, "package.json"),
-    '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n',
-  );
+  await writeFile(join(repo, "package.json"), '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n');
   await gitExec(repo, ["add", "-A"]);
   await gitExec(repo, ["commit", "-m", "config"]);
   await gitExec(repo, ["switch", "-c", "develop"]);
@@ -79,7 +76,12 @@ async function fixEntry(repo: string, branch: string | null): Promise<FlowRegist
   return entry!;
 }
 
-async function commitIn(wt: string, file: string, content: string, trailer?: string): Promise<void> {
+async function commitIn(
+  wt: string,
+  file: string,
+  content: string,
+  trailer?: string,
+): Promise<void> {
   await writeFile(join(wt, file), content);
   await gitExec(wt, ["add", file]);
   const args = ["commit", "-m", `add ${file}`];
@@ -100,7 +102,12 @@ function stubContext(repo: string): ForgeRuntimeContext {
 }
 
 /** Land a committed change on develop the model-normal way: session → gate → ff. */
-async function landThroughSession(repo: string, slug: string, file: string, content: string): Promise<void> {
+async function landThroughSession(
+  repo: string,
+  slug: string,
+  file: string,
+  content: string,
+): Promise<void> {
   const opened = await openFlowBranch(repo, ambientIo, {
     kind: "session",
     slug,
@@ -161,7 +168,11 @@ describe("flow.fix", () => {
     await commitIn(fix.worktree!, "hot.txt", "fix");
     const entry = await fixEntry(repo, fix.branch);
 
-    const data = await runFixCutWithBackmerge(repo, ambientIo, { entry, linesGiven: false, dryRun: false });
+    const data = await runFixCutWithBackmerge(repo, ambientIo, {
+      entry,
+      linesGiven: false,
+      dryRun: false,
+    });
 
     expect(data.diagnostics).toEqual([]);
     expect(data.released).toBe(true);
@@ -171,10 +182,14 @@ describe("flow.fix", () => {
     const mainSha = await sha(repo, "main");
     expect(data.mainAfter).toBe(mainSha);
     expect(await sha(repo, "v0.1.2^{}")).toBe(mainSha);
-    expect((await gitExec(repo, ["rev-parse", "--verify", "-q", `refs/heads/${fix.branch}`])).exitCode).not.toBe(0);
+    expect(
+      (await gitExec(repo, ["rev-parse", "--verify", "-q", `refs/heads/${fix.branch}`])).exitCode,
+    ).not.toBe(0);
     // Back-merge landed the port into develop.
     expect(data.backmerge?.status).toBe("merged");
-    const parents = (await gitExec(repo, ["rev-list", "--parents", "-1", "develop"])).stdout.trim().split(/\s+/);
+    const parents = (await gitExec(repo, ["rev-list", "--parents", "-1", "develop"])).stdout
+      .trim()
+      .split(/\s+/);
     expect(parents).toHaveLength(3);
     expect(parents[2]).toBe(mainSha);
     const subject = (await gitExec(repo, ["log", "-1", "--format=%s", "develop"])).stdout.trim();
@@ -196,7 +211,11 @@ describe("flow.fix", () => {
     await commitIn(fix.worktree!, "hot.txt", "x", "X-RFC: RFC-1400");
     const entry = await fixEntry(repo, fix.branch);
 
-    const data = await runFixCutWithBackmerge(repo, ambientIo, { entry, linesGiven: false, dryRun: false });
+    const data = await runFixCutWithBackmerge(repo, ambientIo, {
+      entry,
+      linesGiven: false,
+      dryRun: false,
+    });
     expect(data.released).toBe(false);
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-CUT-10");
   }, 30_000);
@@ -206,7 +225,11 @@ describe("flow.fix", () => {
     const fix = await fixFlow(repo, ambientIo, { slug: "linesfix", brief: null, dryRun: false });
     dirs.push(fix.worktree!);
     const entry = await fixEntry(repo, fix.branch);
-    const data = await runFixCutWithBackmerge(repo, ambientIo, { entry, linesGiven: true, dryRun: false });
+    const data = await runFixCutWithBackmerge(repo, ambientIo, {
+      entry,
+      linesGiven: true,
+      dryRun: false,
+    });
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-CUT-09");
   }, 30_000);
 
@@ -215,7 +238,11 @@ describe("flow.fix", () => {
     const fix = await fixFlow(repo, ambientIo, { slug: "emptyfix", brief: null, dryRun: false });
     dirs.push(fix.worktree!);
     const entry = await fixEntry(repo, fix.branch);
-    const data = await runFixCutWithBackmerge(repo, ambientIo, { entry, linesGiven: false, dryRun: false });
+    const data = await runFixCutWithBackmerge(repo, ambientIo, {
+      entry,
+      linesGiven: false,
+      dryRun: false,
+    });
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-CUT-04");
   }, 30_000);
 
@@ -223,7 +250,9 @@ describe("flow.fix", () => {
     const repo = await releasedRepo();
     // Untagged plumbing commit on main.
     const tree = (await gitExec(repo, ["rev-parse", "main^{tree}"])).stdout.trim();
-    const hot = (await gitExec(repo, ["commit-tree", tree, "-p", "main", "-m", "untagged"])).stdout.trim();
+    const hot = (
+      await gitExec(repo, ["commit-tree", tree, "-p", "main", "-m", "untagged"])
+    ).stdout.trim();
     await gitExec(repo, ["update-ref", "refs/heads/main", hot]);
 
     const data = await fixFlow(repo, ambientIo, { slug: "toofix", brief: null, dryRun: false });
@@ -323,7 +352,9 @@ describe("flow.fix", () => {
     expect(result.data?.mode).toBe("fix");
     expect(result.data?.tags).toEqual(["v0.1.2"]);
     expect(result.data?.backmerge?.status).toBe("merged");
-    expect((await gitExec(repo, ["rev-parse", "--verify", "-q", `refs/heads/${fix.branch}`])).exitCode).not.toBe(0);
+    expect(
+      (await gitExec(repo, ["rev-parse", "--verify", "-q", `refs/heads/${fix.branch}`])).exitCode,
+    ).not.toBe(0);
     const subject = (await gitExec(repo, ["log", "-1", "--format=%s", "develop"])).stdout.trim();
     expect(subject).toBe("release v0.1.2 → develop");
   }, 120_000);
@@ -334,7 +365,9 @@ describe("flow.fix", () => {
     dirs.push(origin);
     await gitExec(origin, ["init", "--bare", "-b", "develop", "."]);
     await gitExec(repo, ["remote", "add", "origin", origin]);
-    const push = await gitExec(repo, ["push", "-u", "origin", "develop", "main"], { FORGE_FLOW_OP: "push" });
+    const push = await gitExec(repo, ["push", "-u", "origin", "develop", "main"], {
+      FORGE_FLOW_OP: "push",
+    });
     expect(push.exitCode).toBe(0);
 
     // develop moves past the release; then a fix shares that same base.
@@ -343,7 +376,11 @@ describe("flow.fix", () => {
     dirs.push(fix.worktree!);
     await commitIn(fix.worktree!, "hot.txt", "fix");
     const entry = await fixEntry(repo, fix.branch);
-    const cut = await runFixCutWithBackmerge(repo, ambientIo, { entry, linesGiven: false, dryRun: false });
+    const cut = await runFixCutWithBackmerge(repo, ambientIo, {
+      entry,
+      linesGiven: false,
+      dryRun: false,
+    });
     expect(cut.backmerge?.status).toBe("merged");
 
     const digest = await collectDigest(repo, ambientIo, { fetch: false });
@@ -352,7 +389,9 @@ describe("flow.fix", () => {
     expect(devItem?.branch).toMatch(/-devwork$/);
     // The fix commits reach develop only through the back-merge item.
     const port = digest.items.find((i) => i.kind === "backmerge");
-    expect(port?.subjects).toEqual(expect.arrayContaining(["add hot.txt", "release v0.1.2 → develop"]));
+    expect(port?.subjects).toEqual(
+      expect.arrayContaining(["add hot.txt", "release v0.1.2 → develop"]),
+    );
     expect(port?.commits).toBe(port?.subjects.length);
     expect(digest.items.some((i) => i.kind === "release" && i.branch === fix.branch)).toBe(false);
   }, 180_000);

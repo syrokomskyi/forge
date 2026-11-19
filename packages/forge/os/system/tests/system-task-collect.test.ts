@@ -4,6 +4,9 @@
 .forge/task/ preservation path — report lookup (worktree vs preserved copy),
 schema/task-id validation, outcome transitions, journal-driven
 reported→integrated, and --mark-failed.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 5 — collect + preservation acceptance tests</item>
@@ -69,7 +72,10 @@ async function dispatched(overrides: Record<string, string> = {}): Promise<Fixtu
     "queue/briefs/T-0001.md": readyBrief(),
     ...overrides,
   });
-  const dispatched = await runSystemTaskDispatch(input({ task: "T-0001" }), makeContext(systemRoot));
+  const dispatched = await runSystemTaskDispatch(
+    input({ task: "T-0001" }),
+    makeContext(systemRoot),
+  );
   if (!dispatched.data?.dispatched) {
     throw new Error(`fixture dispatch failed: ${JSON.stringify(dispatched.data?.diagnostics)}`);
   }
@@ -167,10 +173,10 @@ describe("system.task.collect", () => {
     await gitExec(worktree, ["commit", "-m", "task payload"]);
 
     // The product's own flow command integrates the task branch.
-    const integrated = await runFlowIntegrate(
-      input({}),
-      { ...makeContext(worktree), workspaceRoot: worktree },
-    );
+    const integrated = await runFlowIntegrate(input({}), {
+      ...makeContext(worktree),
+      workspaceRoot: worktree,
+    });
     if (integrated.exitCode !== 0) {
       console.log("INTEGRATE DIAGNOSTICS", JSON.stringify(integrated.data?.diagnostics, null, 2));
     }
@@ -182,7 +188,10 @@ describe("system.task.collect", () => {
     const preserved = path.join(common, "forge", "tasks", "T-0001", "report.yaml");
     expect(await io.exists(preserved)).toBe(true);
 
-    const collected = await runSystemTaskCollect(input({ task: "T-0001" }), makeContext(systemRoot));
+    const collected = await runSystemTaskCollect(
+      input({ task: "T-0001" }),
+      makeContext(systemRoot),
+    );
     expect(collected.exitCode).toBe(0);
     expect(collected.data?.state).toBe("integrated");
     const { task } = await readTask(systemRoot, io, "T-0001");
@@ -196,10 +205,7 @@ describe("system.task.collect", () => {
 
   it("a needs-decision report without question refuses SYSTEM-TASK-08", async () => {
     const { systemRoot, worktree } = await dispatched();
-    await writeReport(
-      worktree,
-      DONE_REPORT.replace("outcome: done", "outcome: needs-decision"),
-    );
+    await writeReport(worktree, DONE_REPORT.replace("outcome: done", "outcome: needs-decision"));
     const result = await runSystemTaskCollect(input({ task: "T-0001" }), makeContext(systemRoot));
     expect(result.exitCode).toBe(1);
     expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-08")).toBe(true);
@@ -236,7 +242,11 @@ describe("system.task.collect", () => {
     });
     const result = await runSystemTaskCollect(input({ task: "T-0001" }), makeContext(systemRoot));
     expect(result.exitCode).toBe(0);
-    expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-05" && d.severity === "warning")).toBe(true);
+    expect(
+      result.data?.diagnostics.some(
+        (d) => d.ruleId === "SYSTEM-TASK-05" && d.severity === "warning",
+      ),
+    ).toBe(true);
     expect(result.data?.state).toBe("reported");
   });
 
@@ -296,10 +306,10 @@ describe("task-file preservation on discard", () => {
     const { runFlowDiscard } = await import("../../flow/handlers/flow-discard.ts");
     const { productRoot, worktree } = await dispatched();
     await writeReport(worktree);
-    const result = await runFlowDiscard(
-      input({ reason: "session dropped" }),
-      { ...makeContext(worktree), workspaceRoot: worktree },
-    );
+    const result = await runFlowDiscard(input({ reason: "session dropped" }), {
+      ...makeContext(worktree),
+      workspaceRoot: worktree,
+    });
     expect(result.exitCode).toBe(0);
     const io = (await import("../../../src/utils/io.ts")).resolveIo(undefined);
     const preserved = path.join(productRoot, ".git", "forge", "tasks", "T-0001", "report.yaml");

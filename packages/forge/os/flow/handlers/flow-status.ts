@@ -10,9 +10,9 @@ for both surfaces.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The branch set is the union of local auto names and registry entries — a dead session leaves a branch, an entry or a worktree, and each shows up with its mismatch fields set.</item>
-  <item>Stale is max(lastCommitAt, updatedAt) &gt; 72 h for registered entries and lastCommitAt &gt; 72 h for unregistered branches; held entries are never stale (RFC FLOW-06).</item>
-  <item>Stray (RFC-1498): a local auto branch with no registry entry and no worktree checkout anywhere is exposed as unregisteredBranchesWithoutWorktree regardless of age — the leftover shape a failed branch -D leaves.</item>
+  <item>The branch set is the union of local auto names and registry entries — dead sessions surface with mismatch fields.</item>
+  <item>Stale = max(lastCommitAt, updatedAt) &gt; 72 h (registered) or lastCommitAt &gt; 72 h (unregistered); held entries exempt.</item>
+  <item>A local auto branch with no registry entry and no worktree anywhere reports as unregisteredBranchesWithoutWorktree regardless of age.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1498: step 1 — FLOW-07 for stray auto branches

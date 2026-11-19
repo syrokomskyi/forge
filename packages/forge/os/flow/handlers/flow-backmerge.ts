@@ -13,8 +13,8 @@ steps. --redo discards an existing port for the same mainSha first.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The port branch is kind `session` with a `port` registry payload — flow.integrate already owns the gate, ff, cleanup and backmerge journal event for port entries, so the clean path delegates to integrateFlowBranch under the lock.</item>
-  <item>main ahead of develop without release tags refuses FLOW-BM-01 — the port message and registry payload both require ≥1 tag (main only advances through cuts, which always tag).</item>
+  <item>The port branch is kind `session` with a `port` payload — the clean path delegates to integrateFlowBranch under the lock.</item>
+  <item>main ahead of develop without release tags refuses FLOW-BM-01 — main only advances through tag-creating cuts.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 5 — flow.backmerge with port branch, conflict reporting, --redo</item>
@@ -125,16 +125,11 @@ function portSlug(tag: string): string {
  * tags are ignored (for-each-ref objecttype filter): only forge's annotated
  * `forge/release-tag@1` tags name a port.
  */
-async function pendingReleaseTags(
-  repoRoot: string,
-  io: WorkspaceIO,
-): Promise<string[]> {
+async function pendingReleaseTags(repoRoot: string, io: WorkspaceIO): Promise<string[]> {
   const revs = await git(repoRoot, io, ["rev-list", "--reverse", "develop..main"]);
   if (revs.exitCode !== 0 || revs.stdout.trim() === "") return [];
   const { lines } = await discoverReleaseLines(repoRoot, io);
-  const prefixOf = new Map<string, number>(
-    lines.map((l, i) => [l.tagPrefix, i] as const),
-  );
+  const prefixOf = new Map<string, number>(lines.map((l, i) => [l.tagPrefix, i] as const));
   const ordered: string[] = [];
   for (const sha of revs.stdout.trim().split("\n")) {
     const pointing = await git(repoRoot, io, [
@@ -153,12 +148,8 @@ async function pendingReleaseTags(
       .filter((t) => t.length > 0 && [...prefixOf.keys()].some((p) => t.startsWith(p)));
     names.sort(
       (a, b) =>
-        Math.min(
-          ...[...prefixOf.entries()].filter(([p]) => a.startsWith(p)).map(([, i]) => i),
-        ) -
-        Math.min(
-          ...[...prefixOf.entries()].filter(([p]) => b.startsWith(p)).map(([, i]) => i),
-        ),
+        Math.min(...[...prefixOf.entries()].filter(([p]) => a.startsWith(p)).map(([, i]) => i)) -
+        Math.min(...[...prefixOf.entries()].filter(([p]) => b.startsWith(p)).map(([, i]) => i)),
     );
     ordered.push(...names);
   }
@@ -250,9 +241,7 @@ async function planBackmerge(
     }
     throw error;
   }
-  const duplicates = registry.branches.filter(
-    (b) => b.port !== null && b.port.mainSha === mainSha,
-  );
+  const duplicates = registry.branches.filter((b) => b.port !== null && b.port.mainSha === mainSha);
   if (duplicates.length > 0 && !opts.redo) {
     return {
       kind: "refusal",
@@ -339,9 +328,7 @@ export async function backmergeFlow(
           }
         }
 
-        const developBefore = (
-          await git(repoRoot, io, ["rev-parse", "develop"])
-        ).stdout.trim();
+        const developBefore = (await git(repoRoot, io, ["rev-parse", "develop"])).stdout.trim();
         const open = await openFlowBranchCore(repoRoot, io, {
           kind: "session",
           slug: portSlug(tags[0]!),
@@ -479,7 +466,9 @@ export async function runFlowBackmerge(
       logger.section("flow.backmerge");
       logger.info(`  conflict:  ${data.conflicts.join(", ")}`);
       logger.info(`  worktree:  ${data.portWorktree}`);
-      logger.info(`  next:      resolve, git commit --no-edit, flow.integrate --branch ${data.portBranch}`);
+      logger.info(
+        `  next:      resolve, git commit --no-edit, flow.integrate --branch ${data.portBranch}`,
+      );
     } else {
       logger.info(`flow.backmerge ${data.status}: ${data.tags.join(", ")}`);
     }

@@ -13,8 +13,8 @@ reclaimed by the next reader, never trusted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Claims live at &lt;git-common-dir&gt;/forge/ops/&lt;opId&gt;.yaml — worktrees share one git dir, so a claim written from a session worktree is visible to the primary by construction.</item>
-  <item>Claim-write failure degrades to unclaimed behavior (fail-safe): the op proceeds and classification keeps the old refusal semantics — a registry outage must never become a write blocker.</item>
+  <item>Claims live at &lt;git-common-dir&gt;/forge/ops/&lt;opId&gt;.yaml — worktrees share one git dir, so primary sees claims.</item>
+  <item>Claim-write failure degrades to unclaimed — the op proceeds and old refusal semantics stay; no write blocker.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1543: op-claim registry — claim/release/liveClaims, pid+bootId+heartbeat liveness, lazy dead-record sweep</item>
@@ -161,7 +161,10 @@ function parseClaim(raw: string): OpClaim | null {
  * effect. Malformed files sweep too — a record we cannot read cannot be
  * liveness-checked and must never grant tolerance.
  */
-async function readClaims(repo: string, io: WorkspaceIO): Promise<{ live: OpClaim[]; dead: string[] }> {
+async function readClaims(
+  repo: string,
+  io: WorkspaceIO,
+): Promise<{ live: OpClaim[]; dead: string[] }> {
   const dir = await opsDir(repo, io);
   if (dir === null || !(await io.exists(dir))) return { live: [], dead: [] };
   const files = (await io.glob("*.yaml", { cwd: dir })).filter((f) => !f.endsWith("/"));

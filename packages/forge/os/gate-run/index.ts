@@ -1,3 +1,14 @@
+/*
+<MODULE_CONTRACT>
+<purpose>Public barrel for the gate-run module — re-exports the module factory, gate run record helpers, and the detach machinery.</purpose>
+<non-goals>
+  <item>Do not implement run logic — this file only re-exports the gate-run surface.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
+*/
+
 export { createForgeGateRunModule } from "./gate-run.module.ts";
 export {
   GATE_RUN_RETENTION,

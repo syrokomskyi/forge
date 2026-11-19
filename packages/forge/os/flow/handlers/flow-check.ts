@@ -11,9 +11,9 @@ by flow.install step 9.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>An invalid forge.generated.yaml fails closed: the repo is checked as governed AND carries FLOW-05 — a malformed marker must never unprotect (repo-kind.ts KEY_DECISIONS).</item>
+  <item>An invalid forge.generated.yaml fails closed — governed + FLOW-05; a malformed marker never unprotects.</item>
   <item>Ungoverned repositories (no forge.yaml, no marker) report repoKind with no diagnostics — the model only applies where forge.yaml opts in.</item>
-  <item>A stray auto branch (RFC-1498) reports FLOW-07 the moment it exists — it has no registry entry and no worktree, so the 72 h staleness grace never applied to it.</item>
+  <item>A stray auto branch reports FLOW-07 immediately — no registry entry or worktree means the staleness grace never applied.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>

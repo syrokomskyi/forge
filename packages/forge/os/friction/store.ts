@@ -11,15 +11,10 @@ registry goes through this module.</purpose>
   <item>No id allocation — os/rfc/next-id.ts owns the shared governance-id
   reservation surface (kind: friction).</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The loader reads the directory first, then the legacy file; a
-  duplicate id across both throws FrictionDuplicateError (the AC-4
-  contract — FRICTION-09 maps it), while loadFrictionsTolerant keeps the
-  per-record copy so best-effort readers never see an empty registry.</item>
-  <item>updateFriction operates on per-record files only — a
-  legacy-resident record refuses with a friction.migrate hint rather than
-  writing the legacy file (the rollout contract: never written by
-  commands).</item>
+  <item>Loader reads directory first, then legacy file; duplicate ids throw FrictionDuplicateError (FRICTION-09); tolerant reads keep copies.</item>
+  <item>updateFriction operates on per-record files only — legacy-resident records refuse with a friction.migrate hint.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1590: per-record friction store — docs/frictions/F-NNNN.yaml

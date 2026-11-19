@@ -2,8 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1469: gate.probe.catalog — read-model over the fixture inventory: per-contract coverage, per-rule fixture binding, unprobed error-severity rules (gates with no liveness evidence). RFC-1592 adds the liveness ratchet: --check fails PROBE-06 on unprobed rules outside the shrink-only baseline, PROBE-07 on stale baseline entries, PROBE-09 on expired/undeclared provisional warnings; --write-baseline creates or shrink-rewrites docs/gate-probes/unprobed.baseline.generated.yaml (PROBE-08 refuses growth).</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never execute probes — the catalog is a read-model over declared fixtures.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>F-0287: union the committed check-counters projection into emittedIds — journals are worktree-local, so fresh session checkouts could never reproduce primary's firing evidence and the ratchet refused on inherited develop debt</item>
   <item>RFC-1592: make probe-catalog liveness worktree-reproducible and exclude app-scope rules (F-0287)</item>

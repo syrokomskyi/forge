@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>RFC-1580 AC-3: deleting a manifest entry present at the base revision is CORR-GATE-02 and refuses in warn mode as well; an isolated weakening session can be accepted.</purpose>
+<purpose>Freeze-diff regression tests (RFC-1580 AC-3): deleting a manifest entry present at the base revision is CORR-GATE-02 and refuses in warn mode as well; an isolated weakening session can be accepted.</purpose>
 <non-goals>
   <item>Not a contract source of truth — gate/run.ts owns behaviour.</item>
 </non-goals>

@@ -3,6 +3,8 @@
 <purpose>RFC-1541 AC-7..AC-13 — the warning-only pin-drift check against a fake npm, pin-bump proposals in system.outbox.scan, and the authority lint.</purpose>
 <non-goals><item>No real registry.</item></non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 // @vitest-environment node
 import { afterEach, describe, expect, it } from "vitest";

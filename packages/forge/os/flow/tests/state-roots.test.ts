@@ -1,10 +1,10 @@
 /*
 <MODULE_CONTRACT>
 <purpose>
-RFC-1495 step 1 — resolveStateRoots distinguishes the session worktree from
-the primary checkout, degrades on non-git dirs, and forge's own mission.archive
-writes the archive into the primary while the mission source stays where the
-command ran.
+RFC-1495 step 1 — state roots tests: resolveStateRoots distinguishes the
+session worktree from the primary checkout, degrades on non-git dirs, and
+forge's own mission.archive writes the archive into the primary while the
+mission source stays where the command ran.
 </purpose>
 <non-goals>
   <item>Not a contract source of truth — resolveStateRoots and the archive handler own the authoritative behavior.</item>
@@ -112,18 +112,15 @@ describe("resolveStateRoots (RFC-1495)", () => {
     const missionId = "acme-m000001";
     const missionDir = join(wt, "missions", missionId);
     await mkdir(missionDir, { recursive: true });
-    await writeFile(
-      join(missionDir, "mission.yaml"),
-      `missionId: ${missionId}\nstate: closed\n`,
-    );
+    await writeFile(join(missionDir, "mission.yaml"), `missionId: ${missionId}\nstate: closed\n`);
 
     const result = await runMissionArchive(makeInput(), makeContext(wt));
     expect(result.exitCode ?? 0).toBe(0);
 
     // Durable target: the primary's missions/archive/closed/, never the wt's.
-    expect(
-      existsSync(join(repo, "missions", "archive", "closed", missionId, "mission.yaml")),
-    ).toBe(true);
+    expect(existsSync(join(repo, "missions", "archive", "closed", missionId, "mission.yaml"))).toBe(
+      true,
+    );
     expect(existsSync(join(wt, "missions", "archive"))).toBe(false);
     expect(existsSync(missionDir)).toBe(false);
   });

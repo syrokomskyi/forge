@@ -14,10 +14,10 @@ invocation attests "all generated artifacts + RFC evidence are current".
 <KEY_DECISIONS>
   <item>Step order is contract: the ecosystem manifest hashes the other artifacts, so ecosystem.manifest.generate runs last among the manifest steps.</item>
   <item>EVIDENCE_SYNC_STEPS is the canonical regen list</item>
-  <item>RFC-1516: the committed envelope is read via `git show HEAD:&lt;path&gt;`, never the worktree file — an uncommitted hand-edit can never become reusable input; every gate below green+matching+in-window falls back to full re-execution with its reason journalized.</item>
-  <item>RFC-1516: reuse is evaluated in emit (not in the sync orchestrator) so the direct `rfc.verification.emit` path, the sync chain, and the stamp's in-process emits share one decision; sync only forwards the escape flag and surfaces the verdict.</item>
-  <item>RFC-1516 review-r1: freshness binds to `resultsFrom ?? emittedAt`, not `emittedAt` alone — an envelope that replays records stamps the original execution's anchor, so chained emit+commit cycles cannot extend result age past the window.</item>
-  <item>RFC-1516 review-r1: a probes-count mismatch is `malformed` only after the acceptanceHash gate — a legitimately changed list reports `acceptance-changed`; a matching-hash envelope with a short or misshapen probes array is crafted bytes and degrades to full re-execution, never a crash or partial reuse.</item>
+  <item>The committed envelope reads via `git show HEAD:&lt;path&gt;`, never the worktree — sub-green gates fall back to full re-execution.</item>
+  <item>Reuse evaluates inside emit, not the sync orchestrator — direct emit, sync chain, and stamp share one decision.</item>
+  <item>Freshness binds to `resultsFrom ?? emittedAt` — replayed envelopes keep the original execution's anchor, never extended.</item>
+  <item>Probes-count mismatch is `malformed` only after acceptanceHash matches — crafted bytes degrade to full re-execution, never crash.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1306: initial — EVIDENCE_SYNC_STEPS chain + runRfcEvidenceSync via the ctx.invoke port; EVIDENCE-SYNC-01 fail-closed without a kernel host, EVIDENCE-SYNC-02 propagates a failed step's diagnostics verbatim; review-r1: try/catch maps thrown invokes into EVIDENCE-SYNC-02, dry-run exposes `planned` in data.</item>
@@ -156,9 +156,7 @@ export async function readCommittedEnvelope(
     typeof env.acceptanceHash !== "string" ||
     (env.overall !== "pass" && env.overall !== "fail") ||
     !Array.isArray(env.probes) ||
-    env.probes.some(
-      (r) => r === null || typeof r !== "object" || typeof r.ok !== "boolean",
-    ) ||
+    env.probes.some((r) => r === null || typeof r !== "object" || typeof r.ok !== "boolean") ||
     (env.resultsFrom !== undefined && typeof env.resultsFrom !== "string")
   ) {
     return { malformed: true };
@@ -342,10 +340,14 @@ export async function runRfcEvidenceSync(
       // RFC-1516: a one-line note keeps replayed probes visible — an old
       // pass must never look like a fresh execution in pretty output.
       if (planned.step === EVIDENCE_SYNC_EMIT_STEP && report.exitCode === 0) {
-        const emitted = (report.data as { emitted?: Array<{
-          reuse?: { reusable?: boolean; reusedFrom?: string };
-          heavyProbesReused?: string[];
-        }> } | null)?.emitted?.[0];
+        const emitted = (
+          report.data as {
+            emitted?: Array<{
+              reuse?: { reusable?: boolean; reusedFrom?: string };
+              heavyProbesReused?: string[];
+            }>;
+          } | null
+        )?.emitted?.[0];
         if (emitted?.reuse?.reusable === true) {
           logger.info(
             `  ${planned.step}: envelope-reused — ${emitted.heavyProbesReused?.length ?? 0} heavy probe(s) replayed from ${emitted.reuse.reusedFrom}`,

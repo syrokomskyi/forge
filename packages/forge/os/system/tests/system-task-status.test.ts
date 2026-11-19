@@ -3,6 +3,9 @@
 <purpose>RFC-1509 acceptance tests for system.task.status — the read-only
 projection of task state plus product-side registry/journal evidence
 (registered / integrated / discarded / orphaned / unknown).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 5 — status acceptance tests</item>
@@ -108,7 +111,10 @@ describe("system.task.status", () => {
     const { mkdir, writeFile } = await import("node:fs/promises");
     const path = await import("node:path");
     await mkdir(path.join(productRoot, ".git", "forge"), { recursive: true });
-    await writeFile(path.join(productRoot, ".git", "forge", "registry.yaml"), "not: [valid, registry");
+    await writeFile(
+      path.join(productRoot, ".git", "forge", "registry.yaml"),
+      "not: [valid, registry",
+    );
     const systemRoot = await makeSystemRepo({
       "system/system.yaml": VALID_SYSTEM_YAML,
       "system/products.yaml": VALID_PRODUCTS_YAML,

@@ -3,7 +3,7 @@
 <purpose>scalars.test unit coverage for collectScalarTraps — loud one-line traps,
 silent continuation reinterpretation, and every documented exclusion class.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

@@ -3,6 +3,9 @@
 <purpose>RFC-1568 — forge module registration for `gate.run.status`. A forge
   module so both hosts (standalone `forge` CLI + `werkstatt run` kernel) see
   the command through their existing forge-module loading.</purpose>
+<non-goals>
+  <item>Run recording lives in record.ts and detach.ts — this file only registers the command.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1568: step 4 — gate-run module</item>

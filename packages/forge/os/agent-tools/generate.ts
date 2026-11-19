@@ -14,6 +14,8 @@
   <item>No suggestion/search logic — server.ts owns the runtime surface.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 
 import {

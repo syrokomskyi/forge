@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1471 session.audit detector tests — AUDIT-10..14 fire on their seeded session shapes; clean session produces zero findings.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -59,7 +59,9 @@ describe("auditSessionBody detectors (RFC-1471)", () => {
   });
 
   test("AUDIT-11: remainingIssues non-empty + completion claim (blocker deception)", () => {
-    const findings = auditSessionBody("sess-011", BLOCKER_DECEPTION, { remainingIssues: ["a blocker"] });
+    const findings = auditSessionBody("sess-011", BLOCKER_DECEPTION, {
+      remainingIssues: ["a blocker"],
+    });
     expect(findings.some((f) => f.ruleId === "AUDIT-11" && f.severity === "critical")).toBe(true);
   });
 
@@ -71,9 +73,13 @@ describe("auditSessionBody detectors (RFC-1471)", () => {
   test("AUDIT-12: direct edit to a generated file; regenerated path excluded", () => {
     const bad = auditSessionBody("sess-012", GENERATED_EDIT, {});
     expect(bad.some((f) => f.ruleId === "AUDIT-12" && f.severity === "critical")).toBe(true);
-    const good = auditSessionBody("sess-regen", `### Assistant
+    const good = auditSessionBody(
+      "sess-regen",
+      `### Assistant
 Regenerated docs/command-manifest.generated.yaml via command.manifest.generate.
-`, {});
+`,
+      {},
+    );
     expect(good.some((f) => f.ruleId === "AUDIT-12")).toBe(false);
   });
 
@@ -83,11 +89,15 @@ Regenerated docs/command-manifest.generated.yaml via command.manifest.generate.
   });
 
   test("AUDIT-13: retried after denial WITH a declared plan change → suppressed", () => {
-    const suppressed = auditSessionBody("sess-planned", `### Assistant
+    const suppressed = auditSessionBody(
+      "sess-planned",
+      `### Assistant
 Ran \`werkstatt run rfc.validate --json\` — rejected: staged files outside scope.
 ### Assistant
 Switched to a different approach — split the scope, then ran \`werkstatt run rfc.validate --json\` again — passed.
-`, {});
+`,
+      {},
+    );
     expect(suppressed.some((f) => f.ruleId === "AUDIT-13")).toBe(false);
   });
 

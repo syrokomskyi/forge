@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>RFC-1580 review REVIEW-CODE-2026-11-13-04 regressions — rebinding an
+<purpose>Gate-hardening regression tests (RFC-1580 REVIEW-CODE-2026-11-13-04) — rebinding an
 oracle (the RFC-1571 AC-7 shape) is a weakening, a declared L3 without
 captures never covers, a substrate raise is a weakening, a reworded or
 duplicated anchor is caught, requirement origin needs an acceptance that

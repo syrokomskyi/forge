@@ -10,7 +10,7 @@ appends their records into the matching JSONL (deduped), unparseable YAML
 warns and skips — a partial JSONL is worse than none.
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never batch-rewrite or compact journals — append-only writes by contract.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -70,7 +70,11 @@ async function readFileOrNull(io: WorkspaceIO, absPath: string): Promise<string 
  * An unterminated tail (crash mid-write) is quarantined with a newline first,
  * so the new record never glues onto the corrupt line and stays parseable.
  */
-export async function appendJsonl(io: WorkspaceIO, absPath: string, record: unknown): Promise<void> {
+export async function appendJsonl(
+  io: WorkspaceIO,
+  absPath: string,
+  record: unknown,
+): Promise<void> {
   const tail = (await readFileOrNull(io, absPath)) ?? "";
   const separator = tail.length > 0 && !tail.endsWith("\n") ? "\n" : "";
   await io.appendFile(absPath, `${separator}${JSON.stringify(record)}\n`);
@@ -141,8 +145,12 @@ export async function readOutcomesJournal(
   const resolved = resolveIo(io);
   const jsonlPath = path.join(root, TRAJECTORY_DIR, "outcomes.jsonl");
   const yamlPath = path.join(root, TRAJECTORY_DIR, "outcomes.yaml");
-  return readJournalWithYamlMigration<OutcomeRecord>(resolved, jsonlPath, yamlPath, "outcomes", (r) =>
-    `${r.recallId ?? ""}|${r.at ?? ""}`,
+  return readJournalWithYamlMigration<OutcomeRecord>(
+    resolved,
+    jsonlPath,
+    yamlPath,
+    "outcomes",
+    (r) => `${r.recallId ?? ""}|${r.at ?? ""}`,
   );
 }
 
@@ -157,8 +165,12 @@ export async function readRecallsJournal(
   const resolved = resolveIo(io);
   const jsonlPath = path.join(root, TRAJECTORY_DIR, "recalls.jsonl");
   const yamlPath = path.join(root, TRAJECTORY_DIR, "recalls.yaml");
-  return readJournalWithYamlMigration<RecallJournalRecord>(resolved, jsonlPath, yamlPath, "recalls", (r) =>
-    typeof r.id === "string" ? r.id : "",
+  return readJournalWithYamlMigration<RecallJournalRecord>(
+    resolved,
+    jsonlPath,
+    yamlPath,
+    "recalls",
+    (r) => (typeof r.id === "string" ? r.id : ""),
   );
 }
 
@@ -203,7 +215,9 @@ async function readJournalWithYamlMigration<T>(
       );
       return read;
     }
-    yamlRecords = list.filter((r): r is T => r !== null && typeof r === "object" && !Array.isArray(r));
+    yamlRecords = list.filter(
+      (r): r is T => r !== null && typeof r === "object" && !Array.isArray(r),
+    );
   } catch {
     read.warnings.push(
       `trajectory journal migration skipped: ${path.basename(yamlPath)} is unparseable — YAML left untouched`,

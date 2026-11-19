@@ -12,7 +12,7 @@ replayed tip and journal the hold with per-item rewrites.</purpose>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>All refusals happen before any mutation; a cherry-pick conflict aborts and removes the temporary worktree so FLOW-HOLD-07 leaves nothing changed.</item>
-  <item>Rewrites are journaled only for attributed replayed items — unattributed runs re-form from unclaimed commits on the new tail on their own.</item>
+  <item>Rewrites journal only attributed replayed items — unattributed runs re-form from unclaimed commits on the new tail.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
@@ -115,11 +115,7 @@ async function isAncestor(
  * the original slug truncated to 43 chars and a dangling `-` dropped
  * (AUDIT-RFC-1491-G2 — stays within the 48-char slug limit).
  */
-export function heldBranchName(
-  itemBranch: string,
-  candidates: string[],
-  now: Date,
-): string | null {
+export function heldBranchName(itemBranch: string, candidates: string[], now: Date): string | null {
   const parsed = parseFlowBranch(itemBranch);
   if (parsed === null) return null;
   const truncated = parsed.slug.slice(0, 43).replace(/-+$/, "");
@@ -317,13 +313,7 @@ async function executeHold(
     if (await io.exists(holdWorktree)) {
       await git(repoRoot, io, ["worktree", "remove", "--force", holdWorktree]);
     }
-    const add = await git(repoRoot, io, [
-      "worktree",
-      "add",
-      "--detach",
-      holdWorktree,
-      item.base,
-    ]);
+    const add = await git(repoRoot, io, ["worktree", "add", "--detach", holdWorktree, item.base]);
     if (add.exitCode !== 0) {
       return refuse(
         "FLOW-HOLD-07",
@@ -337,23 +327,23 @@ async function executeHold(
     const pick =
       above.exitCode === 0 && above.stdout.trim() === "0"
         ? above
-        : await gitCommit(holdWorktree, io, [
-            "cherry-pick",
-            "--keep-redundant-commits",
-            "--allow-empty",
-            `${item.tip}..develop`,
-          ], "hold");
+        : await gitCommit(
+            holdWorktree,
+            io,
+            ["cherry-pick", "--keep-redundant-commits", "--allow-empty", `${item.tip}..develop`],
+            "hold",
+          );
     if (pick.exitCode !== 0) {
-      const conflicts = await git(holdWorktree, io, [
-        "diff",
-        "--name-only",
-        "--diff-filter=U",
-      ]);
-      const paths = conflicts.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+      const conflicts = await git(holdWorktree, io, ["diff", "--name-only", "--diff-filter=U"]);
+      const paths = conflicts.stdout
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
       await git(holdWorktree, io, ["cherry-pick", "--abort"]);
-      const detail = paths.length > 0
-        ? `conflicts on ${paths.join(", ")}`
-        : `failed: ${pick.stderr.trim().split("\n").slice(-1)[0] ?? "unknown error"}`;
+      const detail =
+        paths.length > 0
+          ? `conflicts on ${paths.join(", ")}`
+          : `failed: ${pick.stderr.trim().split("\n").slice(-1)[0] ?? "unknown error"}`;
       return refuse(
         "FLOW-HOLD-07",
         `replaying the tail above ${item.id} ${detail} — nothing changed`,
@@ -370,7 +360,10 @@ async function executeHold(
       "--reverse",
       `${item.base}..${replayedTip}`,
     ]);
-    const newCommits = newTail.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+    const newCommits = newTail.stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
     const heldIndex = digest.items.findIndex((i) => i.id === item.id);
     const rewrites: FlowHoldData["rewrites"] = [];
     let offset = 0;
@@ -390,10 +383,7 @@ async function executeHold(
 
     const branch = await git(repoRoot, io, ["branch", heldName, item.tip]);
     if (branch.exitCode !== 0) {
-      return refuse(
-        "FLOW-HOLD-07",
-        `git branch ${heldName} failed: ${branch.stderr.trim()}`,
-      );
+      return refuse("FLOW-HOLD-07", `git branch ${heldName} failed: ${branch.stderr.trim()}`);
     }
 
     const reset = await git(primary, io, ["reset", "--keep", replayedTip]);
@@ -476,10 +466,7 @@ export async function runFlowHold(
   const reason = typeof input.flags["reason"] === "string" ? input.flags["reason"] : "";
   if (item.length === 0 || reason.length === 0) {
     return {
-      data: refuse(
-        "FLOW-HOLD-01",
-        "--item <id> and --reason <text> are both required",
-      ),
+      data: refuse("FLOW-HOLD-01", "--item <id> and --reason <text> are both required"),
       exitCode: 1,
       summary: "[flow.hold] missing required flags",
     };

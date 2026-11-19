@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1473 checks.contribution.report tests — per-rule contribution records (emitted/uniqueEmitted/zeroStreak/escapeCount/verdict), silent/redundant/guard classification, metrics artifact written.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -49,16 +49,22 @@ beforeEach(async () => {
             severity: error
 `,
   );
-  await writeFile(join(root, "docs", "frictions.yaml"), `- id: F-0099
+  await writeFile(
+    join(root, "docs", "frictions.yaml"),
+    `- id: F-0099
   category: tooling
   recurrences: 2
-`);
-  await writeFile(join(root, "forge.yaml"), `schema: forge/config@1
+`,
+  );
+  await writeFile(
+    join(root, "forge.yaml"),
+    `schema: forge/config@1
 checksContribution:
   contractMappings:
     tooling: knowledge
   guardRules: [PROBE-01]
-`);
+`,
+  );
 });
 
 afterEach(async () => {
@@ -113,7 +119,10 @@ findings:
 
   test("metrics artifact written; --check diffs vs committed for staleness", async () => {
     await runContributionReport(flags({}), ctx());
-    const metrics = await readFile(join(root, "docs", "metrics", "check-contribution.generated.yaml"), "utf8").catch(() => "");
+    const metrics = await readFile(
+      join(root, "docs", "metrics", "check-contribution.generated.yaml"),
+      "utf8",
+    ).catch(() => "");
     expect(metrics).toContain("check-contribution@1");
     const fresh = await runContributionReport(flags({ check: true }), ctx());
     expect(fresh.exitCode).toBe(0);
@@ -135,7 +144,10 @@ findings:
   });
 
   test("CONTRIB-01: malformed inventory blocks, not a thrown crash", async () => {
-    await writeFile(join(root, "docs", "validator-inventory.generated.yaml"), "contracts: [unclosed");
+    await writeFile(
+      join(root, "docs", "validator-inventory.generated.yaml"),
+      "contracts: [unclosed",
+    );
     const res = await runContributionReport(flags({}), ctx());
     expect(res.exitCode).toBe(1);
     expect(res.summary).toContain("CONTRIB-01");
@@ -157,11 +169,26 @@ describe("checks.contribution.report — counters journal firing source (RFC-147
     // SKILL-19 diagnoses in run-1 only → zeroStreak counts runs since.
     await seedJournal([
       cRec({ runId: "run-1", at: "2026-10-31T20:00:00.000Z" }),
-      cRec({ ruleId: "knowledge/KAUTHZ-01", outcome: "pass", runId: "run-1", at: "2026-10-31T20:00:00.000Z" }),
+      cRec({
+        ruleId: "knowledge/KAUTHZ-01",
+        outcome: "pass",
+        runId: "run-1",
+        at: "2026-10-31T20:00:00.000Z",
+      }),
       cRec({ outcome: "pass", runId: "run-2", at: "2026-10-31T21:00:00.000Z" }),
-      cRec({ ruleId: "knowledge/KAUTHZ-01", outcome: "pass", runId: "run-2", at: "2026-10-31T21:00:00.000Z" }),
+      cRec({
+        ruleId: "knowledge/KAUTHZ-01",
+        outcome: "pass",
+        runId: "run-2",
+        at: "2026-10-31T21:00:00.000Z",
+      }),
       cRec({ outcome: "pass", runId: "run-3", at: "2026-10-31T22:00:00.000Z" }),
-      cRec({ ruleId: "knowledge/KAUTHZ-01", outcome: "pass", runId: "run-3", at: "2026-10-31T22:00:00.000Z" }),
+      cRec({
+        ruleId: "knowledge/KAUTHZ-01",
+        outcome: "pass",
+        runId: "run-3",
+        at: "2026-10-31T22:00:00.000Z",
+      }),
     ]);
     const res = await runContributionReport(flags({ window: "3" }), ctx());
     expect(res.exitCode).toBe(0);
@@ -234,7 +261,15 @@ describe("checks.contribution.report — counters journal firing source (RFC-147
     // Self-tail (own producer family) — unreachable by the artifact: fresh.
     await appendFile(
       join(root, COUNTERS_JOURNAL_PATH),
-      JSON.stringify(cRec({ ruleId: "checks/CONTRIB-03", contract: "checks", runId: "checks.contribution.report-9-z", outcome: "pass", at: "2026-10-31T21:00:00.000Z" })) + "\n",
+      JSON.stringify(
+        cRec({
+          ruleId: "checks/CONTRIB-03",
+          contract: "checks",
+          runId: "checks.contribution.report-9-z",
+          outcome: "pass",
+          at: "2026-10-31T21:00:00.000Z",
+        }),
+      ) + "\n",
     );
     const fresh = await runContributionReport(flags({ check: true }), ctx());
     expect(fresh.exitCode).toBe(0);

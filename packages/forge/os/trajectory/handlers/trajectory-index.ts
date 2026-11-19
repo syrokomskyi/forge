@@ -10,7 +10,7 @@ docs/.index/trajectory/units.yaml (gitignored projection). Failed/abandoned
 sessions produce nothing. --export/--import for shard portability.
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never index non-verified sessions — admission is green-verified only.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -28,7 +28,11 @@ import { createHash } from "node:crypto";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { loadForgeConfig } from "../../../src/config/forge-config.ts";
-import { listSessionFiles, listArchivedSessionFiles, readAndParseSession } from "../../session/frontmatter-io.ts";
+import {
+  listSessionFiles,
+  listArchivedSessionFiles,
+  readAndParseSession,
+} from "../../session/frontmatter-io.ts";
 import { isEnoent, journalUnitIds, readOutcomesJournal, readRecallsJournal } from "./journal-io.ts";
 import type {
   ForgeCommandInput,
@@ -138,7 +142,9 @@ function localWorkshopId(root: string, warn?: (msg: string) => void): string {
     return loadForgeConfig(root).project.name || path.basename(root);
   } catch {
     const fallback = path.basename(root);
-    warn?.(`forge.yaml missing or invalid — workshopId falls back to workspace dir name "${fallback}"`);
+    warn?.(
+      `forge.yaml missing or invalid — workshopId falls back to workspace dir name "${fallback}"`,
+    );
     return fallback;
   }
 }
@@ -182,23 +188,32 @@ async function exportableVerdictRef(
 export function isShardUnit(u: unknown): u is ProcedureUnit {
   if (u === null || typeof u !== "object") return false;
   const p = u as ProcedureUnit;
-  const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every((e) => typeof e === "string");
+  const strings = (v: unknown): v is string[] =>
+    Array.isArray(v) && v.every((e) => typeof e === "string");
   return (
     typeof p.id === "string" &&
-    p.producer !== null && typeof p.producer === "object" &&
+    p.producer !== null &&
+    typeof p.producer === "object" &&
     typeof p.producer.verdictRef === "string" &&
     typeof p.producer.workshopId === "string" &&
     typeof p.producer.sessionId === "string" &&
     typeof p.producer.completedAt === "string" &&
-    (p.producer.sessionClass === undefined || p.producer.sessionClass === "mission" || p.producer.sessionClass === "adhoc") &&
-    p.usedBy !== null && typeof p.usedBy === "object" &&
-    Number.isFinite(p.usedBy.helped) && Number.isFinite(p.usedBy.hurt) && Number.isFinite(p.usedBy.recalled) &&
+    (p.producer.sessionClass === undefined ||
+      p.producer.sessionClass === "mission" ||
+      p.producer.sessionClass === "adhoc") &&
+    p.usedBy !== null &&
+    typeof p.usedBy === "object" &&
+    Number.isFinite(p.usedBy.helped) &&
+    Number.isFinite(p.usedBy.hurt) &&
+    Number.isFinite(p.usedBy.recalled) &&
     Number.isFinite(p.utilityScore) &&
-    p.situation !== null && typeof p.situation === "object" &&
+    p.situation !== null &&
+    typeof p.situation === "object" &&
     typeof p.situation.taskKind === "string" &&
     strings(p.situation.recentActions) &&
     strings(p.situation.touchedPathClasses) &&
-    p.continuation !== null && typeof p.continuation === "object" &&
+    p.continuation !== null &&
+    typeof p.continuation === "object" &&
     strings(p.continuation.commandSequence) &&
     typeof p.text === "string"
   );
@@ -229,8 +244,16 @@ export async function runTrajectoryIndex(
   const sessionsDir = path.join(root, "docs", "sessions");
   const archiveBase = path.join(sessionsDir, "archive");
   const allFiles = [
-    ...(await listSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: sessionsDir, prefix: "docs/sessions" })),
-    ...(await listArchivedSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: archiveBase, prefix: "docs/sessions/archive" })),
+    ...(await listSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({
+      rel,
+      base: sessionsDir,
+      prefix: "docs/sessions",
+    })),
+    ...(await listArchivedSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({
+      rel,
+      base: archiveBase,
+      prefix: "docs/sessions/archive",
+    })),
   ];
   const files = allFiles
     .filter((f) => !sessionFilter || f.rel.includes(sessionFilter))
@@ -243,23 +266,25 @@ export async function runTrajectoryIndex(
   // index was built against", not "how many units"). Full-path compare would
   // let `archive/` outrank every live file ("a" > "2") and mask real
   // staleness — filenames are the like-for-like key.
-  const sourceWatermark = allFiles.reduce(
-    (max, f) => {
-      const name = path.basename(f.rel);
-      return name > max ? name : max;
-    },
-    "",
-  );
+  const sourceWatermark = allFiles.reduce((max, f) => {
+    const name = path.basename(f.rel);
+    return name > max ? name : max;
+  }, "");
 
   const units: ProcedureUnit[] = [];
-  let admitted = 0, rejected = 0;
+  let admitted = 0,
+    rejected = 0;
   for (const { rel, base, prefix } of files) {
     const result = await readAndParseSession(base, rel).catch(() => null);
     if (!result) continue;
     const fm = result.parsed.frontmatter;
     const verdict = typeof fm.verdict === "string" ? fm.verdict : "";
     const commits = Array.isArray(fm.commits) ? fm.commits : [];
-    const blockers = Array.isArray(fm.remainingIssues) ? fm.remainingIssues : Array.isArray(fm.blockers) ? fm.blockers : [];
+    const blockers = Array.isArray(fm.remainingIssues)
+      ? fm.remainingIssues
+      : Array.isArray(fm.blockers)
+        ? fm.blockers
+        : [];
     const commitsSignal = commits.length > 0 && blockers.length === 0;
     // RFC-1475 F4 — verdictRef binds a resolvable artifact or field:
     // (a) mission evidence validation-report.json exists + green → the path;
@@ -290,7 +315,9 @@ export async function runTrajectoryIndex(
       // Mission evidence exists — it governs admission.
       green = GREEN_RE.test(evidenceVerdict);
       verdictRef = green ? evidenceRel! : "signal:commits";
-      if (!green && commitsSignal) { green = true; }
+      if (!green && commitsSignal) {
+        green = true;
+      }
     } else if (verdict) {
       green = GREEN_RE.test(verdict);
       verdictRef = `verdict:${verdict}`;
@@ -298,16 +325,34 @@ export async function runTrajectoryIndex(
       green = commitsSignal;
       verdictRef = "signal:commits";
     }
-    if (!green) { rejected++; continue; }
+    if (!green) {
+      rejected++;
+      continue;
+    }
     admitted++;
-    const commands = (Array.isArray(fm.commands) ? fm.commands : []).filter((c): c is string => typeof c === "string");
-    const decisions = Array.isArray(fm.decisions) ? (fm.decisions as unknown[]).filter((d): d is string => typeof d === "string") : [];
-    const paths = (Array.isArray(fm.files) ? fm.files : []).filter((p): p is string => typeof p === "string");
-    const taskKind = Array.isArray(fm.types) && fm.types.length > 0 ? String(fm.types[0]) : String(fm.taskKind ?? "general");
-    const sessionClass = Array.isArray(fm.types) && fm.types.includes("mission") ? ("mission" as const) : ("adhoc" as const);
+    const commands = (Array.isArray(fm.commands) ? fm.commands : []).filter(
+      (c): c is string => typeof c === "string",
+    );
+    const decisions = Array.isArray(fm.decisions)
+      ? (fm.decisions as unknown[]).filter((d): d is string => typeof d === "string")
+      : [];
+    const paths = (Array.isArray(fm.files) ? fm.files : []).filter(
+      (p): p is string => typeof p === "string",
+    );
+    const taskKind =
+      Array.isArray(fm.types) && fm.types.length > 0
+        ? String(fm.types[0])
+        : String(fm.taskKind ?? "general");
+    const sessionClass =
+      Array.isArray(fm.types) && fm.types.includes("mission")
+        ? ("mission" as const)
+        : ("adhoc" as const);
     const sid = String(fm.id ?? path.basename(rel, ".md"));
     const seq = commands.slice(0, 8);
-    const outcomeHash = createHash("sha1").update(JSON.stringify({ commands: seq, verdict })).digest("hex").slice(0, 12);
+    const outcomeHash = createHash("sha1")
+      .update(JSON.stringify({ commands: seq, verdict }))
+      .digest("hex")
+      .slice(0, 12);
     const text = `${taskKind}: ran ${seq.slice(0, 4).join(" → ")}${seq.length > 4 ? "…" : ""} → ${verdict}`;
     units.push({
       id: `trajectory:${sid}`,
@@ -347,7 +392,9 @@ export async function runTrajectoryIndex(
       if (isEnoent(e)) return null;
       throw e;
     });
-    const shard = shardSrc ? (yamlParse(shardSrc) as { schema?: string; units?: unknown[] } | null) : null;
+    const shard = shardSrc
+      ? (yamlParse(shardSrc) as { schema?: string; units?: unknown[] } | null)
+      : null;
     if (shard?.schema !== "forge/trajectory-shard@1") {
       return {
         data: {
@@ -359,7 +406,13 @@ export async function runTrajectoryIndex(
           dropped: 0,
           sourceWatermark,
           index: "",
-          diagnostics: [{ ruleId: "TRAJ-03", severity: "error", message: `${importPath} is not a forge/trajectory-shard@1` }],
+          diagnostics: [
+            {
+              ruleId: "TRAJ-03",
+              severity: "error",
+              message: `${importPath} is not a forge/trajectory-shard@1`,
+            },
+          ],
         },
         summary: `TRAJ-03 ${importPath} is not a forge/trajectory-shard@1`,
         exitCode: 1,
@@ -381,12 +434,18 @@ export async function runTrajectoryIndex(
         continue;
       }
       if (!localIds.has(candidate.id)) {
-        units.push({ ...candidate, producer: { ...candidate.producer, origin: "vendored" }, source: `${importPath}#vendored` });
+        units.push({
+          ...candidate,
+          producer: { ...candidate.producer, origin: "vendored" },
+          source: `${importPath}#vendored`,
+        });
         localIds.add(candidate.id);
       }
     }
     if (skippedShardUnits > 0) {
-      context.logger.warn(`${skippedShardUnits} shard unit(s) skipped — malformed or missing required fields (id/producer/usedBy/situation/continuation/text/utilityScore)`);
+      context.logger.warn(
+        `${skippedShardUnits} shard unit(s) skipped — malformed or missing required fields (id/producer/usedBy/situation/continuation/text/utilityScore)`,
+      );
     }
   }
 
@@ -401,7 +460,9 @@ export async function runTrajectoryIndex(
   }
   const journalTruncated = outcomesRead.truncated || recallsRead.truncated;
   if (journalTruncated) {
-    context.logger.warn("TRAJ-06 trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives");
+    context.logger.warn(
+      "TRAJ-06 trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives",
+    );
   }
   const outcomes = outcomesRead.records;
   const recalls = recallsRead.records;
@@ -448,7 +509,10 @@ export async function runTrajectoryIndex(
     // verdictRefs are rewritten to portable `verdict:<value>` form — the
     // origin attests the value it resolved; consumer workspaces cannot
     // re-read origin evidence paths.
-    const buckets = new Map<string, { workshopId: string; sessionClass: string; helped: number; hurt: number }>();
+    const buckets = new Map<
+      string,
+      { workshopId: string; sessionClass: string; helped: number; hurt: number }
+    >();
     for (const u of units) {
       const key = `${u.producer.workshopId}|${u.producer.sessionClass ?? "adhoc"}`;
       const bucket = buckets.get(key) ?? {
@@ -466,14 +530,28 @@ export async function runTrajectoryIndex(
       trust: b.helped + b.hurt > 0 ? Number((b.helped / (b.helped + b.hurt)).toFixed(3)) : 0.5,
     }));
     const exportUnits = await Promise.all(units.map((u) => exportableVerdictRef(u, root, io)));
-    const shard = { schema: "forge/trajectory-shard@1", exportedFrom: workshopId, units: exportUnits, producerStats };
+    const shard = {
+      schema: "forge/trajectory-shard@1",
+      exportedFrom: workshopId,
+      units: exportUnits,
+      producerStats,
+    };
     await io.writeFile(path.join(root, exportPath), yamlStringify(shard) + "\n");
   }
   if (dropped > 0) {
-    diagnostics.push({ ruleId: "TRAJ-04", severity: "warning", message: `${dropped} unit(s) dropped — verdictRef no longer resolves green` });
+    diagnostics.push({
+      ruleId: "TRAJ-04",
+      severity: "warning",
+      message: `${dropped} unit(s) dropped — verdictRef no longer resolves green`,
+    });
   }
   if (journalTruncated) {
-    diagnostics.push({ ruleId: "TRAJ-06", severity: "warning", message: "trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives" });
+    diagnostics.push({
+      ruleId: "TRAJ-06",
+      severity: "warning",
+      message:
+        "trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives",
+    });
   }
   return {
     data: {

@@ -13,6 +13,7 @@ event), and an older gate that prints no marker leaves both absent.
 <CHANGE_SUMMARY>
   <item>RFC-1532: persist integration-gate reports per attempt and link them from the flow journal</item>
 <history></history>
+</CHANGE_SUMMARY>
 */
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
@@ -98,10 +99,7 @@ describe("flow.integrate — gate report linkage (RFC-1532)", () => {
     const repo = await governedRepo();
     const session = await openSession(repo, "refused");
     await commitIn(session.worktree!, "a.txt", "a");
-    await writeGate(
-      repo,
-      `#!/bin/sh\necho "gate-report: ${REPORT_REL}"\necho gated >&2\nexit 1\n`,
-    );
+    await writeGate(repo, `#!/bin/sh\necho "gate-report: ${REPORT_REL}"\necho gated >&2\nexit 1\n`);
 
     const data = await integrateFlowBranch(repo, ambientIo, {
       branch: session.branch!,

@@ -4,6 +4,9 @@
 an adopted repository reports every mutating step skipped, writes nothing,
 adds no commit — proven by a recursive hash of hooks/ and a for-each-ref
 snapshot taken before and after.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 4 — flow.install rerun-safety test</item>
@@ -109,7 +112,14 @@ describe("flow.install rerun-safety (AC-8)", () => {
     expect(second.refusal).toBeNull();
     const outcome = await executeInstall(second, ambientIo);
 
-    for (const stepName of ["develop", "hooksPath", "checkout", "guard", "pre-commit", "commit"] as const) {
+    for (const stepName of [
+      "develop",
+      "hooksPath",
+      "checkout",
+      "guard",
+      "pre-commit",
+      "commit",
+    ] as const) {
       const step = second.steps.find((s) => s.step === stepName);
       expect(step?.status, `step ${stepName} must be skipped`).toBe("skipped");
     }
@@ -120,9 +130,7 @@ describe("flow.install rerun-safety (AC-8)", () => {
     // The embedded check shows no adoption errors (stray-branch FLOW-01 may
     // legitimately appear — never an adoption error).
     expect(
-      outcome.checkDiagnostics.filter(
-        (d) => d.severity === "error" && d.ruleId !== "FLOW-01",
-      ),
+      outcome.checkDiagnostics.filter((d) => d.severity === "error" && d.ruleId !== "FLOW-01"),
     ).toEqual([]);
 
     expect(await hashTree(join(repo, "hooks"))).toBe(hooksHashBefore);

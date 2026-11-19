@@ -12,8 +12,8 @@ a manual push path.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The digest must be quoted: a recomputed digestId mismatch refuses FLOW-PUSH-02 and names the new id, so the operator always pushes what they reviewed.</item>
-  <item>A rerun with an empty develop/main/tag digest skips the push but still retries pendingPublications — publication retries are journal-scoped to this machine's pushes only (AUDIT-RFC-1491-G1).</item>
+  <item>The digest must be quoted: a recomputed mismatch refuses FLOW-PUSH-02 naming the new id.</item>
+  <item>A rerun with an empty digest skips the push but still retries pendingPublications — retries are journal-scoped locally.</item>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
@@ -43,20 +43,11 @@ import type {
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
 import { collectDigest, lineForTag, versionOfTag } from "../digest.ts";
-import {
-  git,
-  requireGit,
-  topLevel,
-} from "../git.ts";
+import { git, requireGit, topLevel } from "../git.ts";
 import { markerIsValid } from "../markers.ts";
 import { publishTag, tagAnnotationLevel, type PublicationRow } from "../publish.ts";
 import { planPublications, type PublicationPlanEntry } from "../publication-order.ts";
-import {
-  appendJournal,
-  commonGitDir,
-  FlowRegistrySchemaError,
-  readJournal,
-} from "../registry.ts";
+import { appendJournal, commonGitDir, FlowRegistrySchemaError, readJournal } from "../registry.ts";
 import { discoverReleaseLines, type ReleaseLine } from "../release-lines.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 
@@ -122,12 +113,7 @@ export async function pushFlow(
     ["main", digest.main.remote],
   ] as const) {
     if (remote === null) continue;
-    const ancestor = await git(repoRoot, io, [
-      "merge-base",
-      "--is-ancestor",
-      remote,
-      branch,
-    ]);
+    const ancestor = await git(repoRoot, io, ["merge-base", "--is-ancestor", remote, branch]);
     if (ancestor.exitCode !== 0) {
       return refuse(
         "FLOW-PUSH-03",
@@ -222,17 +208,15 @@ export async function pushFlow(
       refs: refspecs,
       publications: [
         ...baselineSkipped,
-        ...publishable.map(
-          (p): PublicationRow => ({
-            tag: p.tag,
-            line: p.line.id,
-            status: "pending",
-            dest: null,
-            verify: null,
-            reconciled: false,
-            destHead: null,
-          }),
-        ),
+        ...publishable.map((p): PublicationRow => ({
+          tag: p.tag,
+          line: p.line.id,
+          status: "pending",
+          dest: null,
+          verify: null,
+          reconciled: false,
+          destHead: null,
+        })),
       ],
       superseded: plan.superseded.map((s) => ({
         tag: s.tag,
@@ -301,10 +285,7 @@ export async function pushFlow(
   const freshSuperseded = new Set(
     freshJournal.filter((e) => e.event === "publish-superseded").map((e) => e.branch),
   );
-  if (
-    freshPublished.size !== publishedTags.size ||
-    freshRetired.size !== retiredTags.size
-  ) {
+  if (freshPublished.size !== publishedTags.size || freshRetired.size !== retiredTags.size) {
     for (const tag of freshPublished) publishedTags.add(tag);
     for (const tag of freshRetired) retiredTags.add(tag);
     plan = planPublications(
@@ -326,13 +307,11 @@ export async function pushFlow(
 
   const publications: PublicationRow[] = [...baselineSkipped];
   const supersededOut: Array<{ tag: string; by: string }> = [];
-  const diagnostics: Diagnostic[] = journalWarnings.map(
-    (message): Diagnostic => ({
-      ruleId: "FLOW-07",
-      severity: "warning",
-      message,
-    }),
-  );
+  const diagnostics: Diagnostic[] = journalWarnings.map((message): Diagnostic => ({
+    ruleId: "FLOW-07",
+    severity: "warning",
+    message,
+  }));
 
   const recordSuperseded = async (tag: string, by: string): Promise<void> => {
     try {
@@ -376,7 +355,8 @@ export async function pushFlow(
         ruleId: "FLOW-PUSH-05",
         severity: "error",
         message: `publication of ${tag} (${line.id}) failed: ${row.error ?? "unknown"}`,
-        fixHint: "fix the extract or destination, then re-run flow.push with a fresh digest — pending publications are retried",
+        fixHint:
+          "fix the extract or destination, then re-run flow.push with a fresh digest — pending publications are retried",
       });
       continue;
     }
@@ -479,10 +459,11 @@ export async function runFlowPush(
   return {
     data,
     exitCode: errors.length > 0 ? 1 : 0,
-    summary: input.flags["dry-run"] === true
-      ? `[flow.push] dry-run — ${data.refs.length} ref(s), ${data.publications.length} publication candidate(s)`
-      : data.pushed || publishedCount > 0
-        ? `[flow.push] pushed ${data.refs.length} ref(s), ${publishedCount} publication(s)`
-        : `[flow.push] refused — ${errors.length} error(s)`,
+    summary:
+      input.flags["dry-run"] === true
+        ? `[flow.push] dry-run — ${data.refs.length} ref(s), ${data.publications.length} publication candidate(s)`
+        : data.pushed || publishedCount > 0
+          ? `[flow.push] pushed ${data.refs.length} ref(s), ${publishedCount} publication(s)`
+          : `[flow.push] refused — ${errors.length} error(s)`,
   };
 }

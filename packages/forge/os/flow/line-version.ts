@@ -11,7 +11,7 @@ re-reads the tag grammar itself.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Derived version is anchored to the last tag, never the version file — the file is a release-time write and diverging is a FLOW-08 finding, not a second anchor.</item>
+  <item>Derived version anchors to the last tag, never the version file — divergence is a FLOW-08 finding.</item>
   <item>An untagged line resolves to the version-file value with source "version-file" — never throws for the untagged state itself (RFC-1493).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
@@ -54,11 +54,7 @@ async function commitsSinceRef(
 }
 
 /** Tracked modifications inside `paths` (empty = whole worktree). Non-git workdirs read as clean — the version-file fallback then applies. */
-async function dirtyPaths(
-  repoRoot: string,
-  paths: string[],
-  io: WorkspaceIO,
-): Promise<number> {
+async function dirtyPaths(repoRoot: string, paths: string[], io: WorkspaceIO): Promise<number> {
   let entries: string[];
   try {
     entries = (await statusTracked(repoRoot, io)).entries;

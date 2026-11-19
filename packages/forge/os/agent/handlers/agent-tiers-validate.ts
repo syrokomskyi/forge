@@ -9,7 +9,7 @@ binding (blocking) and unresolvable invoke bindings.
 Autonomous — reads forge.yaml + the generated command manifest only.
 </purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never resolve tiers semantically — validation checks declared gate refs only.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -61,7 +61,9 @@ export async function runAgentTiersValidate(
   const parsed = forgeYaml === null ? null : yamlParse(forgeYaml);
   // DEL-01 must see malformed entries — lint the raw list, not the filtered one.
   const rawDelegable = (parsed as { delegable?: unknown } | null)?.delegable;
-  const rawClasses = Array.isArray(rawDelegable) ? (rawDelegable as (Record<string, unknown> | null)[]) : [];
+  const rawClasses = Array.isArray(rawDelegable)
+    ? (rawDelegable as (Record<string, unknown> | null)[])
+    : [];
   if (rawDelegable !== undefined && rawDelegable !== null && !Array.isArray(rawDelegable)) {
     diagnostics.push({
       ruleId: "DEL-01",
@@ -78,7 +80,8 @@ export async function runAgentTiersValidate(
         ruleId: "DEL-01",
         severity: "error",
         target: "(malformed)",
-        message: "delegable contains a malformed entry (null or non-object) — every entry requires { class, gate, schema, boundary }",
+        message:
+          "delegable contains a malformed entry (null or non-object) — every entry requires { class, gate, schema, boundary }",
       });
       continue;
     }
@@ -95,7 +98,13 @@ export async function runAgentTiersValidate(
       continue;
     }
     const bad = gate.find(
-      (g) => typeof g !== "string" && !(typeof g === "object" && g !== null && typeof (g as { command?: unknown }).command === "string"),
+      (g) =>
+        typeof g !== "string" &&
+        !(
+          typeof g === "object" &&
+          g !== null &&
+          typeof (g as { command?: unknown }).command === "string"
+        ),
     );
     if (bad !== undefined) {
       diagnostics.push({
@@ -111,15 +120,21 @@ export async function runAgentTiersValidate(
   const manifestSrc = await io
     .readFile(path.join(root, "docs", "command-manifest.generated.yaml"))
     .catch(() => null);
-  const manifest = manifestSrc === null ? null : (yamlParse(manifestSrc) as { commands?: { name?: string }[] } | null);
-  const registered = new Set((manifest?.commands ?? []).map((c) => c.name).filter((n): n is string => typeof n === "string"));
+  const manifest =
+    manifestSrc === null
+      ? null
+      : (yamlParse(manifestSrc) as { commands?: { name?: string }[] } | null);
+  const registered = new Set(
+    (manifest?.commands ?? []).map((c) => c.name).filter((n): n is string => typeof n === "string"),
+  );
 
   if (registered.size === 0 && manifestSrc === null) {
     diagnostics.push({
       ruleId: "DEL-02",
       severity: "warning",
       target: "forge.yaml",
-      message: "docs/command-manifest.generated.yaml absent — gate resolution unverified; regenerate the manifest",
+      message:
+        "docs/command-manifest.generated.yaml absent — gate resolution unverified; regenerate the manifest",
     });
   }
   for (const d of classes) {
@@ -180,7 +195,12 @@ export async function runAgentTiersValidate(
   } else if (binding) {
     const shape = validateBindingShape(binding);
     if (shape !== null) {
-      diagnostics.push({ ruleId: "DEL-05", severity: "error", target: "agentTiers.cheap", message: `agentTiers.cheap: ${shape}` });
+      diagnostics.push({
+        ruleId: "DEL-05",
+        severity: "error",
+        target: "agentTiers.cheap",
+        message: `agentTiers.cheap: ${shape}`,
+      });
     }
     const scan = (label: string, value: unknown): void => {
       if (typeof value === "string" && SECRET_RE.test(value)) {
@@ -195,8 +215,17 @@ export async function runAgentTiersValidate(
     for (const [k, v] of Object.entries(binding as unknown as Record<string, unknown>)) {
       if (typeof v === "string" && /key|token|secret/i.test(k)) scan(k, v);
     }
-    const inv = binding.invoke as { argv?: unknown; env?: Record<string, unknown>; endpoint?: unknown; endpointRef?: unknown; keyRef?: unknown };
-    if (Array.isArray(inv.argv)) inv.argv.forEach((v, i) => { if (typeof v === "string") scan(`invoke.argv[${i}]`, v); });
+    const inv = binding.invoke as {
+      argv?: unknown;
+      env?: Record<string, unknown>;
+      endpoint?: unknown;
+      endpointRef?: unknown;
+      keyRef?: unknown;
+    };
+    if (Array.isArray(inv.argv))
+      inv.argv.forEach((v, i) => {
+        if (typeof v === "string") scan(`invoke.argv[${i}]`, v);
+      });
     if (inv.env && typeof inv.env === "object") {
       for (const [k, v] of Object.entries(inv.env)) scan(`invoke.env.${k}`, v);
     }

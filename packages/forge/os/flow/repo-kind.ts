@@ -9,7 +9,7 @@ Generated repositories are never blocked by the guard or by flow.check.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>A marker that fails the schema is a structured error (FLOW-05 material), never an exemption — implicit exemption by malformed file would silently unprotect a governed repo.</item>
+  <item>A marker failing the schema is a structured FLOW-05 error, never an exemption — malformed files stay governed.</item>
   <item>Bare repositories read root files via `git show HEAD:<name>` — they carry no working tree.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>

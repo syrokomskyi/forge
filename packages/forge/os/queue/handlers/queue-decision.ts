@@ -15,6 +15,7 @@ shape).</purpose>
   <item>Do not update existing entries — append-only; a wrong entry is
   superseded by a new one.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1601: ledger writers assign rather than append — queue.decision
   stamps createdAt/answeredAt and schema-gates the write.</item>

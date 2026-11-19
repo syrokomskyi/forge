@@ -10,7 +10,7 @@ sibling-relative paths (../systems-cache, link:../…) resolving unchanged.</pur
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>`@` in the directory name is a fixed operator decision (resolutions #1, FI-1) — it cannot collide with a real checkout because no governed branch slug contains it.</item>
+  <item>`@` in the directory name is fixed operator policy — no governed branch slug contains it, so no collision.</item>
   <item>The path derives from the branch name only — renames of the primary directory stay invisible to the registry entry.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
@@ -44,10 +44,7 @@ import { topLevel, worktreeList } from "./git.ts";
  * when the output lists no worktree; when every entry is bare it falls back
  * to the first entry.
  */
-export async function primaryWorktree(
-  io: WorkspaceIO,
-  anyWorktree: string,
-): Promise<string> {
+export async function primaryWorktree(io: WorkspaceIO, anyWorktree: string): Promise<string> {
   const worktrees = await worktreeList(anyWorktree, io);
   const primary = worktrees.find((w) => !w.bare) ?? worktrees[0];
   if (!primary) {
@@ -81,10 +78,7 @@ export interface StateRoots {
   isPrimary: boolean;
 }
 
-export async function resolveStateRoots(
-  repoRoot: string,
-  io: WorkspaceIO,
-): Promise<StateRoots> {
+export async function resolveStateRoots(repoRoot: string, io: WorkspaceIO): Promise<StateRoots> {
   const top = await topLevel(repoRoot, io);
   // Both frames canonicalized — git's toplevel and worktreeList paths are
   // native real paths, while the caller's repoRoot may be an 8.3 alias or

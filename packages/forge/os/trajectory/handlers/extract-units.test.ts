@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>extract-units coverage for trajectory.index — green-admission gating, situation-similarity recall, and outcome.record utilityScore feeds.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -15,7 +15,6 @@ import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runTrajectoryIndex } from "./trajectory-index.ts";
-
 
 import type { ForgeRuntimeContext } from "../../../src/types.ts";
 
@@ -36,7 +35,9 @@ function flags(f: Record<string, unknown> = {}) {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "trajectory-"));
   await mkdir(join(root, "docs", "sessions"), { recursive: true });
-  await writeFile(join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"), `---
+  await writeFile(
+    join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"),
+    `---
 id: s-green
 verdict: green
 taskKind: reconcile
@@ -46,8 +47,11 @@ filesChanged: [missions/dp7/wip.md]
 date: 2026-10-30
 ---
 body
-`);
-  await writeFile(join(root, "docs", "sessions", "2026-10-29-12-00-00-bbbbbb.md"), `---
+`,
+  );
+  await writeFile(
+    join(root, "docs", "sessions", "2026-10-29-12-00-00-bbbbbb.md"),
+    `---
 id: s-red
 verdict: red
 taskKind: deploy
@@ -55,7 +59,8 @@ commands: [mission.deploy]
 date: 2026-10-29
 ---
 body
-`);
+`,
+  );
 });
 
 afterEach(async () => {

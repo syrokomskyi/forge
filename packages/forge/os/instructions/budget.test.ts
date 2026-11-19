@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1466 instructions tests — AC-3 (over-budget → INSTR-01), AC-4 (scar.migrate → fragment entry + bullet removed + catalogRefs), AC-5 (invariant-shaped bullet → blocking refusal).</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -37,7 +37,10 @@ function flags(f: Record<string, unknown>) {
   return { argv: [], flags: f } as never;
 }
 
-async function seed(budgetYaml = true, agentsBody = "## Section A\n- a scar bullet Discovered during RFC-1400 fo-fix\n") {
+async function seed(
+  budgetYaml = true,
+  agentsBody = "## Section A\n- a scar bullet Discovered during RFC-1400 fo-fix\n",
+) {
   await writeFile(
     join(root, "forge.yaml"),
     `schema: forge/config@1\n${budgetYaml ? "instructions:\n  budget:\n    maxLinesPerFile: 3\n    maxTokensPerFile: 40\n    exemptSections:\n      - Verbund\n" : ""}`,

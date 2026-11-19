@@ -20,6 +20,7 @@ registry is not an error — records are created by friction.add.</purpose>
   <item>Do not match frictions or compute recurrences — that is the retro
   skill's job; this command only checks registry integrity.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1433: r3 polish — measure min(1), consistent entries reporting
 

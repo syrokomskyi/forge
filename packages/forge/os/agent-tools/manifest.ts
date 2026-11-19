@@ -13,6 +13,8 @@
   <item>No kernel/engine imports — the manifest is parsed from disk, never from a live registry (autonomous module).</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 
 import { createHash } from "node:crypto";

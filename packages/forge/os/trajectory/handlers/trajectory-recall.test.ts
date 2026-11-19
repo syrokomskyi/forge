@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1472 trajectory tests — green-admission gating, situation-similarity recall, outcome.record feeds utilityScore.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -37,7 +37,9 @@ function flags(f: Record<string, unknown> = {}) {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "trajectory-"));
   await mkdir(join(root, "docs", "sessions"), { recursive: true });
-  await writeFile(join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"), `---
+  await writeFile(
+    join(root, "docs", "sessions", "2026-10-30-12-00-00-aaaaaa.md"),
+    `---
 id: s-green
 verdict: green
 taskKind: reconcile
@@ -47,8 +49,11 @@ filesChanged: [missions/dp7/wip.md]
 date: 2026-10-30
 ---
 body
-`);
-  await writeFile(join(root, "docs", "sessions", "2026-10-29-12-00-00-bbbbbb.md"), `---
+`,
+  );
+  await writeFile(
+    join(root, "docs", "sessions", "2026-10-29-12-00-00-bbbbbb.md"),
+    `---
 id: s-red
 verdict: red
 taskKind: deploy
@@ -56,7 +61,8 @@ commands: [mission.deploy]
 date: 2026-10-29
 ---
 body
-`);
+`,
+  );
 });
 
 afterEach(async () => {
@@ -66,7 +72,10 @@ afterEach(async () => {
 describe("trajectory.recall (RFC-1472)", () => {
   test("task-matched unit ranks top + journaled", async () => {
     await runTrajectoryIndex(flags({}), ctx());
-    const res = await runTrajectoryRecall(flags({ task: "reconcile diverged workpiece", k: 5 }), ctx());
+    const res = await runTrajectoryRecall(
+      flags({ task: "reconcile diverged workpiece", k: 5 }),
+      ctx(),
+    );
     expect(res.data?.units[0]?.producer.sessionId).toBe("s-green");
     expect(res.data?.recallId.length).toBeGreaterThan(0);
     expect(res.exitCode).toBe(0);
@@ -87,7 +96,9 @@ describe("TRAJ-02 staleness semantics (RFC-1475 AC-4, AC-5)", () => {
   }
 
   test("present-but-empty index → TRAJ-02, never TRAJ-01", async () => {
-    await writeIndex("schema: forge/trajectory-index@1\nsourceWatermark: docs/sessions/9999.md\nunits: []\n");
+    await writeIndex(
+      "schema: forge/trajectory-index@1\nsourceWatermark: docs/sessions/9999.md\nunits: []\n",
+    );
     const res = await runTrajectoryRecall(flags({ task: "x" }), ctx());
     expect(res.exitCode).toBe(1);
     expect(res.summary).toContain("TRAJ-02");
@@ -118,14 +129,17 @@ units:
   test("sourceWatermark older than the newest session source → TRAJ-02", async () => {
     await runTrajectoryIndex(flags({}), ctx());
     // A newer session file lands after the index was built → stale.
-    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-dddddd.md"), `---
+    await writeFile(
+      join(root, "docs", "sessions", "2026-10-31-12-00-00-dddddd.md"),
+      `---
 id: s-newer
 verdict: green
 taskKind: deploy
 date: 2026-10-31
 ---
 body
-`);
+`,
+    );
     const res = await runTrajectoryRecall(flags({ task: "x" }), ctx());
     expect(res.exitCode).toBe(1);
     expect(res.summary).toContain("TRAJ-02");
@@ -160,12 +174,18 @@ units:
 
   test("corrupt units.yaml → TRAJ-02, never a raw exception", async () => {
     await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
-    await writeFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "units: {a: map, not: a-list}\n");
+    await writeFile(
+      join(root, "docs", ".index", "trajectory", "units.yaml"),
+      "units: {a: map, not: a-list}\n",
+    );
     const res = await runTrajectoryRecall(flags({ task: "x" }), ctx());
     expect(res.exitCode).toBe(1);
     expect(res.summary).toContain("TRAJ-02");
     expect(res.data?.diagnostics?.[0]?.ruleId).toBe("TRAJ-02");
-    await writeFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "units: [unclosed\n  - : :");
+    await writeFile(
+      join(root, "docs", ".index", "trajectory", "units.yaml"),
+      "units: [unclosed\n  - : :",
+    );
     const res2 = await runTrajectoryRecall(flags({ task: "x" }), ctx());
     expect(res2.data?.diagnostics?.[0]?.ruleId).toBe("TRAJ-02");
   });
@@ -176,7 +196,11 @@ describe("recalls.jsonl append-only journal (RFC-1475 AC-10)", () => {
     await runTrajectoryIndex(flags({}), ctx());
     await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
     await runTrajectoryRecall(flags({ task: "deploy" }), ctx());
-    const lines = (await readFile(join(root, "docs", ".index", "trajectory", "recalls.jsonl"), "utf8")).trim().split("\n");
+    const lines = (
+      await readFile(join(root, "docs", ".index", "trajectory", "recalls.jsonl"), "utf8")
+    )
+      .trim()
+      .split("\n");
     expect(lines.length).toBe(2);
     expect(JSON.parse(lines[0]!).id).toMatch(/^R-/);
     expect(JSON.parse(lines[1]!).task).toBe("deploy");
@@ -188,7 +212,18 @@ describe("recalls.jsonl append-only journal (RFC-1475 AC-10)", () => {
     const jsonl = join(root, "docs", ".index", "trajectory", "recalls.jsonl");
     await appendFile(jsonl, `{"id":"R-broken`);
     const warns: string[] = [];
-    const capture = { ...ctx(), logger: { info() {}, warn(m: string) { warns.push(m); }, error() {}, success() {}, section() {} } } as unknown as ForgeRuntimeContext;
+    const capture = {
+      ...ctx(),
+      logger: {
+        info() {},
+        warn(m: string) {
+          warns.push(m);
+        },
+        error() {},
+        success() {},
+        section() {},
+      },
+    } as unknown as ForgeRuntimeContext;
     const res = await runTrajectoryRecall(flags({ task: "reconcile" }), capture);
     expect(res.exitCode).toBe(0);
     expect(warns.some((w) => w.includes("TRAJ-06"))).toBe(true);
@@ -204,12 +239,16 @@ describe("recalls.jsonl append-only journal (RFC-1475 AC-10)", () => {
     await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
     await writeFile(
       join(root, "docs", ".index", "trajectory", "recalls.yaml"),
-      "schema: forge/trajectory-recalls@1\nrecalls:\n  - {id: R-legacy-1, task: reconcile, unitsReturned: [\"trajectory:s-green\"], at: \"2026-10-01T00:00:00Z\"}\n",
+      'schema: forge/trajectory-recalls@1\nrecalls:\n  - {id: R-legacy-1, task: reconcile, unitsReturned: ["trajectory:s-green"], at: "2026-10-01T00:00:00Z"}\n',
     );
     const res = await runOutcomeRecord(flags({ recall: "R-legacy-1", helped: true }), ctx());
     expect(res.exitCode).toBe(0);
     expect(res.data?.unitUpdates).toBe(1);
-    const lines = (await readFile(join(root, "docs", ".index", "trajectory", "recalls.jsonl"), "utf8")).trim().split("\n");
+    const lines = (
+      await readFile(join(root, "docs", ".index", "trajectory", "recalls.jsonl"), "utf8")
+    )
+      .trim()
+      .split("\n");
     expect(lines.some((l) => l.includes("R-legacy-1"))).toBe(true);
   });
 
@@ -219,7 +258,7 @@ describe("recalls.jsonl append-only journal (RFC-1475 AC-10)", () => {
     await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
     await writeFile(
       join(root, "docs", ".index", "trajectory", "recalls.yaml"),
-      "schema: forge/trajectory-recalls@1\nrecalls:\n  - {id: {nested: 1}, task: x, unitsReturned: [], at: \"2026-10-01T00:00:00Z\"}\n",
+      'schema: forge/trajectory-recalls@1\nrecalls:\n  - {id: {nested: 1}, task: x, unitsReturned: [], at: "2026-10-01T00:00:00Z"}\n',
     );
     await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
     const first = (await readFile(jsonl, "utf8")).trim().split("\n").length;
@@ -231,7 +270,6 @@ describe("recalls.jsonl append-only journal (RFC-1475 AC-10)", () => {
   });
 });
 
-
 describe("recallId sequence derivation (RFC-1480 AC-2)", () => {
   test("next recall seq derives from journal id segments, not records.length — a dropped line cannot collide", async () => {
     await runTrajectoryIndex(flags({}), ctx());
@@ -241,8 +279,18 @@ describe("recallId sequence derivation (RFC-1480 AC-2)", () => {
     await writeFile(
       join(root, "docs", ".index", "trajectory", "recalls.jsonl"),
       [
-        JSON.stringify({ id: "R-20261030-03-aaaa", task: "x", unitsReturned: [], at: "2026-10-30T01:00:00Z" }),
-        JSON.stringify({ id: "R-20261030-07-bbbb", task: "y", unitsReturned: [], at: "2026-10-30T02:00:00Z" }),
+        JSON.stringify({
+          id: "R-20261030-03-aaaa",
+          task: "x",
+          unitsReturned: [],
+          at: "2026-10-30T01:00:00Z",
+        }),
+        JSON.stringify({
+          id: "R-20261030-07-bbbb",
+          task: "y",
+          unitsReturned: [],
+          at: "2026-10-30T02:00:00Z",
+        }),
         "",
       ].join("\n"),
     );

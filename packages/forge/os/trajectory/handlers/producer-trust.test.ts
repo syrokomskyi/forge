@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1475 producer-trust tests — {workshopId, sessionClass} bucket aggregation (AC-6), vendored isolation, sparse-bucket 0.5, producerStats shard materialization.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -38,7 +38,12 @@ async function writeSession(name: string, frontmatter: string): Promise<void> {
   await writeFile(join(root, "docs", "sessions", name), `---\n${frontmatter}\n---\nbody\n`);
 }
 
-function vendoredUnit(id: string, producer: Partial<ProcedureUnit["producer"]> = {}, usedBy: Partial<ProcedureUnit["usedBy"]> = {}, taskKind = "deploy") {
+function vendoredUnit(
+  id: string,
+  producer: Partial<ProcedureUnit["producer"]> = {},
+  usedBy: Partial<ProcedureUnit["usedBy"]> = {},
+  taskKind = "deploy",
+) {
   return {
     id,
     kind: "trajectory",
@@ -64,17 +69,23 @@ function vendoredUnit(id: string, producer: Partial<ProcedureUnit["producer"]> =
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "trajectory-trust-"));
   await mkdir(join(root, "docs", "sessions"), { recursive: true });
-  await writeSession("2026-10-30-12-00-00-aaaaaa.md", `id: s-mission
+  await writeSession(
+    "2026-10-30-12-00-00-aaaaaa.md",
+    `id: s-mission
 verdict: green
 types: [mission]
 taskKind: reconcile
 commands: [mission.reconcile]
-date: 2026-10-30`);
-  await writeSession("2026-10-29-12-00-00-bbbbbb.md", `id: s-adhoc
+date: 2026-10-30`,
+  );
+  await writeSession(
+    "2026-10-29-12-00-00-bbbbbb.md",
+    `id: s-adhoc
 verdict: green
 taskKind: reconcile
 commands: [mission.reconcile]
-date: 2026-10-29`);
+date: 2026-10-29`,
+  );
 });
 
 afterEach(async () => {
@@ -83,11 +94,14 @@ afterEach(async () => {
 
 describe("producer trust buckets (RFC-1475 AC-6)", () => {
   test("units in one {workshopId, sessionClass} bucket share the aggregated trust", async () => {
-    await writeSession("2026-10-28-12-00-00-cccccc.md", `id: s-adhoc-2
+    await writeSession(
+      "2026-10-28-12-00-00-cccccc.md",
+      `id: s-adhoc-2
 verdict: green
 taskKind: reconcile
 commands: [mission.reconcile]
-date: 2026-10-28`);
+date: 2026-10-28`,
+    );
     await runTrajectoryIndex(flags({}), ctx());
     const recall = await runTrajectoryRecall(flags({ task: "reconcile", k: 20 }), ctx());
     const adhoc = recall.data?.units.filter((u) => u.producer.sessionId.startsWith("s-adhoc"));

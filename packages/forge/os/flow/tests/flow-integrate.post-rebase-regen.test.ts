@@ -5,6 +5,8 @@
   <item>No real generators — a stub invoke port rewrites the file.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 // Test-Reason: requirement AC-1, AC-2, AC-3, AC-5 (RFC-1574)
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";

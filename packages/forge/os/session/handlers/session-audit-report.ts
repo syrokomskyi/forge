@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1471: session.audit.report — read-model over docs/sessions/audit/*.audit.yaml sidecars + frictions: per-rule frequency, sessions-with-findings, and whether an audit finding class has a friction on file.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Never run detectors — the report is a read-model over recorded audit sidecars.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

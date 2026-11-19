@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1470 context.assemble tests — budgeted slate ranks task-relevant units first, every unit carries source + reasons, missing index blocks.</purpose>
 <non-goals>
-  <item>TODO(compass): record the boundary this file must not take on.</item>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -78,7 +78,10 @@ describe("context.assemble (RFC-1470)", () => {
 
   test("CTX-02: stale index vs a newer session source → warn", async () => {
     await mkdir(join(root, "docs", "sessions"), { recursive: true });
-    await writeFile(join(root, "docs", "sessions", "2026-10-31-18-00-00-bbbbbb.md"), `---\nid: s-new\n---\nbody`);
+    await writeFile(
+      join(root, "docs", "sessions", "2026-10-31-18-00-00-bbbbbb.md"),
+      `---\nid: s-new\n---\nbody`,
+    );
     const warns: string[] = [];
     const c = ctx() as unknown as { logger: { warn: (m: string) => void } };
     c.logger.warn = (m: string) => warns.push(m);

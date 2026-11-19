@@ -10,6 +10,7 @@ run fired (status pass).</purpose>
   <item>Runs are recorded, never evaluated here — pass/fail semantics stay
   inside gate.probe's report construction.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>File order is canonical; `at` is informational — "last run" = the last
   record for the rule in file order.</item>

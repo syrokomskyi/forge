@@ -14,6 +14,8 @@ spawn.</purpose>
   is the integrate-time backstop for allocations that raced it.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
 */
 
 import { git } from "./git.ts";

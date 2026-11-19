@@ -11,7 +11,7 @@ a stale port for the same mainSha, and FLOW-BM-01/02 refusals hold.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>main-ahead state is built by a detached worktree commit under FORGE_FLOW_OP=install (the guard's adoption vocabulary) — the only way to commit onto a protected line in a fixture.</item>
+  <item>main-ahead state builds via a detached worktree commit under FORGE_FLOW_OP=install — the only protected-line fixture path.</item>
   <item>The develop-side change for a conflict lands through a real session branch + integrate — the same path production uses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
@@ -51,10 +51,7 @@ async function repoWithPendingRelease(opts?: { conflicting?: boolean }): Promise
   const repo = await initRepo({ prefix: "flow-bm-" });
   dirs.push(repo);
   await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
-  await writeFile(
-    join(repo, "package.json"),
-    '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n',
-  );
+  await writeFile(join(repo, "package.json"), '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n');
   await writeFile(join(repo, "fix.txt"), "A\n");
   await gitExec(repo, ["add", "-A"]);
   await gitExec(repo, ["commit", "-m", "config"]);
@@ -154,7 +151,12 @@ describe("flow.backmerge", () => {
     expect(data.portWorktree).not.toBeNull();
     dirs.push(data.portWorktree!);
     // Merge still in progress.
-    const mergeHead = await gitExec(data.portWorktree!, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+    const mergeHead = await gitExec(data.portWorktree!, [
+      "rev-parse",
+      "-q",
+      "--verify",
+      "MERGE_HEAD",
+    ]);
     expect(mergeHead.exitCode).toBe(0);
 
     // Operator resolves + commits --no-edit, then integrates the port.

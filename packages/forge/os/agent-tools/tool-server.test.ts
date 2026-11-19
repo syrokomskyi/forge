@@ -1,3 +1,14 @@
+/*
+<MODULE_CONTRACT>
+<purpose>Unit tests for forge agent-tools server — covers the tool server suite surface and its observable contract.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
+*/
+
 import { describe, expect, it } from "vitest";
 
 import { callTool, listTools, type AgentToolsRuntime, type CommandRunner } from "./server.ts";

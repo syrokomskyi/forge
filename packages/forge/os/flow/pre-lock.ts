@@ -11,14 +11,9 @@ append-only pre-lock verdict records at
   or whether the attempt restarts (the progress guarantee).</item>
   <item>No lock management — os/flow/locks.ts owns integrate.lock.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>The selector is a MIRROR of werkstatt-site's GATE_STEP_DOMAINS /
-  ALWAYS_IN_DOMAIN / DOCS_DOMAIN vocabulary (RFC-1582) — forge cannot import
-  @warpgogol/werkstatt-site (autonomy). It feeds only the >half restart
-  decision, never the gate's own selection, so drift can over-select
-  (extra Phase A) or under-select (extra under-lock steps — today's status
-  quo), never skip a required check: every locked run still executes the
-  real gate over `base...HEAD` and undeclared domains stay always-in.</item>
+  <item>The selector mirrors werkstatt-site's GATE_STEP_DOMAINS vocabulary (autonomy forbids importing) — drift only over/under-selects, never skips.</item>
   <item>Unclassified or always-in-domain delta paths select every step —
   the same fail-closed direction the real gate takes.</item>
 </KEY_DECISIONS>

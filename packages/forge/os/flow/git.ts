@@ -8,18 +8,17 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Exit code 1 is a legitimate answer for probe-style commands (is-ancestor, config --get, symbolic-ref, rev-parse --verify, show HEAD:file) — helpers map it to a typed answer and throw only on unexpected failures.</item>
+  <item>Exit 1 is a legitimate probe-command answer — helpers map it to typed answers; unexpected failures throw.</item>
   <item>flow.check/flow.install require git >= 2.30 — requireGit fails through the standard error path naming the detected version.</item>
-  <item>FORGE_STATE_FILES is an exact-path/prefix allowlist, never a glob — and because tolerated paths stay untracked-not-ignored on disk, removers must delete them right before `git worktree remove` or the dirty verdict stops predicting removability (RFC-1515 r1).</item>
+  <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1515: record rfc-1515 review r1 fixes, key decisions and corrected probe path</item>
   <item>ADR-0124: enable git rerere in flow-managed repositories</item>
   <item>RFC-1531: worktreeAdd for --reattach; isForgeStatePath exported for the shared dirty classifier</item>
-  <history>RFC-1486, RFC-1487, RFC-1490</history>
+  <history>RFC-1486, RFC-1487, RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -133,10 +132,7 @@ export async function listLocalBranches(repoRoot: string, io: WorkspaceIO): Prom
 }
 
 /** Remote-tracking refs under `refs/remotes` as `<remote>/<branch>` shorts. */
-export async function listRemoteBranches(
-  repoRoot: string,
-  io: WorkspaceIO,
-): Promise<string[]> {
+export async function listRemoteBranches(repoRoot: string, io: WorkspaceIO): Promise<string[]> {
   const result = throwOnFailure(
     await git(repoRoot, io, ["for-each-ref", "--format=%(refname:short)", "refs/remotes"]),
     "git for-each-ref refs/remotes",
@@ -154,12 +150,7 @@ export async function isAncestor(
   ancestor: string,
   descendant: string,
 ): Promise<boolean> {
-  const result = await git(repoRoot, io, [
-    "merge-base",
-    "--is-ancestor",
-    ancestor,
-    descendant,
-  ]);
+  const result = await git(repoRoot, io, ["merge-base", "--is-ancestor", ancestor, descendant]);
   if (result.exitCode === 0) return true;
   if (result.exitCode === 1) return false;
   throw new Error(
@@ -174,12 +165,14 @@ export async function lastCommitAt(
   ref: string,
 ): Promise<string | null> {
   const result = await git(repoRoot, io, ["log", "-1", "--format=%cI", ref]);
-  return result.exitCode === 0 && result.stdout.trim().length > 0
-    ? result.stdout.trim()
-    : null;
+  return result.exitCode === 0 && result.stdout.trim().length > 0 ? result.stdout.trim() : null;
 }
 
-export async function branchExists(repoRoot: string, io: WorkspaceIO, name: string): Promise<boolean> {
+export async function branchExists(
+  repoRoot: string,
+  io: WorkspaceIO,
+  name: string,
+): Promise<boolean> {
   const result = await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/heads/${name}`]);
   return result.exitCode === 0;
 }
@@ -319,7 +312,9 @@ export async function configGet(
   const result = await git(repoRoot, io, ["config", "--get", key]);
   if (result.exitCode === 0) return result.stdout.trim();
   if (result.exitCode === 1) return null;
-  throw new Error(`git config --get ${key} failed (exit ${result.exitCode}): ${result.stderr.trim()}`);
+  throw new Error(
+    `git config --get ${key} failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
+  );
 }
 
 /**

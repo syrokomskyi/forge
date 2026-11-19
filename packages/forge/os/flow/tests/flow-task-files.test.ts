@@ -3,6 +3,9 @@
 <purpose>RFC-1509 unit tests for preserveTaskFiles — the copy of
 .forge/task/ into &lt;common&gt;/forge/tasks/&lt;owner id&gt;/ before a task
 worktree is removed.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 4 — preserveTaskFiles unit tests</item>
@@ -33,14 +36,23 @@ describe("preserveTaskFiles", () => {
 
     const copied = await preserveTaskFiles(common, worktree, "T-0042", io);
     expect(copied.map((p) => path.basename(p)).sort()).toEqual(["brief.md", "report.yaml"]);
-    expect(await readFile(path.join(common, "forge", "tasks", "T-0042", "brief.md"), "utf8")).toBe("the brief");
-    expect(await readFile(path.join(common, "forge", "tasks", "T-0042", "report.yaml"), "utf8")).toBe("the report");
+    expect(await readFile(path.join(common, "forge", "tasks", "T-0042", "brief.md"), "utf8")).toBe(
+      "the brief",
+    );
+    expect(
+      await readFile(path.join(common, "forge", "tasks", "T-0042", "report.yaml"), "utf8"),
+    ).toBe("the report");
   });
 
   it("is a no-op when .forge/task/ is absent", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "preserve-"));
     const io = resolveIo(undefined);
-    const copied = await preserveTaskFiles(path.join(root, "common"), path.join(root, "wt"), "T-0001", io);
+    const copied = await preserveTaskFiles(
+      path.join(root, "common"),
+      path.join(root, "wt"),
+      "T-0001",
+      io,
+    );
     expect(copied).toEqual([]);
   });
 
@@ -54,6 +66,8 @@ describe("preserveTaskFiles", () => {
     await preserveTaskFiles(common, worktree, "T-0001", io);
     await writeFile(path.join(worktree, ".forge", "task", "report.yaml"), "v2");
     await preserveTaskFiles(common, worktree, "T-0001", io);
-    expect(await readFile(path.join(common, "forge", "tasks", "T-0001", "report.yaml"), "utf8")).toBe("v2");
+    expect(
+      await readFile(path.join(common, "forge", "tasks", "T-0001", "report.yaml"), "utf8"),
+    ).toBe("v2");
   });
 });

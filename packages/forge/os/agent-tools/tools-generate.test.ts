@@ -1,3 +1,14 @@
+/*
+<MODULE_CONTRACT>
+<purpose>Unit tests for command.tools.generate — covers the tools generate suite surface and its observable contract.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the implementation under test owns the behaviour.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+</CHANGE_SUMMARY>
+*/
+
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

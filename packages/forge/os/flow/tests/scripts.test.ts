@@ -1,8 +1,8 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Hook-script runner tests (RFC-1487 step 2): absent script → skipped,
-non-zero exit → failed with a stderr tail, and the primary worktree's copy
-runs even when the branch worktree carries a different one
+<purpose>Flow hook-scripts runner tests (RFC-1487 step 2): absent scripts →
+skipped, non-zero exits → failed with a stderr tail, and the primary
+worktree's copy runs even when the branch worktree carries a different one
 (AUDIT-RFC-1487-G1).</purpose>
 <non-goals>
   <item>No lifecycle coverage — handler tests own refusal mapping.</item>
@@ -54,7 +54,11 @@ describe("runFlowScript", () => {
   it("runs the primary copy with cwd and env; exit 0 → done", async () => {
     const primary = await dir();
     const branch = await dir();
-    await writeScript(primary, "worktree-setup", 'pwd > "$FLOW_PRIMARY/out.txt"; echo "$FLOW_BRANCH" > branch.txt');
+    await writeScript(
+      primary,
+      "worktree-setup",
+      'pwd > "$FLOW_PRIMARY/out.txt"; echo "$FLOW_BRANCH" > branch.txt',
+    );
     const result = await runFlowScript(ambientIo, "worktree-setup", {
       primary,
       cwd: branch,

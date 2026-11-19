@@ -97,6 +97,7 @@ describe("runNamingConventionLint", () => {
     }
   });
 
+  // INV-naming-01: the exemption expectations below pin the canonical rules bound in ./naming-convention.ts.
   test("exempts dotfiles", async () => {
     const dir = await makeTempRepo();
     try {

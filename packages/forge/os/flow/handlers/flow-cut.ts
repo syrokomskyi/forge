@@ -15,14 +15,13 @@ released with no mutation.</purpose>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>The integration lock spans open→main-move so no second integration can interleave between the gate and the main fast-forward.</item>
-  <item>RFC-1597: post-discovery plan prerequisites collect into blockers[] rather than first-refusal — one evaluator serves --dry-run and the real cut; discovery failures (adoption, line discovery, repo line) still short-circuit. Resume keys on the subject's tags COVERING requested --lines (superset resumes; non-covering proceeds fresh).</item>
-  <item>RFC-1597: the internal integrate's owner-command regen runs with the primary as workspace root — generated-manifest collateral lands uncommitted in the primary while the worktree fold sees no diff. revertCutPrimaryHeal restores docs/*.generated.* to HEAD after the internal integrate, on success and refusal alike.</item>
+  <item>Post-discovery prerequisites collect into blockers[] — one evaluator serves --dry-run and real cut; resume keys on covering tags.</item>
+  <item>The internal integrate regen runs with primary as workspace root; revertCutPrimaryHeal restores generated docs to HEAD afterwards.</item>
   <item>Version writes are verified textual replacements (VersionWriteError → FLOW-CUT-11); the release branch is removed on that failure per AUDIT-RFC-1490-C3.</item>
-  <item>Resume keys on the develop tip's `chore(release):` subject — the subject is the persisted declaration of which tags the release intends.</item>
-  <item>RFC-1502: `git add -u` folds the release-prepare hook's tracked edits in; its untracked leftovers are listed as FLOW-CUT-14 then removed via io.rm (the integrate gate demands a clean tree, and `git clean -f` is blocked in agent sessions). Pre-tag verification extracts every named line at the release commit — a failure deletes worktree+branch before any ref or tag moves (FLOW-CUT-13).</item>
+  <item>Resume keys on the develop tip's `chore(release):` subject — the persisted release-tag declaration.</item>
+  <item>`git add -u` folds hook edits; untracked leftovers remove as FLOW-CUT-14 — pre-tag verification extracts lines at commit.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
@@ -37,7 +36,7 @@ git log (-20) to the nearest chore(release): declaration; resume fires only
 for an incomplete release (missing tags) or a tip-resident one — a buried
 completed release never re-runs its main CAS. Regression tests cover the
 buried-pending and buried-completed cases.</item>
-  <history>RFC-1490, RFC-1491, RFC-1494, RFC-1502</history>
+  <history>RFC-1490, RFC-1491, RFC-1494, RFC-1502, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
 

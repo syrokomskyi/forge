@@ -1,9 +1,10 @@
 /*
 <MODULE_CONTRACT>
-<purpose>withFlowLock + holderIsDead tests (RFC-1504, AC-1..AC-4): a lock whose
-pid does not exist on this host is broken without waiting; a live pid waits
-to the age limit; a foreign host applies the age rule only; a foreign boot
-id on this host is treated as dead. Uses injected now/sleep — no real waits.</purpose>
+<purpose>withFlowLock + holderIsDead lock-file tests on tmpdir locks (RFC-1504,
+AC-1..AC-4): a lock whose pid does not exist on this host is broken without
+waiting; a live pid waits to the age limit; a foreign host applies the age
+rule only; a foreign boot id on this host is treated as dead. Uses injected
+now/sleep — no real waits.</purpose>
 <non-goals>
   <item>No real repository — lock files live under os.tmpdir().</item>
 </non-goals>
