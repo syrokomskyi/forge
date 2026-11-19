@@ -12,9 +12,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
-
-runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
   <item>RFC-1516: bind evidence reuse to the oldest replayed result and harden committed-envelope reads for rfc-1516</item>
   <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
@@ -54,7 +51,8 @@ evidence channel — this commit closes all root causes.
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
-  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391, RFC-1453, RFC-1458</history>
+  <item>RFC-1616: close r17 refusal-polarity consumers — ADR stamp/validate twins + attested dirty verdict</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391, RFC-1453, RFC-1458, RFC-1489</history>
 </CHANGE_SUMMARY>
 */
 
@@ -316,10 +314,15 @@ export async function captureGitContext(
       : [];
   return {
     commit: commit.exitCode === 0 ? commit.stdout.trim() : "unknown",
+    // A refused dirty verdict records `true` — the envelope is signed
+    // evidence and an unprovable surface can never attest "clean"
+    // (CX-161: `exitCode !== 0` collapsed to false, so the attested
+    // record paired a real HEAD sha with a curated clean on a dirty
+    // tree — the conservative direction is the only honest one).
     workingTreeDirty:
-      status.exitCode === 0 &&
-      (status.stdout.split("\n").some((line) => line.length > 0 && !line.startsWith("!! ")) ||
-        sessionRules.length > 0),
+      status.exitCode !== 0 ||
+      status.stdout.split("\n").some((line) => line.length > 0 && !line.startsWith("!! ")) ||
+      sessionRules.length > 0,
   };
 }
 

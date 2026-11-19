@@ -51,6 +51,7 @@ evidence channel — this commit closes all root causes.
 
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: close r17 refusal-polarity consumers — ADR stamp/validate twins + attested dirty verdict</item>
 </CHANGE_SUMMARY>
 */
 
@@ -89,8 +90,14 @@ async function execGit(workspaceRoot: string, args: string[]): Promise<string> {
 }
 
 async function isAdrFileClean(workspaceRoot: string, adrRelPath: string): Promise<boolean> {
-  const status = await execGit(workspaceRoot, ["status", "--porcelain", "--", adrRelPath]);
-  return status.length === 0;
+  // A refused or failed read is NOT a clean file — the dirty verdict is
+  // unverifiable, so `exitCode !== 0 → false` (CX-159: the `execGit`
+  // nonzero→"" mapping reads a refusal as clean and skips ADR-IMP-04 on
+  // exactly the dirty file it guards; the indexUnproven asymmetry keeps
+  // every other stamp gate answering honestly, making this the only
+  // blind gate — the ADR twin of CX-157).
+  const r = await verifierGit(workspaceRoot, ["status", "--porcelain", "--", adrRelPath]);
+  return r.exitCode === 0 && r.stdout.trim().length === 0;
 }
 
 async function commitReachableFromHead(workspaceRoot: string, commitSha: string): Promise<boolean> {
@@ -269,7 +276,7 @@ export async function runAdrImplementStamp(
   if (!adrFileClean) {
     violations.push({
       rule: "ADR-IMP-04",
-      message: `ADR file ${adrRelPath} has uncommitted changes. Commit the ADR file before stamping.`,
+      message: `ADR file ${adrRelPath} has uncommitted changes or its dirty state could not be verified. Commit the ADR file before stamping.`,
     });
   }
 
