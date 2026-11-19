@@ -21,7 +21,6 @@ at cleanup without moving develop again.</purpose>
   <item>docs.archive's deferral clears only when every deferred owner ran — a skipped owner keeps .git/forge/deferred-regen.json.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1598: generated-conflict auto-resolve runs the owner generator inside a detached checked-out side (theirs → ours → take-theirs deferral), never the mixed mid-rebase index (RFC-1598)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
 
@@ -36,7 +35,8 @@ post-staging sweep surfaces MM residue with the git show : remediation.
 RFC-1602</item>
   <item>RFC-1602: document the deferred-regen fold contract in the guide and compass decisions</item>
   <item>RFC-1619: bind the integration-gate manifests step to post-rebase regen provenance (RFC-1619)</item>
-  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589, RFC-1599, RFC-1600</history>
+  <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
+  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589, RFC-1598, RFC-1599, RFC-1600</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1321,6 +1321,12 @@ async function integrateFlowBranchAttempt(
         io,
         worktreeDirty: dirty,
         invoke: opts.invoke,
+        deferManifestValidation:
+          opts.invoke !== undefined &&
+          (opts.invokeRoot ?? repoRoot) === branchWorktree &&
+          (await postRebaseOwners(branchWorktree, io)).some(
+            (owner) => owner.command === "ecosystem.manifest.generate",
+          ),
         commandRegistry: opts.commandRegistry,
         waitForeignSeconds: opts.waitForeignSeconds,
         onProgress: opts.onProgress,
