@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
-
-F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
   <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
 
 loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
@@ -59,6 +56,7 @@ evidence channel — this commit closes all root causes.
 
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1467, RFC-1489, RFC-1513, RFC-1534, RFC-1563, RFC-1569, RFC-1578</history>
 </CHANGE_SUMMARY>
 */
@@ -71,7 +69,7 @@ import {
   resolveDelegation,
 } from "../../../src/authority/delegations.ts";
 
-import { verifierGit } from "../../../src/utils/verifier-git.ts";
+import { repoShaped, verifierGit } from "../../../src/utils/verifier-git.ts";
 
 import { parse as yamlParse } from "yaml";
 import { proofSpecSchema } from "../../../src/formal/proof-spec.ts";
@@ -487,20 +485,12 @@ export function computeProbeCoverage(
 
 // ─── RFC-0625: V-32 implementation commit drift detection ──────────────────
 
-async function execGitLog(workspaceRoot: string, args: string[]): Promise<string> {
-  // verifierGit: the drift-check log is judged evidence — ambient GIT_*
-  // selectors cannot redirect it and a session-forged index/object cannot
-  // fabricate the commit list (CX-113/CX-122).
-  const r = await verifierGit(workspaceRoot, args);
-  return r.exitCode === 0 ? r.stdout.trim() : "";
-}
-
 async function checkImplementationCommitDrift(
   workspaceRoot: string,
   rfcId: string,
   createdAt: string,
   currentStatus: string,
-): Promise<{ found: boolean; commitCount: number }> {
+): Promise<{ found: boolean; commitCount: number; unverifiable?: string }> {
   // Terminal statuses are exempt: implemented is the target state, and
   // superseded/rejected RFCs may legitimately carry implement: commits from
   // work that landed before the status transition (RFC-0769 lifecycle).
@@ -517,8 +507,24 @@ async function checkImplementationCommitDrift(
     return { found: false, commitCount: 0 };
   }
 
-  const log = await execGitLog(workspaceRoot, ["log", `--since=${createdAt}`, "--oneline"]);
-
+  // verifierGit: the drift-check log is judged evidence — ambient GIT_*
+  // selectors cannot redirect it and a session-forged index/object cannot
+  // fabricate the commit list (CX-113/CX-122). A refused or failed read
+  // is NOT an empty history — the drift verdict is unverifiable, never
+  // "no drift" (CX-158).
+  const r = await verifierGit(workspaceRoot, ["log", `--since=${createdAt}`, "--oneline"]);
+  if (r.exitCode !== 0) {
+    // No repo surface anywhere in the walk-up → there is no history to
+    // drift-check and the skip is honest; a repo-shaped surface the
+    // channel refuses → the verdict is unverifiable, never "no drift".
+    if (!repoShaped(workspaceRoot)) return { found: false, commitCount: 0 };
+    return {
+      found: false,
+      commitCount: 0,
+      unverifiable: r.stderr.trim() || `git log exited ${r.exitCode}`,
+    };
+  }
+  const log = r.stdout.trim();
   if (!log) {
     return { found: false, commitCount: 0 };
   }
@@ -2124,7 +2130,15 @@ export async function validateSingleRfc(
       createdAt,
       status,
     );
-    if (driftResult.found) {
+    if (driftResult.unverifiable !== undefined) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-32",
+        `${rfcId} drift check is unverifiable — the evidence channel refused the history read (${driftResult.unverifiable})`,
+        "warning",
+      );
+    } else if (driftResult.found) {
       addViolation(
         rfcId,
         relFile,
