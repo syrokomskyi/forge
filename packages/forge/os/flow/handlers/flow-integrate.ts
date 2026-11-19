@@ -21,22 +21,12 @@ at cleanup without moving develop again.</purpose>
   <item>docs.archive's deferral clears only when every deferred owner ran — a skipped owner keeps .git/forge/deferred-regen.json.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
-
-docs.archive recorded ~12-minute inline owner regen blocking session end
-(F-0212) and left pnpm-lock.yaml MM after its safety-net restore (F-0245).
-The invalidated owner inventory now lands in .git/forge/deferred-regen.json
-for flow.integrate's post-rebase fold to sweep (record cleared only when
-every owner ran); bookkeeping pathspecs are validated before the first
-git add, the lockfile restore gained its index-side counterpart, and a
-post-staging sweep surfaces MM residue with the git show : remediation.
-
-RFC-1602</item>
   <item>RFC-1602: document the deferred-regen fold contract in the guide and compass decisions</item>
   <item>RFC-1619: bind the integration-gate manifests step to post-rebase regen provenance (RFC-1619)</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
   <item>RFC-1622: record RFC-1622 integration phase timings</item>
-  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589, RFC-1597, RFC-1598, RFC-1599, RFC-1600</history>
+  <item>RFC-1622: honor RFC-1622 receipt capability</item>
+  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589, RFC-1597, RFC-1598, RFC-1599, RFC-1600, RFC-1602</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1345,7 +1335,14 @@ async function integrateFlowBranchAttempt(
     // the expensive integration gate. Non-port path only (port entries keep
     // their own FLOW-INT-09/10 semantics); first failure refuses before the
     // rebase and before the gate spawns.
+    let manifestValidationDeferred = false;
     if (entry.port === null) {
+      manifestValidationDeferred =
+        opts.invoke?.manifestReceiptV1 === true &&
+        (opts.invokeRoot ?? repoRoot) === branchWorktree &&
+        (await postRebaseOwners(branchWorktree, io)).some(
+          (owner) => owner.command === "ecosystem.manifest.generate",
+        );
       const { runIntegratePreflight } = await import("../preflight.ts");
       const preflight = await measure(
         "preflight",
@@ -1357,12 +1354,7 @@ async function integrateFlowBranchAttempt(
             io,
             worktreeDirty: dirty,
             invoke: opts.invoke,
-            deferManifestValidation:
-              opts.invoke !== undefined &&
-              (opts.invokeRoot ?? repoRoot) === branchWorktree &&
-              (await postRebaseOwners(branchWorktree, io)).some(
-                (owner) => owner.command === "ecosystem.manifest.generate",
-              ),
+            deferManifestValidation: manifestValidationDeferred,
             commandRegistry: opts.commandRegistry,
             waitForeignSeconds: opts.waitForeignSeconds,
             onProgress: opts.onProgress,
@@ -1537,6 +1529,17 @@ async function integrateFlowBranchAttempt(
         (result) => result !== null && "diagnostics" in result,
       );
       if (regen !== null && "diagnostics" in regen) return regen;
+      if (
+        manifestValidationDeferred &&
+        (regen === null || !regen.ran.includes("ecosystem.manifest.generate"))
+      ) {
+        return refuse(
+          "FLOW-INT-12",
+          "the deferred ecosystem manifest owner was unavailable after rebase",
+          "restore the manifest owner and re-run flow.integrate",
+          { branch, developBefore, rebased: true },
+        );
+      }
       postRebaseRegen = regen ?? undefined;
     }
 
