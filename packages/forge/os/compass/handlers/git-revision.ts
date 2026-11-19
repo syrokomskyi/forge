@@ -11,7 +11,6 @@ plus getFileRevisionFromHistory and the porcelain dirty-path helpers
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1318</item>
   <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
 
 Independent clean-context verification (round 9, candidate 4436339db)
@@ -51,6 +50,7 @@ follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
+  <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <history>RFC-0352, RFC-0556, RFC-1318</history>
 </CHANGE_SUMMARY>
 */
@@ -60,6 +60,7 @@ import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
 import {
   repoShaped,
   sessionIgnoreRulePaths,
+  unprovenIgnoredPaths,
   verifierGit,
 } from "../../../src/utils/verifier-git.ts";
 import { createHash } from "node:crypto";
@@ -163,7 +164,28 @@ export async function listDirtyPaths(repoRoot: string): Promise<DirtyPathResult>
       reason: "worktree toplevel unresolvable — session ignore-rule set is unverifiable",
     };
   }
-  return { paths: [...new Set([...base, ...sessionRules])], refused: false };
+  // `!!` provenance (CX-r22): each ignored claim must trace to a
+  // TRACKED `.gitignore` — a `.gitignore` planted inside the child's own
+  // lifetime reclassifies `??` payloads as `!!` while its rule source
+  // was never checkable, so an unproven `!!` path rejoins the dirty set.
+  const unprovenIgnored = await unprovenIgnoredPaths(
+    scanRoot,
+    r.stdout
+      .split("\n")
+      .filter((line) => line.startsWith("!! "))
+      .map((line) => line.slice(3)),
+  );
+  if (unprovenIgnored === null) {
+    return {
+      paths: null,
+      refused: true,
+      reason: "ignored-path rule provenance unverifiable",
+    };
+  }
+  return {
+    paths: [...new Set([...base, ...sessionRules, ...unprovenIgnored])],
+    refused: false,
+  };
 }
 
 /**

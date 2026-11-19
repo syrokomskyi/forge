@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r15 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
+  <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -35,6 +35,7 @@ import {
   closeSync,
   existsSync,
   fstatSync,
+  watch as fsWatch,
   lstatSync,
   openSync,
   readdirSync,
@@ -698,15 +699,56 @@ function classifyTopology(
   if (rootReal !== gitDirReal && rootReal.startsWith(gitDirReal + path.sep)) {
     return { topology: "unknown", workTree: null };
   }
-  for (let level = path.resolve(repoRoot); ;) {
+  // A `.git` node counts only when git would HONOR it at discovery — the
+  // lstat-level check this replaced counted a dangling symlink or an
+  // empty directory as a worktree node git itself skips, pinning
+  // `GIT_WORK_TREE=<phantom level>` beside the real `GIT_DIR` and making
+  // every worktree-anchored verdict answer about the wrong tree (CX-r22-C):
+  //
+  // - a DIRECTORY must carry git's `is_git_directory` shape (`HEAD` +
+  //   `objects/` + `refs/` present — symlinks included, git follows them);
+  //   a dir without the shape is skipped exactly like git's walk.
+  // - a FILE is a gitfile — discovery commits to it: parseable it resolves
+  //   the named gitdir, unparseable git dies (so a resolved `gitDir`
+  //   upstream already proves the parse). Either way this level is
+  //   decisive, never skipped.
+  // - anything else (dangling symlink → `statSync` fails; FIFO, socket)
+  //   is not a node — keep walking.
+  //
+  // An honored node must resolve to THIS gitdir: a `.git` dir/gitfile
+  // pointing at a different gitdir would have steered discovery to THAT
+  // repo, so a mismatch means the surface moved mid-resolution —
+  // unprovable, answer `unknown`.
+  const honoredNode = (level: string): boolean | null => {
+    const p = path.join(level, ".git");
+    let st;
     try {
-      const st = lstatSync(path.join(level, ".git"));
-      if (st.isDirectory() || st.isFile() || st.isSymbolicLink()) {
-        return { topology: "worktree", workTree: level };
-      }
+      st = statSync(p);
     } catch {
-      /* no `.git` node at this level */
+      return null;
     }
+    if (st.isFile()) {
+      const b = safeReadBytes(p);
+      const m = b === null ? null : /^gitdir:\s*(.+)$/m.exec(b.toString("utf8").trim());
+      if (m === null) return false;
+      const target = m[1]!.trim();
+      const abs = path.isAbsolute(target) ? target : path.resolve(level, target);
+      return real(abs) === gitDirReal;
+    }
+    if (!st.isDirectory()) return null;
+    try {
+      lstatSync(path.join(p, "HEAD"));
+      if (!statSync(path.join(p, "objects")).isDirectory()) return null;
+      if (!statSync(path.join(p, "refs")).isDirectory()) return null;
+    } catch {
+      return null;
+    }
+    return real(p) === gitDirReal;
+  };
+  for (let level = path.resolve(repoRoot); ;) {
+    const honored = honoredNode(level);
+    if (honored === true) return { topology: "worktree", workTree: level };
+    if (honored === false) return { topology: "unknown", workTree: null };
     if (level === gitDir || real(level) === gitDirReal) {
       return { topology: "selfdir", workTree: null };
     }
@@ -2824,6 +2866,242 @@ export async function captureEvidenceSurface(
  * preflight. Returns false when the fingerprint is absent or the
  * preflight itself is null (an unproven surface can never be cached).
  */
+/**
+ * Armed kernel watch over the judged `.git` surface for the LENGTH of
+ * one trusted child's lifetime (CX-r22-A/B/D/F): the fingerprint
+ * reprove ends at *spawn*, but the child opens `.git` metadata inside
+ * its own lifetime — a same-UID watcher keying on
+ * `/proc/<ppid>/task/<ppid>/children` plants a refuse-on-presence file
+ * (`shallow`, `info/exclude`, `objects/info/alternates`, a loose
+ * object, a rewritten `config`/`packed-refs`/`index`) and unlinks it
+ * when the child exits, so the surface looks clean to every
+ * pre-/post-check. inotify events are queued by the kernel AT the
+ * filesystem operation — a plant+unlink inside the window still leaves
+ * its event record — so draining the watch after child close turns
+ * every mid-window touch into a deterministic refusal, never a trusted
+ * fabricated answer. `fs.watch` is inotify on Linux (the claims-index
+ * inode is watched through `/proc/self/fd/N`, which resolves to the
+ * inode — a `/proc/<pid>/fd/3` write then fires `change` exactly like a
+ * path write, CX-r22-D).
+ *
+ * Coverage: every directory under the resolved `gitDir`/`commonDir`
+ * (bounded — a new dir beneath an unwatched dir cannot appear without
+ * first firing `create` on its watched parent), the caller's repoRoot
+ * and worktree-top dirs (`.git` node swaps), plus the claims-index
+ * inode/path. A watch that cannot arm every surface fails closed —
+ * the caller treats it as unverifiable rather than partially covered.
+ */
+interface EvidenceWindowWatch {
+  /** Event paths recorded so far (watched-dir-absolute). */
+  readonly events: string[];
+  /** Drain queued events, close every watcher, return the event paths. */
+  settle(): Promise<string[]>;
+}
+
+const EVIDENCE_WATCH_DIR_BOUND = 4096;
+
+function collectTreeDirs(root: string, out: string[], bound: number): boolean {
+  const stack = [root];
+  while (stack.length > 0) {
+    if (out.length >= bound) return false;
+    const dir = stack.pop()!;
+    out.push(dir);
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) stack.push(path.join(dir, e.name));
+    }
+  }
+  return true;
+}
+
+/**
+ * Directories the window watch must cover for `fp`: the resolved gitdir
+ * and common dir recursively (shape files, `objects/` loose-plant
+ * fanout, `refs/` transient writes, `modules/`/`worktrees/`
+ * repopulation, `info/*` rule plants), the caller's repoRoot (a `.git`
+ * node swap at the cwd level), and the fingerprint's worktree toplevel
+ * (the `.git` node git's discovery honored).
+ */
+function evidenceWindowDirs(repoRoot: string, fp: EvidenceFingerprint): string[] | null {
+  const dirs: string[] = [];
+  const roots = new Set<string>();
+  if (fp.gitDir !== null) roots.add(fp.gitDir);
+  if (fp.commonDir !== null) roots.add(fp.commonDir);
+  for (const r of roots) {
+    if (!collectTreeDirs(r, dirs, EVIDENCE_WATCH_DIR_BOUND)) return null;
+  }
+  return dirs;
+}
+
+/**
+ * The verifier's own journal surface under the common gitdir —
+ * `<gitdir>/forge/` carries reservations, gate-run manifests, locks and
+ * journals that concurrent forge commands legitimately write WHILE a
+ * judged child runs. Git never opens those paths, so events there
+ * cannot steer the child's reads; refusing on them would let the
+ * verifier's own bookkeeping deadlock a concurrent sibling channel.
+ */
+function evidenceForgeJournalDirs(fp: EvidenceFingerprint): string[] {
+  const out: string[] = [];
+  for (const d of [fp.gitDir, fp.commonDir]) {
+    if (d !== null) out.push(path.join(d, "forge"));
+  }
+  return out;
+}
+
+/**
+ * Inode/path watches beyond the directory set: the verifier claims
+ * index. fd-mode watches `/proc/self/fd/<fd>` — the path resolves to the
+ * held inode, so a rewrite through `/proc/<pid>/fd/3` fires `change`
+ * identically (CX-r22-D). Path-mode watches the named file PLUS its
+ * parent dir filtered to the basename, so an unlink+recreate name swap
+ * also reads as an event.
+ */
+function evidenceWindowFiles(preflight: EvidencePreflight): {
+  files: string[];
+  dirs: { dir: string; name: string }[];
+} {
+  const idx = preflight.index;
+  if (idx?.fd !== undefined) return { files: [`/proc/self/fd/${idx.fd}`], dirs: [] };
+  if (idx?.path !== undefined) {
+    return {
+      files: [idx.path],
+      dirs: [{ dir: path.dirname(idx.path), name: path.basename(idx.path) }],
+    };
+  }
+  return { files: [], dirs: [] };
+}
+
+/**
+ * Arm the window watch. `ignore` (anchored-mutation callers) drops
+ * events on the mutation's own write surface — `add`/`reset`
+ * legitimately touch `index`, `objects/`, `refs/`, `HEAD`,
+ * `*_HEAD`/lock files; anything else still refuses.
+ */
+/**
+ * Anchored-mutation event filter (CX-169's channel): `add`/`reset`
+ * legitimately write the real index, object store, refs, HEAD-side
+ * pseudo-refs, reflogs, and lock files — events under those paths are
+ * the op working, not a plant. Everything else (config, `shallow`,
+ * `info/*`, `packed-refs`, `modules/`, `worktrees/`, the `.git` node
+ * itself) still refuses, so a shape-file plant concurrent with the
+ * mutation cannot steer it (CX-r22 class on the write side).
+ */
+function anchoredMutationIgnorable(abs: string): boolean {
+  const name = abs.slice(abs.lastIndexOf("/") + 1);
+  return (
+    /\/(?:objects|refs|logs)(?:\/|$)/.test(abs) ||
+    name === "index" ||
+    name === "HEAD" ||
+    name === "ORIG_HEAD" ||
+    name === "MERGE_HEAD" ||
+    name === "MERGE_MSG" ||
+    name === "MERGE_MODE" ||
+    name === "CHERRY_PICK_HEAD" ||
+    name === "REVERT_HEAD" ||
+    name === "COMMIT_EDITMSG" ||
+    name === "AUTO_MERGE" ||
+    name === "FETCH_HEAD" ||
+    name.endsWith(".lock")
+  );
+}
+
+export function armEvidenceWindowWatch(
+  repoRoot: string,
+  preflight: EvidencePreflight,
+  ignore?: (absPath: string) => boolean,
+  extraFiles?: readonly string[],
+): EvidenceWindowWatch | null {
+  const fp = preflight.fingerprint;
+  if (fp === undefined) return null;
+  const dirs = evidenceWindowDirs(repoRoot, fp);
+  if (dirs === null) return null;
+  const extra = evidenceWindowFiles(preflight);
+  const journalDirs = evidenceForgeJournalDirs(fp);
+  const events: string[] = [];
+  const watchers: { close(): void }[] = [];
+  let failed = false;
+  const record = (abs: string) => {
+    if (ignore?.(abs) === true) return;
+    for (const j of journalDirs) {
+      if (abs === j || abs.startsWith(j + path.sep)) return;
+    }
+    events.push(abs);
+  };
+  const arm = (target: string, nameFilter?: string, isFile = false) => {
+    if (failed) return;
+    try {
+      watchers.push(
+        fsWatch(target, { persistent: false }, (_t, filename) => {
+          if (filename === null) return;
+          const name = String(filename);
+          if (nameFilter !== undefined && name !== nameFilter) return;
+          const abs = isFile
+            ? target
+            : nameFilter !== undefined && path.isAbsolute(name)
+              ? name
+              : path.join(target, name);
+          record(abs);
+        }),
+      );
+    } catch {
+      failed = true;
+    }
+  };
+  for (const d of dirs) arm(d);
+  // The `.git` node levels: only the `.git` NAME itself decides
+  // discovery here — a name-filtered watch catches create/delete/
+  // rename/chmod on it without refusing on every other root-level
+  // file the session writes (editor temps, build churn).
+  const rootLevels = new Set(dirs);
+  for (const level of [repoRoot, fp.workTree]) {
+    if (level !== null && !rootLevels.has(level)) {
+      arm(level, ".git");
+      rootLevels.add(level);
+    }
+  }
+  for (const f of extra.files) arm(f, undefined, true);
+  for (const fd of extra.dirs) arm(fd.dir, fd.name);
+  // Caller-pinned sources whose committed CONTENT the child consults —
+  // e.g. a tracked `.gitignore` backing a `check-ignore` exclusion
+  // verdict: a transient mid-window rewrite reports the tracked path
+  // while serving forged rules, so the inode must read as an event too.
+  for (const f of extraFiles ?? []) arm(f, undefined, true);
+  if (failed) {
+    for (const w of watchers) {
+      try {
+        w.close();
+      } catch {
+        /* gone */
+      }
+    }
+    return null;
+  }
+  return {
+    events,
+    settle: async () => {
+      // Events during the child's lifetime are already in the kernel
+      // queue at `close` — the libuv read lands them on the next loop
+      // iterations; a short drain window flushes the queue before the
+      // verdict is trusted.
+      await new Promise((r) => setTimeout(r, 20));
+      for (const w of watchers) {
+        try {
+          w.close();
+        } catch {
+          /* gone */
+        }
+      }
+      return events;
+    },
+  };
+}
+
 export function reproveEvidenceSurface(
   repoRoot: string,
   preflight: EvidencePreflight | null | undefined,
@@ -3294,6 +3572,13 @@ async function verifierGitSpawn(
         extraEnv?: Record<string, string>;
         anchored?: EvidencePreflight | null;
         input?: string | Buffer;
+        /**
+         * Extra file inodes folded into the spawn-window watch — sources
+         * whose committed CONTENT the child consults but which live
+         * outside the `.git` fingerprint (a tracked `.gitignore` backing
+         * `check-ignore` exclusion verdicts, CX-r22 worktree side).
+         */
+        extraWatchPaths?: readonly string[];
       }
     | undefined,
   judge: (args: readonly string[]) => boolean,
@@ -3308,6 +3593,11 @@ async function verifierGitSpawn(
   // decides whether the path must be a repo.
   let preflight: EvidencePreflight | null;
   let ownsPreflight = true;
+  // Armed kernel watch over the `.git` surface for the judged child's
+  // lifetime (CX-r22): armed before the last reprove, drained after
+  // `close` — a plant+unlink inside the spawn window still leaves its
+  // inotify record and refuses the verdict.
+  let windowWatch: EvidenceWindowWatch | null = null;
   if (opts?.anchored !== undefined) {
     preflight = opts.anchored;
     ownsPreflight = false;
@@ -3325,6 +3615,24 @@ async function verifierGitSpawn(
         exitCode: -1,
         stdout: "",
         stderr: `${EVIDENCE_REFUSED_PREFIX}: no anchored judgment — the repo surface was never proven; refusing the mutation`,
+      };
+    }
+    // The window watch covers the mutation's lifetime too — events on
+    // the op's OWN write surface (`index`, `objects/`, `refs/`, HEAD
+    // files, locks) are the mutation working, but a shape-file plant or
+    // config rewrite concurrent with `add`/`reset` is the same
+    // CX-r22-A-class steerage the read side refuses.
+    windowWatch = armEvidenceWindowWatch(
+      cwd,
+      preflight,
+      anchoredMutationIgnorable,
+      opts?.extraWatchPaths,
+    );
+    if (windowWatch === null) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: mutation window could not be watched — refusing`,
       };
     }
     if (!reproveEvidenceSurface(cwd, preflight)) {
@@ -3355,6 +3663,35 @@ async function verifierGitSpawn(
       const priorFp = preflight.fingerprint;
       closeEvidenceIndex(preflight);
       preflight = attempt >= 2 ? null : await evidenceRepoPreflight(cwd, priorFp);
+    }
+    // The spawn-window watch (CX-r22): every check above ends at its
+    // own `lstat`/read — the judged child opens `.git` metadata inside
+    // ITS lifetime, where a same-UID watcher can still plant a
+    // refuse-on-presence file (`shallow`, `info/exclude`,
+    // `objects/info/alternates`, loose objects, `config`/`index`
+    // rewrites) or rewrite the held claims index through
+    // `/proc/<childpid>/fd/3`. Arming BEFORE the last byte-level check
+    // and draining AFTER `close` closes the arm→use gap: any surface
+    // event inside the armed window refuses the verdict outright.
+    if (preflight !== null && useIndexEnv) {
+      for (let armAttempt = 0; preflight !== null; armAttempt++) {
+        windowWatch = armEvidenceWindowWatch(cwd, preflight, undefined, opts?.extraWatchPaths);
+        // An unarmable surface (watch limit, vanished dir) cannot be
+        // proven for the child's lifetime — refuse, never partial.
+        if (windowWatch === null) {
+          preflight = null;
+          break;
+        }
+        // A write between the loop's last reprove and the arm lands in
+        // no checker's scope — re-prove under the armed watch; drift
+        // here is the same class the loop above re-preflights on.
+        if (reproveEvidenceSurface(cwd, preflight)) break;
+        await windowWatch.settle();
+        windowWatch = null;
+        closeEvidenceIndex(preflight);
+        preflight =
+          armAttempt >= 1 ? null : await evidenceRepoPreflight(cwd, preflight.fingerprint);
+      }
     }
   }
   try {
@@ -3439,10 +3776,27 @@ async function verifierGitSpawn(
       indexFd: spawnState.indexFd,
       input: opts?.input,
     });
+    // The armed watch saw the `.git` surface for the whole child
+    // lifetime — any event recorded inside it means the child may have
+    // read an unjudged surface, so the verdict is refused regardless of
+    // what the child printed (CX-r22-A/B/D/F).
+    if (windowWatch !== null) {
+      const events = await windowWatch.settle();
+      windowWatch = null;
+      if (events.length > 0) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: repository surface mutated during the judged read (${events[0]}${events.length > 1 ? ` +${events.length - 1}` : ""})`,
+        };
+      }
+    }
     return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
   } finally {
     // The per-call preflight owns its held fds — a cached or anchored
-    // preflight outlives this spawn and stays open for its owner.
+    // preflight outlives this spawn and stays open for its owner. The
+    // watch is per-spawn — always released.
+    if (windowWatch !== null) await windowWatch.settle();
     if (ownsPreflight) closeEvidenceIndex(preflight);
   }
 }
@@ -3545,6 +3899,64 @@ export function evidenceSpawnArgs(args: readonly string[]): string[] {
  * return marks the toplevel itself unresolvable (refused channel,
  * bare/non-worktree cwd) — an unverifiable rule set, never "no rules".
  */
+/**
+ * Whether every `!!` verdict `status --ignored` emitted is backed by a
+ * COMMITTED rule source (CX-r22 worktree side): a `.gitignore` planted
+ * inside the judged child's lifetime reclassifies `??` payloads as `!!`
+ * — `sessionIgnoreRulePaths` can't see it (absent at its fs walk, gone
+ * by its post-check), and the dir watch can't cover a whole worktree.
+ * `check-ignore -v` reports which file's rule produced each verdict —
+ * an ignored claim is proven only when that source is a TRACKED
+ * `.gitignore` in the claims index. `info/exclude` is already
+ * refuse-on-presence + watched, `core.excludesFile` is pinned DEVNULL,
+ * so an `!!` whose source is missing, untracked, or the gone-again
+ * transient plant is unproven — callers treat those paths as `??`
+ * dirt/eligible (over-inclusive, never silent).
+ *
+ * `ignored` carries the raw porcelain path fields (C-quoted form is
+ * fine — `check-ignore --stdin` fully unquotes quoted lines and
+ * reports the same quoting back). `null` = the provenance could not be
+ * established (channel refused) — every claim unverifiable.
+ */
+export async function unprovenIgnoredPaths(
+  worktree: string,
+  ignored: readonly string[],
+): Promise<Set<string> | null> {
+  if (ignored.length === 0) return new Set();
+  const top = await verifierGit(worktree, ["rev-parse", "--show-toplevel"]);
+  const root = top.exitCode === 0 ? top.stdout.trim() : "";
+  if (root.length === 0) return null;
+  // The claims index pins the tracked set — `*.gitignore` pathspec
+  // matches at any depth. A mid-window `.gitignore` plant is never
+  // tracked, so its `!!`s can never be proven by construction.
+  const tracked = await verifierGit(root, ["ls-files", "-z", "--", "*.gitignore"]);
+  if (tracked.exitCode !== 0) return null;
+  const trackedSet = new Set(tracked.stdout.split("\0").filter((p) => p.length > 0));
+  // The tracked sources' own bytes back each verdict — a transient
+  // rewrite inside the -v child's window cites the tracked path while
+  // serving forged rules, so their inodes join the spawn watch too.
+  const provenance = await verifierGit(root, ["check-ignore", "-v", "--stdin"], {
+    input: ignored.map((p) => `${p}\n`).join(""),
+    extraWatchPaths: [...trackedSet].map((s) => path.join(root, s)),
+  });
+  // `check-ignore -v` lines: `source:line:pattern\tpathname`. A path
+  // status marked `!!` that -v reports UNMATCHED means its rule source
+  // vanished with the child — the unverifiable case, same refusal class.
+  const sourceOf = new Map<string, string>();
+  for (const line of provenance.stdout.split("\n")) {
+    const tab = line.lastIndexOf("\t");
+    if (tab === -1) continue;
+    const src = line.slice(0, line.indexOf(":"));
+    sourceOf.set(line.slice(tab + 1), src);
+  }
+  const unproven = new Set<string>();
+  for (const p of ignored) {
+    const src = sourceOf.get(p);
+    if (src === undefined || !trackedSet.has(src)) unproven.add(p);
+  }
+  return unproven;
+}
+
 export async function sessionIgnoreRulePaths(
   worktree: string,
   tracked: (paths: string[], root: string) => Promise<Set<string> | null>,
@@ -3603,6 +4015,8 @@ export async function verifierGit(
     preflight?: EvidencePreflight | null;
     /** Optional bytes piped to the child's stdin (`check-ignore --stdin`). */
     input?: string | Buffer;
+    /** Extra file inodes folded into the spawn-window watch (see `verifierGitSpawn`). */
+    extraWatchPaths?: readonly string[];
   },
 ): Promise<VerifierGitResult> {
   return verifierGitSpawn(
