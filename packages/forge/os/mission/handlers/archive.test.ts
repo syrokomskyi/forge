@@ -28,15 +28,39 @@ vi.mock("../../../src/utils/fs-trash.ts", () => ({
 }));
 
 const execSyncMock = vi.fn<(cmd: string, opts?: Record<string, unknown>) => string | Buffer>();
-const execFileSyncMock = vi.fn<
-  (cmd: string, args?: string[], opts?: Record<string, unknown>) => string | Buffer
->();
+const execFileSyncMock =
+  vi.fn<(cmd: string, args?: string[], opts?: Record<string, unknown>) => string | Buffer>();
 
-vi.mock("node:child_process", () => ({
-  execSync: (cmd: string, opts?: Record<string, unknown>) => execSyncMock(cmd, opts),
-  execFileSync: (cmd: string, args?: string[], opts?: Record<string, unknown>) =>
-    execFileSyncMock(cmd, args, opts),
-}));
+// The lockfile-restore path reads `HEAD:pnpm-lock.yaml` through the
+// judged evidence channel (CX-164) — that channel spawns real git via
+// `spawn`, so the actual child_process module must be spread in and only
+// the legacy `execSync`/`execFileSync` entry points intercepted.
+vi.mock("node:child_process", async (importActual) => {
+  const actual = await importActual<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    execSync: (cmd: string, opts?: Record<string, unknown>) => execSyncMock(cmd, opts),
+    execFileSync: (cmd: string, args?: string[], opts?: Record<string, unknown>) =>
+      execFileSyncMock(cmd, args, opts),
+  };
+});
+
+/**
+ * A real git repo — `verifierGit` cannot be satisfied by the execFileSync
+ * mock, so lockfile-restore tests commit the tracked bytes for real.
+ */
+async function initRepoWithCommit(root: string, files: Record<string, string>): Promise<void> {
+  const cp = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+  const git = (args: string[]) => cp.execFileSync("git", args, { cwd: root });
+  git(["init", "-q", "."]);
+  git(["config", "user.email", "archive-test@example.com"]);
+  git(["config", "user.name", "archive-test"]);
+  for (const [name, content] of Object.entries(files)) {
+    writeFileSync(path.join(root, name), content);
+  }
+  git(["add", ...Object.keys(files)]);
+  git(["commit", "-qm", "init"]);
+}
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
   return {
@@ -451,7 +475,9 @@ describe("mission.archive", () => {
     const tracked = "lockfileVersion: '9.0'\n\nimporters: {}\n";
     const churned = `${tracked}\n  missions/test-m018/workpiece: {}\n`;
     const lockfilePath = path.join(tmpDir, "pnpm-lock.yaml");
-    writeFileSync(lockfilePath, tracked);
+    // The HEAD-bytes read goes through the judged evidence channel on a
+    // real repo (CX-164) — the execFileSync mock cannot answer `git show`.
+    await initRepoWithCommit(tmpDir, { "pnpm-lock.yaml": tracked });
     execSyncMock.mockReset();
     execSyncMock.mockImplementation((cmd: string) => {
       if (cmd.startsWith("pnpm install")) {
@@ -460,23 +486,19 @@ describe("mission.archive", () => {
       }
       return "";
     });
-    execFileSyncMock.mockReset();
-    execFileSyncMock.mockImplementation((cmd: string, args?: string[]) => {
-      if (cmd === "git" && args?.[0] === "show") return tracked;
-      return "";
-    });
     await writeMissionManifest(missionsDir, "test-m018", "closed");
 
     await runMissionArchive(makeInput(), makeContext(tmpDir));
 
     expect(readFileSync(lockfilePath, "utf-8")).toBe(tracked);
-    // maxBuffer must cover real lockfiles (>10 MiB) — the 1 MiB execFileSync
-    // default would ENOBUFS-kill `git show` and leave the churn in place.
-    expect(execFileSyncMock).toHaveBeenCalledWith(
-      "git",
-      ["show", "HEAD:pnpm-lock.yaml"],
-      expect.objectContaining({ cwd: tmpDir, maxBuffer: 64 * 1024 * 1024 }),
-    );
+    // `spawnCaptured` carries maxBuffer 64 MiB internally — real lockfiles
+    // (>10 MiB) cannot ENOBUFS the restore. And the committed-bytes read
+    // no longer travels ambient exec: a session `GIT_DIR` lever would
+    // redirect `HEAD:` to a foreign object store (CX-164), so the judged
+    // channel must own `git show` — ambient execFileSync never sees it.
+    expect(
+      execFileSyncMock.mock.calls.filter((c) => c[0] === "git" && c[1]?.[0] === "show"),
+    ).toEqual([]);
     const gitWrites = execSyncMock.mock.calls.filter(
       (c) =>
         typeof c[0] === "string" &&
@@ -527,11 +549,8 @@ describe("mission.archive", () => {
       }
       return "";
     });
-    execFileSyncMock.mockReset();
-    execFileSyncMock.mockImplementation((cmd: string, args?: string[]) => {
-      if (cmd === "git" && args?.[0] === "show") return tracked;
-      throw Object.assign(new Error("unexpected"), { status: 1 });
-    });
+    // Real repo — the judged channel serves `HEAD:pnpm-lock.yaml` (CX-164).
+    await initRepoWithCommit(tmpDir, { "pnpm-lock.yaml": tracked });
     await writeMissionManifest(missionsDir, "test-m019", "closed");
 
     const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
@@ -711,9 +730,7 @@ describe("mission.archive", () => {
     const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
 
     expect(data.moved).toHaveLength(1);
-    expect(existsSync(path.join(missionsDir, "archive", "closed", "test-r1138-01"))).toBe(
-      true,
-    );
+    expect(existsSync(path.join(missionsDir, "archive", "closed", "test-r1138-01"))).toBe(true);
     const gitCalls = execSyncMock.mock.calls.filter(
       (c) => typeof c[0] === "string" && c[0].startsWith("git"),
     );

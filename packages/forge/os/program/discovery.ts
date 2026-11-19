@@ -16,7 +16,7 @@ against schemas, and computes normative source hashes.</purpose>
 import * as fs from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { execSync } from "../../src/utils/sync-fs.ts";
+import { sessionIgnoreRulePaths, verifierGit } from "../../src/utils/verifier-git.ts";
 import { parse as parseYaml } from "yaml";
 import {
   programManifestSchema,
@@ -161,63 +161,67 @@ export function verifyNormativeSources(
 // Git helpers (read-only)
 // ---------------------------------------------------------------------------
 
-export function gitHead(workspaceRoot: string): string {
-  return execSync("git rev-parse HEAD", {
-    cwd: workspaceRoot,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"],
-  }).trim();
+/**
+ * Every helper below reads through the judged evidence channel —
+ * `execSync("git …")` inherited `process.env`, so session `GIT_DIR`/
+ * `GIT_WORK_TREE`/`GIT_INDEX_FILE`/`GIT_CONFIG_*` levers (and file-config
+ * claims like `status.showUntrackedFiles=no`) could fabricate branch,
+ * HEAD, cleanliness, ancestry, and changed-file evidence at the packet
+ * gates (CX-165). Refusals surface as thrown errors / false / null —
+ * never a curated answer.
+ */
+
+export async function gitHead(workspaceRoot: string): Promise<string> {
+  const r = await verifierGit(workspaceRoot, ["rev-parse", "HEAD"]);
+  if (r.exitCode !== 0) throw new Error(r.stderr.trim() || `git rev-parse exited ${r.exitCode}`);
+  return r.stdout.trim();
 }
 
-export function gitBranch(workspaceRoot: string): string {
-  return execSync("git branch --show-current", {
-    cwd: workspaceRoot,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"],
-  }).trim();
+export async function gitBranch(workspaceRoot: string): Promise<string> {
+  const r = await verifierGit(workspaceRoot, ["branch", "--show-current"]);
+  if (r.exitCode !== 0) throw new Error(r.stderr.trim() || `git branch exited ${r.exitCode}`);
+  return r.stdout.trim();
 }
 
-export function gitIsClean(workspaceRoot: string): boolean {
-  const status = execSync("git status --porcelain", {
-    cwd: workspaceRoot,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"],
-  }).trim();
-  return status.length === 0;
+export async function gitIsClean(workspaceRoot: string): Promise<boolean> {
+  const r = await verifierGit(workspaceRoot, ["status", "--porcelain"]);
+  if (r.exitCode !== 0) return false;
+  // `!!` entries are ignore-rule matches the channel's `--ignored`
+  // surfaces — never uncommitted dirt. A session-authored `.gitignore`
+  // can hide itself AND its payloads from status entirely, so the fs
+  // walk + tracked-set check is what keeps a planted `*` rule from
+  // forging "clean" (CX-142/CX-165).
+  if (r.stdout.split("\n").some((line) => line.length > 0 && !line.startsWith("!! "))) {
+    return false;
+  }
+  const sessionRules = await sessionIgnoreRulePaths(workspaceRoot, async (paths) => {
+    const t = await verifierGit(workspaceRoot, ["ls-files", "-z", "--", ...paths]);
+    return t.exitCode === 0 ? new Set(t.stdout.split("\0").filter((p) => p.length > 0)) : null;
+  });
+  return sessionRules.length === 0;
 }
 
-export function gitAncestorOf(
+export async function gitAncestorOf(
   workspaceRoot: string,
   ancestor: string,
   descendant: string,
-): boolean {
-  try {
-    execSync(`git merge-base --is-ancestor ${ancestor} ${descendant}`, {
-      cwd: workspaceRoot,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    return true;
-  } catch {
-    return false;
-  }
+): Promise<boolean> {
+  const r = await verifierGit(workspaceRoot, ["merge-base", "--is-ancestor", ancestor, descendant]);
+  return r.exitCode === 0;
 }
 
-export function gitChangedFilesBetween(
+export async function gitChangedFilesBetween(
   workspaceRoot: string,
   base: string,
   head: string,
-): string[] {
-  try {
-    const output = execSync(`git diff --name-only ${base}..${head}`, {
-      cwd: workspaceRoot,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-    return output.length === 0 ? [] : output.split("\n");
-  } catch {
-    return [];
-  }
+): Promise<string[] | null> {
+  const r = await verifierGit(workspaceRoot, ["diff", "--name-only", `${base}..${head}`]);
+  // A refused diff is NOT an empty delta — `null` marks the enumeration
+  // unverifiable so the seal/complete gates fail rather than skipping
+  // the allowed/forbidden file checks on a narrowed answer.
+  if (r.exitCode !== 0) return null;
+  const output = r.stdout.trim();
+  return output.length === 0 ? [] : output.split("\n");
 }
 
 // ---------------------------------------------------------------------------

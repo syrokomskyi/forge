@@ -54,10 +54,21 @@ follow-up port commit.</item>
 </CHANGE_SUMMARY>
 */
 
-import { resolve, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-import { execFileSync } from "../../../src/utils/sync-fs.ts";
-import { verifierGit, verifierGitEnv, resolveGitBin } from "../../../src/utils/verifier-git.ts";
+import {
+  execFileSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  type Dirent,
+} from "../../../src/utils/sync-fs.ts";
+import {
+  evidenceConfigArgs,
+  verifierGit,
+  verifierGitEnv,
+  resolveGitBin,
+} from "../../../src/utils/verifier-git.ts";
 import { createCompassInventoryEntries } from "./compass-inventory.ts";
 import { resolveCompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
@@ -194,28 +205,117 @@ async function filterLedgerEligiblePaths(
 ): Promise<Set<string>> {
   const eligible = new Set<string>();
   const candidates = paths.filter((p) => !p.startsWith("missions/"));
+  if (candidates.length === 0) return eligible;
+  // check-ignore's exclusion verdict is only as honest as its rule
+  // sources — a session-authored `.gitignore`, `info/exclude`, or
+  // `core.excludesFile` silently shrinks the audit set and the gate
+  // passes a never-audited file (CX-163). Every effective rule source
+  // must be committed-clean; when any cannot be proven, exclude
+  // NOTHING — an over-inclusive ledger flags a legit path as audit-due
+  // (visible, reviewable) while a silently skipped path stays invisible.
+  if (!(await ignoreRuleSourcesProven(workspaceRoot))) {
+    return new Set(candidates);
+  }
   let ignored = new Set<string>();
-  if (candidates.length > 0) {
-    try {
-      // verifierGitEnv — GIT_* selectors (GIT_DIR/GIT_WORK_TREE) cannot
-      // redirect the .gitignore lookup into a foreign checkout, and the
-      // resolved binary removes PATH substitution (CX-52/CX-122).
-      const stdout = execFileSync(resolveGitBin(), ["check-ignore", "--stdin"], {
+  try {
+    // verifierGitEnv — GIT_* selectors (GIT_DIR/GIT_WORK_TREE) cannot
+    // redirect the .gitignore lookup into a foreign checkout, and the
+    // resolved binary removes PATH substitution (CX-52/CX-122). The
+    // `-c` pins carry `core.excludesFile`/attrs file to the null
+    // device — the one ignore source pinnable by config (CX-163).
+    const stdout = execFileSync(
+      resolveGitBin(),
+      [...evidenceConfigArgs(["check-ignore"]), "check-ignore", "--stdin"],
+      {
         cwd: workspaceRoot,
         input: candidates.join("\n"),
         encoding: "utf-8",
         env: verifierGitEnv(),
-      });
-      ignored = new Set(stdout.split("\n").filter((l: string) => l.length > 0));
-    } catch {
-      // check-ignore exits 1 when nothing is ignored — treat all as eligible
-      ignored = new Set();
-    }
+      },
+    );
+    ignored = new Set(stdout.split("\n").filter((l: string) => l.length > 0));
+  } catch {
+    // check-ignore exits 1 when nothing is ignored — treat all as eligible
+    ignored = new Set();
   }
   for (const p of candidates) {
     if (!ignored.has(p)) eligible.add(p);
   }
   return eligible;
+}
+
+/**
+ * `.gitignore` files present in the worktree — the fs mirror of
+ * `sessionIgnoreRulePaths`' walk (untracked-vs-committed judgment lives
+ * in the caller's status probe). `.git` is skipped: a linked-worktree
+ * `.git` is a file, and the directory never carries worktree content.
+ */
+function listWorktreeGitignores(worktree: string): string[] {
+  const found: string[] = [];
+  for (const stack = [""]; stack.length > 0;) {
+    const rel = stack.pop()!;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(join(worktree, rel), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const er = rel === "" ? e.name : `${rel}/${e.name}`;
+      if (e.isDirectory()) {
+        if (e.name !== ".git") stack.push(er);
+      } else if (e.name === ".gitignore") {
+        found.push(er);
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * Every `check-ignore` rule source must be committed-clean for its
+ * exclusion verdict to be trusted (CX-163):
+ *
+ * - `.git/info/exclude` is local-only BY DESIGN — never committed, so
+ *   presence alone is unproven. Linked worktrees keep it in the common
+ *   dir (`<common>/info/exclude`), resolved structurally through the
+ *   gitfile's metadir.
+ * - Worktree `.gitignore` files must each be tracked AND clean — an
+ *   untracked plant or dirty edit authors live rules. One path-scoped
+ *   judged `status` answers both: any reported entry (or a refused
+ *   read) means unproven.
+ * - `core.excludesFile` is pinned to the null device on the spawn —
+ *   no source check needed.
+ */
+async function ignoreRuleSourcesProven(workspaceRoot: string): Promise<boolean> {
+  const dotGit = join(workspaceRoot, ".git");
+  const excludeCandidates = [join(dotGit, "info", "exclude")];
+  try {
+    const st = statSync(dotGit);
+    if (st.isFile()) {
+      const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf-8").trim());
+      if (m !== null) {
+        const meta = isAbsolute(m[1]!.trim()) ? m[1]!.trim() : resolve(workspaceRoot, m[1]!.trim());
+        excludeCandidates.push(join(meta, "info", "exclude"));
+        if (basename(dirname(meta)) === "worktrees") {
+          excludeCandidates.push(join(dirname(dirname(meta)), "info", "exclude"));
+        }
+      }
+    }
+  } catch {
+    /* .git absent/unreadable — the status probe below judges the rest */
+  }
+  for (const p of excludeCandidates) {
+    try {
+      if (statSync(p).isFile()) return false;
+    } catch {
+      /* absent */
+    }
+  }
+  const gitignores = listWorktreeGitignores(workspaceRoot);
+  if (gitignores.length === 0) return true;
+  const r = await verifierGit(workspaceRoot, ["status", "--porcelain", "-z", "--", ...gitignores]);
+  return r.exitCode === 0 && r.stdout.length === 0;
 }
 
 // RFC-1143: partition authored entries into ledger-eligible and ineligible

@@ -23,9 +23,36 @@ restores the file committed at HEAD so the worktree returns clean.
 import path from "node:path";
 import { execFileSync } from "../../src/utils/sync-fs.ts";
 import type { ExecOptions, ExecResult, WorkspaceIO } from "../../src/types.ts";
+import {
+  evidenceConfigArgs,
+  resolveGitBin,
+  verifierGit,
+  verifierGitEnv,
+} from "../../src/utils/verifier-git.ts";
 import { extractImporterBlock, removeImporterBlock } from "./importer-block.ts";
 
 const LOCKFILE_NAME = "pnpm-lock.yaml";
+
+/**
+ * `git add` on the repo that actually owns `root` — the ambient `io.exec`
+ * layer inherits `process.env`, so a session `GIT_DIR`/`GIT_WORK_TREE`
+ * would register the staged bytes in a foreign index (CX-164). The
+ * scrubbed env + resolved binary + `-c` pins anchor the mutation to the
+ * cwd repo. Returns false on any non-zero exit.
+ */
+function pinnedGitAdd(root: string, name: string): boolean {
+  try {
+    execFileSync(resolveGitBin(), [...evidenceConfigArgs(["add"]), "add", name], {
+      cwd: root,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: verifierGitEnv(),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Restore `pnpm-lock.yaml` to the bytes committed at HEAD.
@@ -42,7 +69,12 @@ export async function restoreTrackedLockfile(
   root: string,
   io: Pick<WorkspaceIO, "exec" | "writeFile">,
 ): Promise<boolean> {
-  const res = await io.exec("git", ["show", `HEAD:${LOCKFILE_NAME}`], { cwd: root });
+  // The committed-bytes read goes through the judged channel — the
+  // ambient exec layer inherits `process.env`, so a session `GIT_DIR`
+  // would serve `HEAD:` from a foreign object store and this "restore"
+  // would write forged bytes into the real worktree (CX-164). A refused
+  // read restores nothing and reports false.
+  const res = await verifierGit(root, ["show", `HEAD:${LOCKFILE_NAME}`]);
   if (res.exitCode !== 0) return false;
   await io.writeFile(path.join(root, LOCKFILE_NAME), res.stdout);
   return true;
@@ -103,7 +135,9 @@ export async function pruneMissionImportersFromLockfile(
   missionIds: string[],
   io: Pick<WorkspaceIO, "exec" | "writeFile">,
 ): Promise<{ pruned: string[]; staged: boolean }> {
-  const head = await io.exec("git", ["show", `HEAD:${LOCKFILE_NAME}`], { cwd: root });
+  // Judged channel for the committed-bytes read — same CX-164 redirect:
+  // ambient `GIT_DIR` would serve the foreign repo's lockfile bytes.
+  const head = await verifierGit(root, ["show", `HEAD:${LOCKFILE_NAME}`]);
   if (head.exitCode !== 0) return { pruned: [], staged: false };
   let next = head.stdout;
   const pruned: string[] = [];
@@ -120,6 +154,6 @@ export async function pruneMissionImportersFromLockfile(
     return { pruned, staged: false };
   }
   await io.writeFile(target, next);
-  const add = await io.exec("git", ["add", LOCKFILE_NAME], { cwd: root });
-  return { pruned, staged: add.exitCode === 0 };
+  const staged = pinnedGitAdd(root, LOCKFILE_NAME);
+  return { pruned, staged };
 }
