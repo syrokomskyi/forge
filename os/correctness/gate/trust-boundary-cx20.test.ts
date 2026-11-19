@@ -53,7 +53,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { verifierGit, evidenceAnchoredGit } from "../../../src/utils/verifier-git.ts";
+import {
+  verifierGit,
+  evidenceAnchoredGit,
+  evidenceRepoPreflight,
+  reproveEvidenceSurface,
+} from "../../../src/utils/verifier-git.ts";
 import { branchExists, currentBranch, isUnborn, lastCommitAt } from "../../flow/git.ts";
 import { markerSource } from "../../flow/markers.ts";
 import { deltaChangedPaths } from "../../flow/pre-lock.ts";
@@ -102,6 +107,27 @@ describe("CX-173 populated submodule gitdir refuses the channel", () => {
     rmSync(mod, { recursive: true, force: true });
     const gone = await verifierGit(root, ["rev-parse", "--is-bare-repository"]);
     expect(gone.exitCode).toBe(0);
+  });
+});
+
+describe("CX-179 modules/ population is fingerprint drift, not invisible", () => {
+  it("reprove rejects a preflight captured before modules/ was populated", async () => {
+    const root = mkRepo();
+    // modules/ ABSENT at capture — the preflight judges honestly.
+    const pre = await evidenceRepoPreflight(root);
+    expect(pre).not.toBeNull();
+    expect(pre!.shapeViolations).not.toContain("modules");
+    // Populate inside the judgment→spawn window.
+    const mod = path.join(root, ".git", "modules", "sub");
+    mkdirSync(mod, { recursive: true });
+    writeFileSync(path.join(mod, "config"), "[core]\nbare = false\n");
+    // Drift must read — without the tree pin the empty-dir fingerprint
+    // survived population and the spawn consumed unjudged submodule
+    // surface.
+    expect(reproveEvidenceSurface(root, pre)).toBe(false);
+    // A re-preflight then refuses on the populated dir.
+    const post = await evidenceRepoPreflight(root);
+    expect(post === null || post.shapeViolations.includes("modules")).toBe(true);
   });
 });
 
