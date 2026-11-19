@@ -18,18 +18,19 @@ Lightweight tags are invisible to release lines by design.</purpose>
   <item>RELEASE_TAG_SCHEMA_LINE is exported — the annotation contract lives in one place for os/system consumers.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1498: step 3 — legacy-tags report in flow.install
 
 listLegacyTags scans refs/tags in a single for-each-ref pass carrying objecttype and NUL-delimited contents: a tag whose name matches a line grammar (tagPrefix + strict semver) is pre-program when it is lightweight, or annotated but its body lacks the schema forge/release-tag@1 line. flow.install gains an informational legacy-tags plan step listing every such tag as name (kind) — never a refusal, nothing is deleted or rewritten; execution simply marks the step done. Tests AC-5 (a lightweight v1.2.2 and a schema-less annotated lib at 0.1.0 appear with their kinds) and AC-6 (installation proceeds and both tags remain). Compass metadata updated.</item>
   <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
   <item>RFC-1511: record KEY_DECISIONS for exported tag-schema regex and exec edge handling (RFC-1511 review r1)</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <history>RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
 import type { WorkspaceIO } from "../../src/types.ts";
+import { repoShaped } from "../../src/utils/verifier-git.ts";
 import { git, gitEvidence } from "./git.ts";
 import type { ReleaseLine } from "./release-lines.ts";
 import { compareVersions, parseVersion, type SemVer } from "./semver.ts";
@@ -63,6 +64,9 @@ async function listAnnotated(
   ref: string,
 ): Promise<TagRow[]> {
   const head = await gitEvidence(repoRoot, ["rev-parse", "--verify", "-q", ref]);
+  // exit -1 is "no git answer" (refusal/timeout) — the tag list feeds
+  // version derivation, so `[]` would fabricate "never tagged" (CX-r23-B).
+  if (head.exitCode === -1) throw new Error("listAnnotated: rev-parse refused");
   if (head.exitCode !== 0) return []; // unborn branch — nothing reachable
   const sep = "\x1f";
   // %(refname) (full form) — %(refname:short) would hide a tag sharing its
@@ -76,7 +80,13 @@ async function listAnnotated(
     "--merged",
     ref,
   ]);
-  if (result.exitCode !== 0) return [];
+  // Reached only when `ref` resolved — a nonzero enumeration on a
+  // resolving repo is a failed read, not an empty tag set (CX-r23-B).
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `listAnnotated: for-each-ref failed (${result.exitCode}): ${result.stderr.trim()}`,
+    );
+  }
   const rows: TagRow[] = [];
   for (const raw of result.stdout.split("\n")) {
     const line_ = raw.trimEnd();
@@ -146,7 +156,17 @@ export async function listLegacyTags(
   const sep = "\x1f";
   const format = `%(refname)${sep}%(objecttype)${sep}%(contents)%00`;
   const result = await gitEvidence(repoRoot, ["for-each-ref", "refs/tags", `--format=${format}`]);
-  if (result.exitCode !== 0) return [];
+  // exit -1 is a refused read; a nonzero exit on a repo-shaped surface
+  // is a failed enumeration — `[]` would fabricate "no legacy tags"
+  // (CX-r23-B). On a true non-repo the empty report stays honest.
+  if (result.exitCode !== 0) {
+    if (repoShaped(repoRoot)) {
+      throw new Error(
+        `listLegacyTags: for-each-ref failed (${result.exitCode}): ${result.stderr.trim()}`,
+      );
+    }
+    return [];
+  }
   const legacy: LegacyTag[] = [];
   for (const rec of result.stdout.split("\x00")) {
     const firstSep = rec.indexOf(sep);

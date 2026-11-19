@@ -19,10 +19,12 @@ re-reads the tag grammar itself.</purpose>
   <item>RFC-1493: step 1 — forge public release-line version reader</item>
   <item>RFC-1493: step 2 — platform identity command, migrator-cursor pin comparison</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
 </CHANGE_SUMMARY>
 */
 
 import type { WorkspaceIO } from "../../src/types.ts";
+import { repoShaped } from "../../src/utils/verifier-git.ts";
 import { git, statusTracked } from "./git.ts";
 import { readLineVersionFile, type ReleaseLine } from "./release-lines.ts";
 import { listLineTags } from "./release-tags.ts";
@@ -50,7 +52,17 @@ async function commitsSinceRef(
   const args = ["rev-list", "--count", range];
   if (paths.length > 0) args.push("--", ...paths);
   const result = await git(repoRoot, io, args);
-  return result.exitCode === 0 ? Number.parseInt(result.stdout.trim(), 10) || 0 : 0;
+  if (result.exitCode === 0) return Number.parseInt(result.stdout.trim(), 10) || 0;
+  // A failed count on a repo-shaped surface is unverifiable — `0` would
+  // fabricate the `+N` suffix baked into a published version string
+  // (CX-r23-B). Non-repo workdirs keep the documented clean-read
+  // contract (isBare's repoShaped pattern).
+  if (repoShaped(repoRoot)) {
+    throw new Error(
+      `commitsSinceRef: rev-list failed (${result.exitCode}): ${result.stderr.trim()}`,
+    );
+  }
+  return 0;
 }
 
 /** Tracked modifications inside `paths` (empty = whole worktree). Non-git workdirs read as clean — the version-file fallback then applies. */
@@ -58,7 +70,12 @@ async function dirtyPaths(repoRoot: string, paths: string[], io: WorkspaceIO): P
   let entries: string[];
   try {
     entries = (await statusTracked(repoRoot, io)).entries;
-  } catch {
+  } catch (err) {
+    // statusTracked throws only on an unverifiable repo surface — a
+    // swallowed `0` would stamp `.dirty` incorrectly into the derived
+    // version (CX-r23-B). The non-repo benign path lives inside
+    // statusTracked itself; anything that reaches here is unverifiable.
+    if (repoShaped(repoRoot)) throw err;
     return 0;
   }
   if (paths.length === 0) return entries.length;

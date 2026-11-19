@@ -203,6 +203,7 @@ the round-11 acceptance report.</item>
   <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
+  <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -426,7 +427,9 @@ export async function gitEvidence(
     });
     // Any `.git` event inside the armed window means the child may
     // have read an unjudged surface — refuse the verdict regardless of
-    // what it printed (CX-r22).
+    // what it printed (CX-r22). The pin layer covers dirent-invisible
+    // writes (CX-r23-A); the fingerprint's own compare is the last byte
+    // check for the `objects/` tree the pin bound leaves out.
     if (windowWatch !== null) {
       const events = await windowWatch.settle();
       windowWatch = null;
@@ -435,6 +438,13 @@ export async function gitEvidence(
           exitCode: -1,
           stdout: "",
           stderr: `${EVIDENCE_REFUSED_PREFIX}: repository surface mutated during the judged read (${events[0]}${events.length > 1 ? ` +${events.length - 1}` : ""})`,
+        };
+      }
+      if (preflight !== null && !reproveEvidenceSurface(repoRoot, preflight)) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: repository surface drifted during the judged read`,
         };
       }
     }
