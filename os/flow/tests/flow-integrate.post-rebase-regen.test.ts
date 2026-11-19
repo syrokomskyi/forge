@@ -6,6 +6,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1622: honor RFC-1622 receipt capability</item>
 </CHANGE_SUMMARY>
 */
 // Test-Reason: requirement AC-1, AC-2, AC-3, AC-5 (RFC-1574)
@@ -78,6 +79,29 @@ function stubInvoke(
   };
   return { invoke, calls };
 }
+
+describe("RFC-1622 deferred manifest validation", () => {
+  it("refuses if the owner disappears during rebase", async () => {
+    const repo = await repoWithManifest();
+    const opened = await session(repo, "removed-owner");
+    const stub = stubInvoke(() => opened.worktree!, {});
+    Object.assign(stub.invoke, { manifestReceiptV1: true });
+    await gitExec(repo, ["rm", MANIFEST]);
+    await gitExec(repo, ["commit", "-m", "remove manifest"]);
+    const developBefore = (await gitExec(repo, ["rev-parse", "develop"])).stdout.trim();
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: opened.branch!,
+      dryRun: false,
+      now: NOW,
+      invoke: stub.invoke,
+      invokeRoot: opened.worktree!,
+    });
+    expect(data.integrated).toBe(false);
+    expect(data.diagnostics.map((diagnostic) => diagnostic.ruleId)).toContain("FLOW-INT-12");
+    expect((await gitExec(repo, ["rev-parse", "develop"])).stdout.trim()).toBe(developBefore);
+  }, 30_000);
+});
 
 describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
   it("AC-1: commits a drifted manifest with the fixed subject before the gate", async () => {

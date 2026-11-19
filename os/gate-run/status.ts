@@ -17,6 +17,7 @@
   <item>RFC-1575: gate.run.status uncacheable, --wait ends with a verdict
 
 cacheable: false keeps live gate-run state out of the kernel result cache; --id --wait returns data.wait {requestedSeconds, waitedMs, outcome: completed|budget-expired} and a summary suffix. CMD-MAN-06 dropped after its live census (~100 warnings, no true positive): falsified route in the plan, ledger Q-8.</item>
+  <item>RFC-1622: honor RFC-1622 receipt capability</item>
 </CHANGE_SUMMARY>
 */
 
@@ -68,7 +69,14 @@ function formatRunLine(record: GateRunRecord & { status: GateRunStatus }): strin
   if (record.exitCode !== undefined) bits.push(`exit ${record.exitCode}`);
   bits.push(record.startedAt);
   if (record.endedAt) bits.push(`→ ${record.endedAt}`);
-  return `[gate-run] ${record.runId}  ${record.command}  ${bits.join("  ")}`;
+  const phases = record.phaseTimings?.map(
+    (entry) =>
+      `  attempt ${entry.attempt} ${entry.phase}: ${entry.durationMs}ms (${entry.disposition})`,
+  );
+  return (
+    `[gate-run] ${record.runId}  ${record.command}  ${bits.join("  ")}` +
+    (phases?.length ? `\n${phases.join("\n")}` : "")
+  );
 }
 
 export async function runGateRunStatus(
