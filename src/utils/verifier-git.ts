@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
   <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
+  <item>RFC-1616: pin ref and object surfaces under anchored git mutations</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -640,6 +640,22 @@ export interface EvidenceFingerprint {
    */
   modulesDir: string | null;
   modulesFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
+  /**
+   * `<common>/refs/` — the loose-ref tree every ref-resolving op
+   * (`rev-parse`, `log`, `reset`, `diff`, `status`) answers through.
+   * Loose refs are files like loose objects: a flip between capture and
+   * spawn (or inside the spawn window) steers the resolution — including
+   * anchored `reset`, which resolves `HEAD → refs/heads/<branch>` to
+   * decide which tree's blobs the index claims (CX-r24-A).
+   */
+  refsDir: string | null;
+  refsFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
+  /**
+   * `<common>/packed-refs` — the packed half of the same namespace;
+   * byte-pinned like the index so a pre-arm rewrite is drift too.
+   */
+  packedRefsPath: string | null;
+  packedRefsBytes: Buffer | null;
   /** The ambient `.git/index` the claims rebuild enumerated — resolved path + bytes. */
   indexPath: string | null;
   indexBytes: Buffer | null;
@@ -2618,6 +2634,10 @@ export async function captureEvidenceSurface(
         worktreeFiles: new Map(),
         modulesDir: null,
         modulesFiles: new Map(),
+        refsDir: null,
+        refsFiles: new Map(),
+        packedRefsPath: null,
+        packedRefsBytes: null,
         indexPath: null,
         indexBytes: null,
         topology: "unknown",
@@ -2747,7 +2767,14 @@ export async function captureEvidenceSurface(
       /* vanished mid-capture — reprove reads the stat mismatch as drift */
     }
   }
-  const queries = ["config", "index", "objects", ...EVIDENCE_SHAPE_QUERY_PATHS];
+  const queries = [
+    "config",
+    "index",
+    "objects",
+    "refs",
+    "packed-refs",
+    ...EVIDENCE_SHAPE_QUERY_PATHS,
+  ];
   const pending: Promise<{ exitCode: number | null; stdout: string; stderr: string }>[] = [];
   for (const p of queries) {
     pending.push(
@@ -2778,7 +2805,8 @@ export async function captureEvidenceSurface(
       resolved.push(r.stdout.endsWith("\n") ? r.stdout.slice(0, -1) : r.stdout);
     }
   }
-  const [configPath, indexPath, objectsDir, ...shapePaths] = resolved;
+  const [configPath, indexPath, objectsDir, refsDirQuery, packedRefsQuery, ...shapePaths] =
+    resolved;
   const configAbs =
     configPath === null
       ? null
@@ -2797,6 +2825,18 @@ export async function captureEvidenceSurface(
       : path.isAbsolute(objectsDir)
         ? objectsDir
         : path.resolve(repoRoot, objectsDir);
+  const refsAbs =
+    refsDirQuery === null
+      ? null
+      : path.isAbsolute(refsDirQuery)
+        ? refsDirQuery
+        : path.resolve(repoRoot, refsDirQuery);
+  const packedRefsAbs =
+    packedRefsQuery === null
+      ? null
+      : path.isAbsolute(packedRefsQuery)
+        ? packedRefsQuery
+        : path.resolve(repoRoot, packedRefsQuery);
   const shapeFiles: { path: string; present: boolean; bytes: Buffer | null }[] = [];
   for (const p of shapePaths) {
     const ap = p === null ? null : path.isAbsolute(p) ? p : path.resolve(repoRoot, p);
@@ -2840,6 +2880,10 @@ export async function captureEvidenceSurface(
     worktreeFiles: worktreesDir === null ? new Map() : enumerateTreeFiles(worktreesDir),
     modulesDir,
     modulesFiles: modulesDir === null ? new Map() : enumerateTreeFiles(modulesDir),
+    refsDir: refsAbs,
+    refsFiles: refsAbs === null ? new Map() : enumerateTreeFiles(refsAbs),
+    packedRefsPath: packedRefsAbs,
+    packedRefsBytes: packedRefsAbs === null ? null : safeReadBytes(packedRefsAbs),
     indexPath: indexAbs,
     indexBytes: indexAbs === null ? null : safeReadBytes(indexAbs),
     topology,
@@ -2992,10 +3036,15 @@ function evidenceWindowFiles(preflight: EvidencePreflight): {
  * itself) still refuses, so a shape-file plant concurrent with the
  * mutation cannot steer it (CX-r22 class on the write side).
  */
-function anchoredMutationIgnorable(abs: string): boolean {
+export function anchoredMutationIgnorable(abs: string): boolean {
   const name = abs.slice(abs.lastIndexOf("/") + 1);
   return (
-    /\/(?:objects|refs|logs)(?:\/|$)/.test(abs) ||
+    // Only `objects/` is a write surface the admitted ops legitimately
+    // churn (`add` creates blobs). `refs/`/`logs/` are NOT: `reset -q --`
+    // performs a pathspec-only index reset — no ref transaction, no
+    // reflog — yet it RESOLVES `HEAD → refs/heads/<branch>` to pick the
+    // blobs, so an unignored ref flip steers its index claims (CX-r24-A).
+    /\/objects(?:\/|$)/.test(abs) ||
     name === "index" ||
     name === "HEAD" ||
     name === "ORIG_HEAD" ||
@@ -3016,6 +3065,7 @@ export function armEvidenceWindowWatch(
   preflight: EvidencePreflight,
   ignore?: (absPath: string) => boolean,
   extraFiles?: readonly string[],
+  pinObjects?: boolean,
 ): EvidenceWindowWatch | null {
   const fp = preflight.fingerprint;
   if (fp === undefined) return null;
@@ -3036,7 +3086,9 @@ export function armEvidenceWindowWatch(
   // compare covers it at the post-drain reprove; its loose-object count
   // can outsize the pin bound). `forge/` is the verifier's journal dir.
   const pins = new Map<string, { ino: number; ctimeMs: number }>();
-  const EVIDENCE_PIN_BOUND = 8192;
+  // Bound the pin map, never its coverage — anchored ops pin the whole
+  // object store too, so this sits well above a packed repo's loose set.
+  const EVIDENCE_PIN_BOUND = 32768;
   const pinTree = (root: string) => {
     for (const [rel, st] of enumerateTreeFiles(root)) {
       if (failed) return;
@@ -3066,6 +3118,22 @@ export function armEvidenceWindowWatch(
     if (r !== null && !pinRoots.has(r)) {
       pinRoots.add(r);
       pinTree(r);
+    }
+  }
+  // Object pins are opt-in per armed op: `reset -q --` resolves
+  // HEAD→commit→tree→blobs, so an mmap/chmod rewrite of an EXISTING
+  // object steers its index claims exactly like a ref flip (CX-r24-A)
+  // — and it writes no objects, so any pin drift is foreign. `add`
+  // never consults existing objects for its output (staged OIDs derive
+  // from worktree bytes) and `finalize_object_file` UTIMES a duplicate
+  // it recreates — a benign ctime bump a pin would misread. Objects
+  // created by the op itself carry no pin (the `objects/` dirent
+  // filter ignores them); the read path leaves objects to the
+  // fingerprint's own post-drain compare.
+  if (pinObjects === true && fp.objectsDir !== null) {
+    for (const rel of fp.objectFiles.keys()) {
+      pinFile(path.join(fp.objectsDir, rel));
+      if (failed) break;
     }
   }
   // The anchored op's HEAD is not its own write surface — keep it pinned
@@ -3311,6 +3379,34 @@ export function reproveEvidenceSurface(
         return false;
       }
     }
+  }
+  if (fp.refsDir !== null) {
+    // Every ref-resolving op answers through this tree — a loose-ref
+    // flip steers `rev-parse`/`log`/`diff` verdicts AND the anchored
+    // `reset`'s index claims, so it must read as drift (CX-r24-A).
+    const cur = enumerateTreeFiles(fp.refsDir);
+    if (cur.size !== fp.refsFiles.size) return false;
+    for (const [rel, st] of fp.refsFiles) {
+      const c = cur.get(rel);
+      if (
+        c === undefined ||
+        c.ino !== st.ino ||
+        c.ctimeMs !== st.ctimeMs ||
+        c.size !== st.size ||
+        c.link !== st.link
+      ) {
+        return false;
+      }
+    }
+  }
+  if (fp.packedRefsPath !== null) {
+    const b = safeReadBytes(fp.packedRefsPath);
+    if (
+      b === null
+        ? fp.packedRefsBytes !== null
+        : fp.packedRefsBytes === null || !b.equals(fp.packedRefsBytes)
+    )
+      return false;
   }
   if (fp.indexPath !== null) {
     const b = safeReadBytes(fp.indexPath);
@@ -3721,6 +3817,12 @@ async function verifierGitSpawn(
       preflight,
       anchoredMutationIgnorable,
       opts?.extraWatchPaths,
+      // `reset -q --` resolves HEAD→commit→tree→blobs — a mid-window
+      // rewrite of an existing object steers its index claims, so the
+      // object store joins the pins. `add` derives staged OIDs from
+      // worktree bytes alone; pinning its objects would misread the
+      // write-side utime freshen as drift (CX-r24-A).
+      args[0] === "reset",
     );
     if (windowWatch === null) {
       return {
