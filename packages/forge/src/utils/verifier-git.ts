@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: pin ref and object surfaces under anchored git mutations</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1616: close r26 trust-boundary counterexamples — dwim consult surface fingerprinting, non-regular dirent hazards</item>
   <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <item>RFC-1616: close r28 trust-boundary counterexamples — rewritten/ name bound + anchored-add staged-set coverage</item>
+  <item>RFC-1616: bound rewritten/ exempt names to exact object-name length</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -2496,12 +2496,14 @@ export function judgeEvidenceRepoSurface(
         EVIDENCE_NESTED_REF_FILES.has(surface) ||
         // `rebase-merge/rewritten/` holds ONLY flat `<old-oid>`-named
         // files carrying the `<new-oid>` line (rebase_merge_update
-        // writes `rewritten/<hex(old)>` — never a non-oid name, never
-        // deeper). An unbounded prefix exempts `rewritten/evil` and
-        // `rewritten/<dir>/<name>` plant positions that answer dwim
-        // through it just the same (CX-r28-A).
+        // writes `rewritten/<hex(old)>` — a full object name, exactly
+        // hashlen lowercase hex — never a non-oid name, never a
+        // short-hash name, never deeper). An unbounded prefix exempts
+        // `rewritten/evil`, `rewritten/<dir>/<name>`, and any
+        // non-hashlen `<hex>` name that answers dwim through it just
+        // the same (CX-r28-A).
         (surface.startsWith("rebase-merge/rewritten/") &&
-          /^[0-9a-f]{40,64}$/.test(surface.slice("rebase-merge/rewritten/".length)));
+          /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(surface.slice("rebase-merge/rewritten/".length)));
       const head = safeReadPrefix(abs, 128);
       const shape = head === null ? null : refContentShape(head);
       if (shape === "symref" || (shape === "oid" && !authored)) shapeViolations.push(abs);
