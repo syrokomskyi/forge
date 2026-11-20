@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <item>RFC-1616: pin ref and object surfaces under anchored git mutations</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1616: close r26 trust-boundary counterexamples — dwim consult surface fingerprinting, non-regular dirent hazards</item>
+  <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -2133,41 +2133,60 @@ const EVIDENCE_GITDIR_DIR_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Map a leaf path under a gitdir to its dwim-consult position —
- * `<dir>/<rest>` — or `null` when the leaf sits in a baseline-shaped
- * position: the gitdir root (planted pseudo-refs there are the r25
- * attested-surface class) or the `objects/`/`refs/` member namespaces
- * (planted refs are the same accepted residual). `worktrees/<id>` and
- * `modules/<name>` hold embedded gitdirs — descend through them: a
- * metadir's own root files and `refs/` are baseline; `logs/FOO` inside
- * `worktrees/<id>/` or `modules/<name>/` is the same consultable hole
- * one gitdir deeper (CX-r26-B).
+ * Where a leaf sits on git's `$GIT_DIR/<name>` dwim consult surface:
+ * - `root` — a baseline residual: the gitdir root, `objects/`/`refs/`
+ *   member namespaces, embedded-gitdir roots, and arbitrary-payload
+ *   positions (`lost-found/other/<oid>` — a committed blob can carry
+ *   ANY leading bytes). Never content-judged.
+ * - `oid` — a name position git writes rev-bearing content into, in
+ *   bare-oid form only (`logs/HEAD`, `logs/refs/**`,
+ *   `lost-found/commit/<oid>`, the mid-operation state files). A
+ *   `ref:`-form file here is attacker-shaped — git never writes the
+ *   symref spelling into these names (CX-r27-A).
+ * - `check` — every other position: any ref-parseable content is a
+ *   violation (CX-r26-B).
  */
-function consultSurfaceRel(rel: string): string | null {
+type ConsultSurfacePosition = "root" | "oid" | "check";
+
+/**
+ * Map a leaf path under a gitdir to its dwim-consult position.
+ * `worktrees/<id>` and `modules/<name>` hold embedded gitdirs —
+ * descend through them: a metadir's own root files and `refs/` are
+ * baseline; `logs/FOO` inside `worktrees/<id>/` or `modules/<name>/`
+ * is the same consultable hole one gitdir deeper (CX-r26-B).
+ */
+function consultSurfacePosition(rel: string): { pos: ConsultSurfacePosition; surface: string } {
   const parts = rel.split("/");
   let i = 0;
   for (;;) {
-    if (i >= parts.length - 1) return null;
+    if (i >= parts.length - 1) return { pos: "root", surface: "" };
     const dir = parts[i]!;
-    if (dir === "objects" || dir === "refs") return null;
+    if (dir === "objects" || dir === "refs") return { pos: "root", surface: "" };
     if (dir === "logs") {
       // Reflog positions are authored only for `HEAD` and `refs/**`
       // mirror names — `logs/FOO` is never a produced path, so its
-      // name itself is the violation class (CX-r26-B).
+      // name itself is the violation class (CX-r26-B). Reflog content
+      // is bare-oid-shaped (`<old> <new> <ident>`); a `ref:`-form file
+      // at an authored name is never produced either (CX-r27-A).
       const rest = parts.slice(i + 1).join("/");
-      return rest === "HEAD" || rest.startsWith("refs/") ? null : `${dir}/${rest}`;
+      return {
+        pos: rest === "HEAD" || rest.startsWith("refs/") ? "oid" : "check",
+        surface: `${dir}/${rest}`,
+      };
     }
     if (dir === "lost-found") {
       // `git fsck --lost-found` writes object payloads under
-      // `lost-found/{commit,other}/<oid>` — a bare `<oid>` payload is
-      // ref-parseable, so authored names are the baseline position;
-      // any other shape is never produced (CX-r26-B).
+      // `lost-found/{commit,other}/<oid>`. `commit/` names always hold
+      // the bare `<oid>` line; `other/` names hold the raw object
+      // payload, which can carry ANY leading bytes — payload-arbitrary
+      // positions are baseline like root files. Any other shape is
+      // never produced (CX-r26-B).
       const rest = parts.slice(i + 1);
-      return rest.length === 2 &&
-        (rest[0] === "commit" || rest[0] === "other") &&
-        /^[0-9a-f]{40,64}$/.test(rest[1]!)
-        ? null
-        : `${dir}/${rest.join("/")}`;
+      if (rest.length === 2 && /^[0-9a-f]{40,64}$/.test(rest[1]!)) {
+        if (rest[0] === "commit") return { pos: "oid", surface: `${dir}/${rest.join("/")}` };
+        if (rest[0] === "other") return { pos: "root", surface: "" };
+      }
+      return { pos: "check", surface: `${dir}/${rest.join("/")}` };
     }
     if (dir === "worktrees") {
       // `<id>` is exactly one component — the remainder past it is the
@@ -2175,7 +2194,7 @@ function consultSurfaceRel(rel: string): string | null {
       // (baseline), a structure name classifies, a novel dir is a
       // consultable hole.
       i += 2;
-      if (i >= parts.length - 1) return null;
+      if (i >= parts.length - 1) return { pos: "root", surface: "" };
       continue;
     }
     if (dir === "modules") {
@@ -2191,10 +2210,10 @@ function consultSurfaceRel(rel: string): string | null {
           break;
         }
       }
-      if (!found) return null;
+      if (!found) return { pos: "root", surface: "" };
       continue;
     }
-    return parts.slice(i).join("/");
+    return { pos: "check", surface: parts.slice(i).join("/") };
   }
 }
 
@@ -2226,14 +2245,30 @@ function safeReadPrefix(p: string, n: number): Buffer | null {
 }
 
 /**
- * True when the first line parses the way `refs_read_raw_ref` needs: a
- * `ref:` symref or a bare hex object name followed by whitespace/EOL —
- * the only content shapes a `$GIT_DIR/<name>` consult answers.
+ * How `refs_read_raw_ref`/`parse_loose_ref_contents` would parse the
+ * leading bytes: `"symref"` when they begin `ref:` — git then skips an
+ * arbitrary `isspace` run (any mix of space/tab/CR/LF, up to the 256
+ * byte read) for the refname, so ANY `ref:` head is consultable at a
+ * position where git never writes symref form, and a `ref:`+padding
+ * head that pushes the refname past the read window is only ever
+ * anomalous anyway (CX-r27-A). `"oid"` when ≥40 hex chars lead —
+ * `get_oid_hex` consumes exactly hashlen from byte 0 and never checks
+ * the byte after, so `<40hex>junk` parses too. `null` for anything
+ * else.
  */
-function refContentShape(prefix: Buffer): boolean {
+function refContentShape(prefix: Buffer): "symref" | "oid" | null {
+  if (
+    prefix.length >= 4 &&
+    prefix[0] === 0x72 && // r
+    prefix[1] === 0x65 && // e
+    prefix[2] === 0x66 && // f
+    prefix[3] === 0x3a // :
+  ) {
+    return "symref";
+  }
   const nl = prefix.indexOf(0x0a);
   const line = prefix.subarray(0, nl === -1 ? prefix.length : nl).toString("latin1");
-  return /^ref:\s*\S/.test(line) || /^[0-9a-fA-F]{40,64}(?:\s|$)/.test(line);
+  return /^[0-9a-fA-F]{40,}/.test(line) ? "oid" : null;
 }
 
 export function judgeEvidenceRepoSurface(
@@ -2426,6 +2461,9 @@ export function judgeEvidenceRepoSurface(
     for (const [rel, st] of fingerprint?.refsFiles ?? []) {
       if (st.linkDir === true) shapeViolations.push(`refs/${rel}`);
     }
+    for (const [rel, st] of fingerprint?.modulesFiles ?? []) {
+      if (st.linkDir === true) shapeViolations.push(`modules/${rel}`);
+    }
     for (const [abs, st] of fingerprint?.nestedFiles ?? []) {
       if (st.linkDir === true) shapeViolations.push(abs);
     }
@@ -2446,13 +2484,20 @@ export function judgeEvidenceRepoSurface(
     // this judges the captured baseline's CONTENT shape.
     const checkConsult = (abs: string, st: EvidenceSurfaceFile, rel: string | null) => {
       if (st.kind !== undefined || st.linkDir === true || rel === null) return;
-      const surface = consultSurfaceRel(rel);
-      if (surface === null) return;
-      if (EVIDENCE_NESTED_REF_FILES.has(surface) || surface.startsWith("rebase-merge/rewritten/")) {
-        return;
-      }
+      const { pos, surface } = consultSurfacePosition(rel);
+      if (pos === "root") return;
+      // Name positions git itself writes bare-oid rev content into
+      // accept an oid line as baseline; `ref:` symref form is NEVER
+      // authored into any non-root name — a `ref:` head is always a
+      // violation (CX-r27-A: symref content at an authored-oid or
+      // exempt name answers dwim just as well).
+      const authored =
+        pos === "oid" ||
+        EVIDENCE_NESTED_REF_FILES.has(surface) ||
+        surface.startsWith("rebase-merge/rewritten/");
       const head = safeReadPrefix(abs, 128);
-      if (head !== null && refContentShape(head)) shapeViolations.push(abs);
+      const shape = head === null ? null : refContentShape(head);
+      if (shape === "symref" || (shape === "oid" && !authored)) shapeViolations.push(abs);
     };
     const fpRoots = [fingerprint?.gitDir, fingerprint?.commonDir].filter(
       (r): r is string => r !== null && r !== undefined,
@@ -3419,7 +3464,22 @@ function collectTreeDirs(root: string, out: string[], bound: number): boolean {
       continue;
     }
     for (const e of entries) {
-      if (e.isDirectory()) stack.push(path.join(dir, e.name));
+      if (e.isDirectory()) {
+        stack.push(path.join(dir, e.name));
+        continue;
+      }
+      // A symlink resolving to a directory is a consultable dir shape
+      // (`$GIT_DIR/<link>/<name>` follows it) — descend through the
+      // link so in-place writes inside the TARGET fire watch events
+      // under the link path (CX-r27-B). The bound caps link cycles.
+      if (e.isSymbolicLink()) {
+        const ap = path.join(dir, e.name);
+        try {
+          if (statSync(ap).isDirectory()) stack.push(ap);
+        } catch {
+          /* dangling — no dir to watch */
+        }
+      }
     }
   }
   return true;
@@ -3575,20 +3635,27 @@ export function armEvidenceWindowWatch(
   // Bound the pin map, never its coverage — anchored ops pin the whole
   // object store too, so this sits well above a packed repo's loose set.
   const EVIDENCE_PIN_BOUND = 32768;
-  const pinTree = (root: string) => {
-    for (const [rel, st] of enumerateTreeFiles(root)) {
-      if (failed) return;
-      const top = rel.includes("/") ? rel.slice(0, rel.indexOf("/")) : rel;
-      if (top === "objects") continue;
-      const abs = path.join(root, rel);
-      if (ignore?.(abs) === true) continue;
-      pins.set(abs, { ino: st.ino, ctimeMs: st.ctimeMs });
-      if (pins.size > EVIDENCE_PIN_BOUND) {
-        failed = true;
-        return;
-      }
-    }
+  // Pin exactly the leaf set the fingerprint judged (CX-r27-B): the
+  // fp maps are the consultable surface — `nestedFiles` carries
+  // members UNDER symlinked dirs keyed by link path, which a fresh
+  // re-enumeration records only as a single `linkDir` leaf, leaving
+  // in-place rewrites inside the target unpinned. Pinning the judged
+  // set (not a re-walk) keeps pin coverage ≡ fingerprint coverage;
+  // a plant between capture and arm is a watched-dirent event instead.
+  const pinLeaf = (abs: string, st: { ino: number; ctimeMs: number }) => {
+    if (failed || pins.has(abs) || ignore?.(abs) === true) return;
+    pins.set(abs, { ino: st.ino, ctimeMs: st.ctimeMs });
+    if (pins.size > EVIDENCE_PIN_BOUND) failed = true;
   };
+  const pinMap = (m: ReadonlyMap<string, EvidenceSurfaceFile>, base: string | null) => {
+    for (const [k, st] of m) pinLeaf(base === null ? k : path.join(base, k), st);
+  };
+  pinMap(fp.rootFiles, null);
+  pinMap(fp.nestedFiles, null);
+  pinMap(fp.refsFiles, fp.refsDir);
+  pinMap(fp.wtRefsFiles, fp.wtRefsDir);
+  pinMap(fp.worktreeFiles, fp.worktreesDir);
+  pinMap(fp.modulesFiles, fp.modulesDir);
   const pinFile = (abs: string) => {
     if (failed || pins.has(abs)) return;
     try {
@@ -3599,13 +3666,6 @@ export function armEvidenceWindowWatch(
       /* absent — a mid-window create is a dirent event the watch sees */
     }
   };
-  const pinRoots = new Set<string>();
-  for (const r of [fp.gitDir, fp.commonDir]) {
-    if (r !== null && !pinRoots.has(r)) {
-      pinRoots.add(r);
-      pinTree(r);
-    }
-  }
   // Object pins are opt-in per armed op: `reset -q --` resolves
   // HEAD→commit→tree→blobs, so an mmap/chmod rewrite of an EXISTING
   // object steers its index claims exactly like a ref flip (CX-r24-A)
