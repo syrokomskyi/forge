@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <item>RFC-1616: close r28 trust-boundary counterexamples — rewritten/ name bound + anchored-add staged-set coverage</item>
   <item>RFC-1616: bound rewritten/ exempt names to exact object-name length</item>
   <item>RFC-1616: close r29 trust-boundary counterexamples — NUL-delim ignore provenance + pre-arm rule-source pinning + staged-set coverage diff</item>
   <item>RFC-1616: parse reset rev-vs-pathspec per git's own rule in staged-set coverage (RFC-1616)</item>
+  <item>RFC-1616: close r30 trust-boundary counterexamples — consulted-byte ignore provenance + snapshot fd byte-pins (RFC-1616)</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -3705,11 +3705,20 @@ export function armEvidenceWindowWatch(
   if (fp.configPath !== null && ignore?.(fp.configPath) !== true) pinFile(fp.configPath);
   const claims = preflight.index;
   if (claims?.path !== undefined) pinFile(claims.path);
-  let claimsFdPin: { fd: number; ino: number; ctimeMs: number } | null = null;
+  // The claims fd pins the snapshot BYTES, not the inode's stat — a
+  // same-UID pwrite through `/proc/<pid>/fd/N` plus a ctime-restoring
+  // `utimensat` on the same handle would slip an ino+ctime pin while
+  // feeding attacker bytes to every claims child (CX-r30-B class).
+  let claimsFdPin: { fd: number; bytes: Buffer } | null = null;
   if (claims?.fd !== undefined) {
     try {
       const st = fstatSync(claims.fd);
-      claimsFdPin = { fd: claims.fd, ino: st.ino, ctimeMs: st.ctimeMs };
+      const bytes = Buffer.alloc(st.size);
+      if (readSync(claims.fd, bytes, 0, bytes.length, 0) !== bytes.length) {
+        failed = true;
+      } else {
+        claimsFdPin = { fd: claims.fd, bytes };
+      }
     } catch {
       failed = true;
     }
@@ -3803,8 +3812,11 @@ export function armEvidenceWindowWatch(
       }
       if (claimsFdPin !== null) {
         try {
-          const st = fstatSync(claimsFdPin.fd);
-          if (st.ino !== claimsFdPin.ino || st.ctimeMs !== claimsFdPin.ctimeMs) {
+          const back = Buffer.alloc(claimsFdPin.bytes.length);
+          if (
+            readSync(claimsFdPin.fd, back, 0, back.length, 0) !== back.length ||
+            !back.equals(claimsFdPin.bytes)
+          ) {
             events.push(`/proc/self/fd/${claimsFdPin.fd}`);
           }
         } catch {
@@ -4374,10 +4386,17 @@ export function spawnCaptured(
     child.stderr?.on("data", (d: Buffer) => err.push(d));
     child.on("error", () => finish(-1));
     child.on("close", (code) => finish(code ?? -1));
-    child.stdin?.on("error", () => {
-      /* EPIPE — a finished read must not crash the parent */
-    });
-    child.stdin?.end(opts.input ?? "");
+    // `?.on` guards a NULL stdin but not a sparse one — mocked
+    // children can carry a truthy stdin lacking `.on`/`.end` and a
+    // direct call throws TypeError instead of finishing -1.
+    if (typeof child.stdin?.on === "function") {
+      child.stdin.on("error", () => {
+        /* EPIPE — a finished read must not crash the parent */
+      });
+    }
+    if (typeof child.stdin?.end === "function") {
+      child.stdin.end(opts.input ?? "");
+    }
   });
 }
 
@@ -4528,7 +4547,15 @@ async function verifyAnchoredMutationCoverage(
   // child's write as index-pin drift; the scratch copy absorbs it.
   // The `/dev/fd` form has no `.lock` path — refresh writes degrade
   // to a skipped lock, never a torn consult (CX-r29-C).
-  const liveIndex: { fd: number } | { path: string; ino: number; ctimeMs: number } | null = (() => {
+  // fd-form keeps the written bytes for a settle-time readback
+  // compare — a same-UID pwrite through `/proc/<pid>/fd/N` lands on
+  // this very inode, and `utimensat` through the same procfs handle
+  // restores ctime, so stat-pins alone would attest attacker bytes
+  // (CX-r30-B).
+  const liveIndex:
+    | { fd: number; bytes: Buffer }
+    | { path: string; ino: number; ctimeMs: number; bytes: Buffer }
+    | null = (() => {
     const indexPath = preflight.fingerprint?.indexPath;
     if (indexPath === null || indexPath === undefined) return null;
     let bytes: Buffer;
@@ -4542,7 +4569,7 @@ async function verifyAnchoredMutationCoverage(
       try {
         const fd = openSync(os.tmpdir(), oTmpfile | fsConstants.O_RDWR, 0o600);
         writeSync(fd, bytes);
-        return { fd };
+        return { fd, bytes };
       } catch {
         /* tmpfs/fs lacks O_TMPFILE — named fallback below */
       }
@@ -4554,7 +4581,7 @@ async function verifyAnchoredMutationCoverage(
       );
       writeFileSync(p, bytes, { mode: 0o600 });
       const st = statSync(p);
-      return { path: p, ino: st.ino, ctimeMs: st.ctimeMs };
+      return { path: p, ino: st.ino, ctimeMs: st.ctimeMs, bytes };
     } catch {
       return null;
     }
@@ -4618,9 +4645,16 @@ async function verifyAnchoredMutationCoverage(
     // drift refuses the whole proof (fd-form is O_TMPFILE: no path
     // to write through).
     if ("path" in liveIndex) {
+      // Byte-compare subsumes the ino+ctime stat pin — a pwrite plus
+      // `utimensat` ctime-restore would slip a stat check but cannot
+      // reproduce the snapshot bytes (CX-r30-B).
       try {
         const st = statSync(liveIndex.path);
-        if (st.ino !== liveIndex.ino || st.ctimeMs !== liveIndex.ctimeMs) {
+        if (
+          st.ino !== liveIndex.ino ||
+          st.ctimeMs !== liveIndex.ctimeMs ||
+          !readFileSync(liveIndex.path).equals(liveIndex.bytes)
+        ) {
           out = "live-index scratch mutated mid-check — staged-set coverage unverifiable";
         }
       } catch {
@@ -4632,6 +4666,20 @@ async function verifyAnchoredMutationCoverage(
         /* already gone */
       }
     } else {
+      // fd-form settle: read the snapshot back and byte-compare —
+      // the only pin a `/proc/<pid>/fd/N` pwrite + ctime-restoring
+      // `utimensat` cannot defeat (CX-r30-B). A short/mismatched read
+      // means the inode's bytes were swapped under the coverage
+      // children.
+      try {
+        const back = Buffer.alloc(liveIndex.bytes.length);
+        const got = readSync(liveIndex.fd, back, 0, back.length, 0);
+        if (got !== back.length || !back.equals(liveIndex.bytes)) {
+          out = "live-index snapshot mutated mid-check — staged-set coverage unverifiable";
+        }
+      } catch {
+        out = "live-index snapshot mutated mid-check — staged-set coverage unverifiable";
+      }
       try {
         closeSync(liveIndex.fd);
       } catch {
@@ -5427,6 +5475,21 @@ export async function unprovenIgnoredPaths(
   const tracked = await verifierGit(root, ["ls-files", "-z", "--", "*.gitignore"]);
   if (tracked.exitCode !== 0) return null;
   const trackedSet = new Set(tracked.stdout.split("\0").filter((p) => p.length > 0));
+  // CX-r30-A: tracked-PATH membership is not provenance — the child
+  // consults the source's WORKTREE bytes, which can be flipped to
+  // foreign rules between the caller's earlier status child and this
+  // one (entirely outside any armed window). Pin each source's stat
+  // now (ctime is kernel-managed: a flip-then-restore still drifts),
+  // then bind the consulted bytes to the claims-index blob below.
+  const srcStats = new Map<string, { ino: number; ctimeMs: number }>();
+  for (const s of trackedSet) {
+    try {
+      const st = statSync(path.join(root, s));
+      srcStats.set(s, { ino: st.ino, ctimeMs: st.ctimeMs });
+    } catch {
+      /* absent source — nothing to pin, cite is unprovable anyway */
+    }
+  }
   // The tracked sources' own bytes back each verdict — a transient
   // rewrite inside the -v child's window cites the tracked path while
   // serving forged rules, so their inodes join the spawn watch too.
@@ -5434,6 +5497,7 @@ export async function unprovenIgnoredPaths(
     input: `${ignored.join("\0")}\0`,
     extraWatchPaths: [...trackedSet].map((s) => path.join(root, s)),
   });
+  if (provenance.exitCode !== 0) return null;
   // `check-ignore -v -z` records: `source\0line\0pattern\0pathname\0` —
   // NUL cannot appear in any field, so a `.gitignore:`/`:`-bearing
   // directory name cannot truncate the source into a tracked decoy
@@ -5445,10 +5509,42 @@ export async function unprovenIgnoredPaths(
     const rec = provenance.stdout.split("\0");
     for (let i = 0; i + 3 < rec.length; i += 4) sourceOf.set(rec[i + 3]!, rec[i]!);
   }
+  // Byte-binding half of the CX-r30-A fix: each cited tracked source
+  // must be CLEAN against the claims index (`diff --name-only` lists
+  // the worktree-vs-blob divergent set) AND stat-stable since the pin
+  // above — a flip before the pins leaves foreign bytes (diff
+  // diverges), a flip inside/around the windows drifts ctime, and a
+  // deleted source fails both checks. All three land the `!!` in
+  // `unproven` — over-inclusive, never silent.
+  const cited = new Set([...sourceOf.values()].filter((s) => trackedSet.has(s)));
+  const dirtySrc = new Set<string>();
+  if (cited.size > 0) {
+    // Whole-tree diff (no pathspec): a cited source's literal name
+    // could carry `:(`-pathspec magic and silently scope the query to
+    // a different path — enumerating the full dirty set and
+    // intersecting names needs no pathspec trust at all.
+    const dirty = await verifierGit(root, ["diff", "--name-only", "-z"], {
+      extraWatchPaths: [...cited].map((s) => path.join(root, s)),
+    });
+    if (dirty.exitCode !== 0) return null;
+    for (const n of dirty.stdout.split("\0")) {
+      if (n.length > 0) dirtySrc.add(n);
+    }
+  }
   const unproven = new Set<string>();
   for (const p of ignored) {
     const src = sourceOf.get(p);
-    if (src === undefined || !trackedSet.has(src)) unproven.add(p);
+    let proven = src !== undefined && trackedSet.has(src) && !dirtySrc.has(src);
+    if (proven) {
+      const st0 = srcStats.get(src!);
+      try {
+        const st1 = statSync(path.join(root, src!));
+        proven = st0 !== undefined && st1.ino === st0.ino && st1.ctimeMs === st0.ctimeMs;
+      } catch {
+        proven = false;
+      }
+    }
+    if (!proven) unproven.add(p);
   }
   return unproven;
 }
