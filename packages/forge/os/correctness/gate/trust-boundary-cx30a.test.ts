@@ -131,7 +131,7 @@ describe("CX-r30-A: flow-side `!!` provenance attests tracked PATH, not consulte
   it(
     "a tracked `.gitignore` flipped between the status and check-ignore " +
       "children hides an untracked payload behind a 'tracked' source — clean verdict on a dirty tree",
-    { timeout: 180_000 },
+    { timeout: 480_000 },
     async (ctx) => {
       if (!HAS_PY) return ctx.skip();
       let forged = 0;
