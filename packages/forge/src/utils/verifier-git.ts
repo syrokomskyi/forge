@@ -16,9 +16,9 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Allowlist not denylist for env: any GIT_* variable git honors (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY, GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_CONFIG_*, GIT_CEILING_*, GIT_EXEC_PATH, GIT_NAMESPACE, GIT_SSH*, GIT_EXTERNAL_DIFF…) can redirect what a read resolves, so the whole prefix is dropped rather than enumerating known levers (O-2/r3).</item>
   <item>GIT_NO_REPLACE_OBJECTS is set AFTER the strip — refs/replace rewrites trees, messages, and listing output while the real objects still ship on push, so every committed read must see raw objects (CX-46..49).</item>
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
+  <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r29 trust-boundary counterexamples — NUL-delim ignore provenance + pre-arm rule-source pinning + staged-set coverage diff</item>
   <item>RFC-1616: parse reset rev-vs-pathspec per git's own rule in staged-set coverage (RFC-1616)</item>
   <item>RFC-1616: close r30 trust-boundary counterexamples — consulted-byte ignore provenance + snapshot fd byte-pins (RFC-1616)</item>
   <item>RFC-1616: close r31 trust-boundary counterexamples — HEAD-bound ignore provenance + fd append size-pins (RFC-1616)</item>
@@ -34,6 +34,7 @@ CX-r32-B: liveIndex O_TMPFILE fd had no per-spawn re-proof — a
 /proc/<pid>/fd pwrite fed forged index bytes to coverage children and
 a restore before finish() erased evidence. runLive now re-proves
 size+bytes per spawn (the evidenceSpawnState claims-fd idiom).</item>
+  <item>RFC-1616: record the single-armed-window consult decision (CX-r32-A)</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
