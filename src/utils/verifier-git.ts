@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
   <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <item>RFC-1616: pin ref and object surfaces under anchored git mutations</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
+  <item>RFC-1616: close r26 trust-boundary counterexamples — dwim consult surface fingerprinting, non-regular dirent hazards</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -660,17 +660,38 @@ export interface EvidenceFingerprint {
   wtRefsDir: string | null;
   wtRefsFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
   /**
-   * Regular files directly under `gitDir` AND `commonDir` — git's
+   * Every dirent directly under `gitDir` AND `commonDir` — git's
    * pseudo-ref channel: `rev-parse FOO`/`log ORIG_HEAD`/`reset <name>`
    * resolve `$GIT_DIR/<name>` before refs, so `ORIG_HEAD`,
    * `MERGE_HEAD`, `AUTO_MERGE`, `BISECT_HEAD`, and ANY planted file
    * (`.git/FOO`) answer as revs from unpinned bytes (CX-r25-A).
-   * Keyed by ABSOLUTE path — directories are excluded (`objects/`,
-   * `refs/`, `logs/`, `worktrees/` have their own tree members; a dir
-   * swap at a root name is a parent-dirent event plus tree-member
-   * drift). Files shared by both roots (plain repos) dedupe by key.
+   * Non-regular dirents carry `kind` — a FIFO is a consultable
+   * forged-byte channel a feeder drives (CX-r26-A). Keyed by ABSOLUTE
+   * path — directories are excluded from the map and recorded in
+   * `rootDirs` instead. Files shared by both roots (plain repos)
+   * dedupe by key.
    */
   rootFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
+  /**
+   * Every dir-shaped entry directly under `gitDir` AND `commonDir` —
+   * real dirs and symlinks resolving to dirs. A `.git/x/` planted
+   * post-capture is drift even before contents are compared: the
+   * dwim resolves `$GIT_DIR/x/FOO` at arbitrary depth (CX-r26-B).
+   * Absolute-keyed; member-covered dirs still join the set (their
+   * contents are the member's job).
+   */
+  rootDirs: ReadonlySet<string>;
+  /**
+   * Files, symlinks, and non-regular dirents under every top-level dir
+   * NOT owned by a tree member (`objects/`/`refs/`/`wtRefs`/
+   * `worktrees/`/`modules/`) — `logs/`, `info/`, `hooks/`,
+   * `sequencer/`, `rr-cache/`, `forge/`, and any novel dir. Git's
+   * `$GIT_DIR/<name>` dwim resolves pseudo-refs at ARBITRARY depth
+   * (`rev-parse logs/FOO`), so these trees answer revs from unpinned
+   * bytes without coverage — including a post-preflight plant that no
+   * named member could describe (CX-r26-B). Absolute-keyed.
+   */
+  nestedFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
   /**
    * `<common>/packed-refs` — the packed half of the same namespace;
    * byte-pinned like the index so a pre-arm rewrite is drift too.
@@ -816,6 +837,17 @@ export interface EvidenceSurfaceFile {
    * refusal is the only answer an unpinnable member set can get.
    */
   linkDir?: true;
+  /**
+   * A non-regular node's type — recorded so presence/type swaps read as
+   * drift at the reprove compare. `fifo`/`device`/`other` mark the
+   * surface unverifiable: git's `$GIT_DIR/<name>` dwim `open()`s them
+   * successfully, so a session feeder serves forged rev bytes no stat
+   * can pin (CX-r26-A). `socket` is record-only — `open()` fails
+   * outright, so it can never carry chosen bytes (`fsmonitor--daemon`
+   * stays verifiable). On a symlink leaf the kind describes the
+   * RESOLVED target.
+   */
+  kind?: "fifo" | "socket" | "device" | "other";
 }
 
 /**
@@ -2045,6 +2077,165 @@ export async function prepareEvidenceIndex(
  * (CX-104); an unresolved objects dir contributes a violation, not a
  * skipped check.
  */
+/**
+ * Git's `$GIT_DIR/<name>` dwim resolves pseudo-refs at ARBITRARY depth —
+ * `rev-parse logs/FOO` opens `.git/logs/FOO`, `rev-parse x/qux` opens
+ * `.git/x/qux`. Rev-bearing content in a NON-member position is
+ * attacker-shaped: git itself writes consultable files only at the
+ * gitdir root, under `refs/`/`objects/`, and in the mid-operation
+ * state files below — a `<sha>\n` under `logs/`, `info/`, `hooks/`,
+ * `forge/`, or a novel dir is a planted channel (CX-r26-B).
+ */
+const EVIDENCE_NESTED_REF_FILES: ReadonlySet<string> = new Set([
+  "sequencer/head",
+  "sequencer/abort-safety",
+  "sequencer/amend",
+  "rebase-merge/onto",
+  "rebase-merge/orig-head",
+  "rebase-merge/autostash",
+  "rebase-merge/amend",
+  "rebase-merge/stopped-sha",
+  "rebase-merge/rewritten-list",
+  "rebase-apply/onto",
+  "rebase-apply/orig-head",
+  "rebase-apply/abort-safety",
+  "info/refs",
+  "info/grafts",
+]);
+
+/**
+ * Dir names git's own layout produces inside a gitdir — the first
+ * structure-named component after a `modules/`/`worktrees/` marker
+ * resolves an embedded gitdir's boundary (module names may themselves
+ * contain `/`, so position is judged by structure names, not depth).
+ */
+const EVIDENCE_GITDIR_DIR_NAMES: ReadonlySet<string> = new Set([
+  "objects",
+  "refs",
+  "worktrees",
+  "modules",
+  "logs",
+  "info",
+  "hooks",
+  "sequencer",
+  "rebase-merge",
+  "rebase-apply",
+  "rr-cache",
+  "lfs",
+  "svn",
+  "forge",
+  "branches",
+  "coverage",
+  "gitweb",
+  "lost-found",
+  "reftable",
+  "credential-cache",
+]);
+
+/**
+ * Map a leaf path under a gitdir to its dwim-consult position —
+ * `<dir>/<rest>` — or `null` when the leaf sits in a baseline-shaped
+ * position: the gitdir root (planted pseudo-refs there are the r25
+ * attested-surface class) or the `objects/`/`refs/` member namespaces
+ * (planted refs are the same accepted residual). `worktrees/<id>` and
+ * `modules/<name>` hold embedded gitdirs — descend through them: a
+ * metadir's own root files and `refs/` are baseline; `logs/FOO` inside
+ * `worktrees/<id>/` or `modules/<name>/` is the same consultable hole
+ * one gitdir deeper (CX-r26-B).
+ */
+function consultSurfaceRel(rel: string): string | null {
+  const parts = rel.split("/");
+  let i = 0;
+  for (;;) {
+    if (i >= parts.length - 1) return null;
+    const dir = parts[i]!;
+    if (dir === "objects" || dir === "refs") return null;
+    if (dir === "logs") {
+      // Reflog positions are authored only for `HEAD` and `refs/**`
+      // mirror names — `logs/FOO` is never a produced path, so its
+      // name itself is the violation class (CX-r26-B).
+      const rest = parts.slice(i + 1).join("/");
+      return rest === "HEAD" || rest.startsWith("refs/") ? null : `${dir}/${rest}`;
+    }
+    if (dir === "lost-found") {
+      // `git fsck --lost-found` writes object payloads under
+      // `lost-found/{commit,other}/<oid>` — a bare `<oid>` payload is
+      // ref-parseable, so authored names are the baseline position;
+      // any other shape is never produced (CX-r26-B).
+      const rest = parts.slice(i + 1);
+      return rest.length === 2 &&
+        (rest[0] === "commit" || rest[0] === "other") &&
+        /^[0-9a-f]{40,64}$/.test(rest[1]!)
+        ? null
+        : `${dir}/${rest.join("/")}`;
+    }
+    if (dir === "worktrees") {
+      // `<id>` is exactly one component — the remainder past it is the
+      // metadir's embedded-relative path: a leaf is its root
+      // (baseline), a structure name classifies, a novel dir is a
+      // consultable hole.
+      i += 2;
+      if (i >= parts.length - 1) return null;
+      continue;
+    }
+    if (dir === "modules") {
+      // `<name>` may itself contain `/` — position is judged by the
+      // first later structure-named component; none means an
+      // embedded-gitdir root file (a planted module tree is the same
+      // member-tree residual class as a planted `refs/**` leaf).
+      let found = false;
+      for (let j = i + 1; j < parts.length - 1; j++) {
+        if (EVIDENCE_GITDIR_DIR_NAMES.has(parts[j]!)) {
+          i = j;
+          found = true;
+          break;
+        }
+      }
+      if (!found) return null;
+      continue;
+    }
+    return parts.slice(i).join("/");
+  }
+}
+
+/**
+ * Bounded non-blocking read of a file's leading bytes — enough to see
+ * the first line git's `refs_read_raw_ref` would parse (`ref:` symref
+ * or a bare object name). Non-regular/vanished entries answer null —
+ * their classes refuse through `kind`/readdir paths instead.
+ */
+function safeReadPrefix(p: string, n: number): Buffer | null {
+  let fd: number | null = null;
+  try {
+    fd = openSync(p, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK);
+    if (!fstatSync(fd).isFile()) return null;
+    const buf = Buffer.alloc(n);
+    const got = readSync(fd, buf, 0, n, 0);
+    return buf.subarray(0, got);
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* closed */
+      }
+    }
+  }
+}
+
+/**
+ * True when the first line parses the way `refs_read_raw_ref` needs: a
+ * `ref:` symref or a bare hex object name followed by whitespace/EOL —
+ * the only content shapes a `$GIT_DIR/<name>` consult answers.
+ */
+function refContentShape(prefix: Buffer): boolean {
+  const nl = prefix.indexOf(0x0a);
+  const line = prefix.subarray(0, nl === -1 ? prefix.length : nl).toString("latin1");
+  return /^ref:\s*\S/.test(line) || /^[0-9a-fA-F]{40,64}(?:\s|$)/.test(line);
+}
+
 export function judgeEvidenceRepoSurface(
   repoRoot: string,
   listedStdout: string,
@@ -2227,6 +2418,59 @@ export function judgeEvidenceRepoSurface(
     for (const [rel, st] of fingerprint?.worktreeFiles ?? []) {
       if (st.linkDir === true) shapeViolations.push(`worktrees/${rel}`);
     }
+    // Same CX-145 class on the rest of the enumerated surface: a
+    // symlinked dir under `refs/` or any catch-all tree (`logs/`,
+    // `info/`, `hooks/`, novel dirs) leaves members beneath it
+    // fingerprint-invisible while git's `$GIT_DIR/<name>` dwim still
+    // descends — presence refuses (CX-r26-B).
+    for (const [rel, st] of fingerprint?.refsFiles ?? []) {
+      if (st.linkDir === true) shapeViolations.push(`refs/${rel}`);
+    }
+    for (const [abs, st] of fingerprint?.nestedFiles ?? []) {
+      if (st.linkDir === true) shapeViolations.push(abs);
+    }
+    if (fingerprint?.wtRefsDir !== null && fingerprint?.wtRefsDir !== undefined) {
+      for (const [rel, st] of fingerprint.wtRefsFiles) {
+        if (st.linkDir === true) shapeViolations.push(`worktree-refs/${rel}`);
+      }
+    }
+    // Consultable pseudo-ref content in non-member positions
+    // (CX-r26-B): dwim reaches `$GIT_DIR/<dir>/<name>` at arbitrary
+    // depth, so a `<sha>` file under `logs/`, `info/`, `hooks/`,
+    // `forge/`, a novel dir, or an embedded metadir's non-member
+    // subdir answers `rev-parse <path>` with unjudged bytes —
+    // including a pre-capture plant the fingerprint alone would
+    // attest as baseline. Only the state-file names git itself
+    // writes rev content into are exempt; presence elsewhere is a
+    // violation. A mid-window rewrite is already stat/pin drift —
+    // this judges the captured baseline's CONTENT shape.
+    const checkConsult = (abs: string, st: EvidenceSurfaceFile, rel: string | null) => {
+      if (st.kind !== undefined || st.linkDir === true || rel === null) return;
+      const surface = consultSurfaceRel(rel);
+      if (surface === null) return;
+      if (EVIDENCE_NESTED_REF_FILES.has(surface) || surface.startsWith("rebase-merge/rewritten/")) {
+        return;
+      }
+      const head = safeReadPrefix(abs, 128);
+      if (head !== null && refContentShape(head)) shapeViolations.push(abs);
+    };
+    const fpRoots = [fingerprint?.gitDir, fingerprint?.commonDir].filter(
+      (r): r is string => r !== null && r !== undefined,
+    );
+    for (const [abs, st] of fingerprint?.nestedFiles ?? []) {
+      const root = fpRoots.find((r) => abs.startsWith(r + path.sep));
+      checkConsult(abs, st, root === undefined ? null : abs.slice(root.length + 1));
+    }
+    if (fingerprint?.worktreesDir !== null && fingerprint?.worktreesDir !== undefined) {
+      for (const [rel, st] of fingerprint.worktreeFiles) {
+        checkConsult(path.join(fingerprint.worktreesDir, rel), st, `worktrees/${rel}`);
+      }
+    }
+    if (fingerprint?.modulesDir !== null && fingerprint?.modulesDir !== undefined) {
+      for (const [rel, st] of fingerprint.modulesFiles) {
+        checkConsult(path.join(fingerprint.modulesDir, rel), st, `modules/${rel}`);
+      }
+    }
     for (const e of wtEntries) {
       const meta = path.join(commonDir, "worktrees", e.name);
       let wellFormed = e.isDirectory();
@@ -2385,6 +2629,23 @@ export function resolutionEnv(
 }
 
 /**
+ * Map a stat/dirent result to the recorded non-regular kind — FIFOs and
+ * devices can be `open()`ed and fed forged bytes by a session writer,
+ * sockets fail `open()` (CX-r26-A).
+ */
+function surfaceNodeKind(st: {
+  isFIFO(): boolean;
+  isSocket(): boolean;
+  isCharacterDevice(): boolean;
+  isBlockDevice(): boolean;
+}): NonNullable<EvidenceSurfaceFile["kind"]> {
+  if (st.isFIFO()) return "fifo";
+  if (st.isSocket()) return "socket";
+  if (st.isCharacterDevice() || st.isBlockDevice()) return "device";
+  return "other";
+}
+
+/**
  * Every file inside a fingerprinted subtree, keyed by path relative to
  * the root — loose objects, packs, `info/*`, worktree admin files, and
  * any session-dropped extra file. The stat triple (ino, ctimeMs, size)
@@ -2393,7 +2654,10 @@ export function resolutionEnv(
  * fingerprint. Symlink dirents pin the TARGET string plus the resolved
  * target's stat — a retarget changes neither link nor stat in place but
  * always differs in the recorded pair (R13 secondary: symlinks were
- * invisible to the sweep, leaving a retarget race).
+ * invisible to the sweep, leaving a retarget race). Non-regular dirents
+ * (FIFO/socket/device) are recorded too — git's `$GIT_DIR/<name>` dwim
+ * opens any node a child can `open()`, so a FIFO must read as a
+ * fingerprinted leaf, never an absence (CX-r26-A/B).
  */
 function enumerateTreeFiles(root: string): Map<string, EvidenceSurfaceFile> {
   const files = new Map<string, EvidenceSurfaceFile>();
@@ -2411,7 +2675,6 @@ function enumerateTreeFiles(root: string): Map<string, EvidenceSurfaceFile> {
         stack.push(er);
         continue;
       }
-      if (!e.isFile() && !e.isSymbolicLink()) continue;
       const ap = path.join(root, er);
       try {
         if (e.isSymbolicLink()) {
@@ -2431,10 +2694,20 @@ function enumerateTreeFiles(root: string): Map<string, EvidenceSurfaceFile> {
             // fingerprinted by this leaf (CX-145) — flagged for the
             // judge; equal stat+link tuples imply equal flags.
             ...(st.isDirectory() ? { linkDir: true as const } : {}),
+            // A link resolving to a FIFO/device keeps its consultable
+            // shape — `open()` follows the link and reads forged bytes.
+            ...(!st.isFile() && !st.isDirectory() && !st.isSymbolicLink()
+              ? { kind: surfaceNodeKind(st) }
+              : {}),
           });
         } else {
-          const st = statSync(ap);
-          files.set(er, { ino: st.ino, ctimeMs: st.ctimeMs, size: st.size });
+          const st = e.isFile() ? statSync(ap) : lstatSync(ap);
+          files.set(er, {
+            ino: st.ino,
+            ctimeMs: st.ctimeMs,
+            size: st.size,
+            ...(e.isFile() ? {} : { kind: surfaceNodeKind(e) }),
+          });
         }
       } catch {
         /* vanished mid-scan — the judge's own sweep sees the same state */
@@ -2445,13 +2718,21 @@ function enumerateTreeFiles(root: string): Map<string, EvidenceSurfaceFile> {
 }
 
 /**
- * Non-recursive sibling of `enumerateTreeFiles`: only regular files and
- * symlinks directly inside `root`, keyed by ABSOLUTE path — the
- * pseudo-ref channel (`rev-parse`/`log`/`reset` resolve `$GIT_DIR/<name>`
- * before refs) needs every planted top-level file fingerprinted, not a
- * name allowlist (CX-r25-A).
+ * Non-recursive sibling of `enumerateTreeFiles`: every dirent directly
+ * inside `root`, keyed by ABSOLUTE path — the pseudo-ref channel
+ * (`rev-parse`/`log`/`reset` resolve `$GIT_DIR/<name>` before refs)
+ * needs every planted top-level node fingerprinted, not a name
+ * allowlist (CX-r25-A). Non-regular dirents record `kind` — a FIFO is
+ * an `open()`-able forged-byte channel (CX-r26-A). `dirs` (when given)
+ * collects every dir-shaped entry — real dirs plus symlinks resolving
+ * to dirs — so the caller can sweep the `$GIT_DIR/<dir>/<name>` consult
+ * surface that dwim reaches at arbitrary depth (CX-r26-B).
  */
-function enumerateTopFiles(root: string, into: Map<string, EvidenceSurfaceFile>): void {
+function enumerateTopFiles(
+  root: string,
+  into: Map<string, EvidenceSurfaceFile>,
+  dirs?: Set<string>,
+): void {
   let entries;
   try {
     entries = readdirSync(root, { withFileTypes: true });
@@ -2459,9 +2740,11 @@ function enumerateTopFiles(root: string, into: Map<string, EvidenceSurfaceFile>)
     return;
   }
   for (const e of entries) {
-    if (!e.isFile() && !e.isSymbolicLink()) continue;
     const ap = path.join(root, e.name);
-    if (into.has(ap)) continue;
+    if (e.isDirectory()) {
+      dirs?.add(ap);
+      continue;
+    }
     try {
       if (e.isSymbolicLink()) {
         const link = readlinkSync(ap);
@@ -2471,16 +2754,29 @@ function enumerateTopFiles(root: string, into: Map<string, EvidenceSurfaceFile>)
         } catch {
           st = lstatSync(ap);
         }
+        // A link resolving to a DIRECTORY is a consultable dir shape —
+        // `$GIT_DIR/<link>/<name>` follows it (CX-r26-B).
+        if (st.isDirectory()) dirs?.add(ap);
+        if (!into.has(ap))
+          into.set(ap, {
+            ino: st.ino,
+            ctimeMs: st.ctimeMs,
+            size: st.size,
+            link,
+            ...(st.isDirectory() ? { linkDir: true as const } : {}),
+            ...(!st.isFile() && !st.isDirectory() && !st.isSymbolicLink()
+              ? { kind: surfaceNodeKind(st) }
+              : {}),
+          });
+      } else {
+        if (into.has(ap)) continue;
+        const st = e.isFile() ? statSync(ap) : lstatSync(ap);
         into.set(ap, {
           ino: st.ino,
           ctimeMs: st.ctimeMs,
           size: st.size,
-          link,
-          ...(st.isDirectory() ? { linkDir: true as const } : {}),
+          ...(e.isFile() ? {} : { kind: surfaceNodeKind(e) }),
         });
-      } else {
-        const st = statSync(ap);
-        into.set(ap, { ino: st.ino, ctimeMs: st.ctimeMs, size: st.size });
       }
     } catch {
       /* vanished mid-scan — the judge's own sweep sees the same state */
@@ -2562,6 +2858,33 @@ function discoverGitMetaHazards(repoRoot: string): string[] {
         if (!statSync(ap).isFile()) hazards.push(ap);
       } catch {
         /* absent — fine */
+      }
+    }
+    // Pseudo-ref surface: `$GIT_DIR/<name>` dwim opens ANY top-level
+    // node a child can `open()` — a FIFO serves forged rev bytes from a
+    // session feeder, a device blocks. Stat every top-level dirent:
+    // files and dirs are legitimate (dirs join the nested sweep),
+    // sockets fail `open()` outright so they cannot carry chosen bytes
+    // (`fsmonitor--daemon` stays fine), anything else refuses pre-spawn
+    // (CX-r26-A).
+    {
+      let entries: string[];
+      try {
+        entries = readdirSync(gitdir);
+      } catch {
+        entries = [];
+      }
+      for (const entry of entries) {
+        const ap = path.join(gitdir, entry);
+        let st: ReturnType<typeof statSync>;
+        try {
+          st = statSync(ap);
+        } catch {
+          hazards.push(ap); // dangling symlink / unstatable — unverifiable
+          continue;
+        }
+        if (st.isFile() || st.isDirectory() || st.isSocket()) continue;
+        hazards.push(ap);
       }
     }
     // Loose refs: git opens every ref file its read resolves — a FIFO or
@@ -2704,6 +3027,8 @@ export async function captureEvidenceSurface(
         wtRefsDir: null,
         wtRefsFiles: new Map(),
         rootFiles: new Map(),
+        rootDirs: new Set(),
+        nestedFiles: new Map(),
         packedRefsPath: null,
         packedRefsBytes: null,
         indexPath: null,
@@ -2932,6 +3257,70 @@ export async function captureEvidenceSurface(
       : path.isAbsolute(modulesResolved)
         ? modulesResolved
         : path.resolve(repoRoot, modulesResolved);
+  // The PER-WORKTREE ref namespace (`refs/worktree/`, `refs/bisect/`)
+  // lives at `<gitdir>/refs` — distinct from the common `refsDir` only
+  // on linked-worktree cwds; identical paths dedupe to null (CX-r25).
+  const wtRefsDir = (() => {
+    const p = gitDir === null ? null : path.join(gitDir, "refs");
+    return p === null || p === refsAbs ? null : p;
+  })();
+  const wtRefsFiles = wtRefsDir === null ? new Map() : enumerateTreeFiles(wtRefsDir);
+  // The top-level sweep captures every dirent at each root — files for
+  // `rootFiles`, dir shapes for `rootDirs` + the catch-all nested tree
+  // (CX-r26-A/B). Dirs owned by a tree member keep that member's
+  // coverage; everything else — `logs/`, `info/`, `hooks/`, `forge/`,
+  // novel dirs — joins `nestedFiles`, because dwim consults
+  // `$GIT_DIR/<dir>/<name>` at arbitrary depth.
+  const memberRoots = new Set(
+    [objectsAbs, refsAbs, wtRefsDir, worktreesDir, modulesDir].filter(
+      (r): r is string => r !== null,
+    ),
+  );
+  const coveredByMember = (d: string): boolean => {
+    for (const m of memberRoots) {
+      if (d === m || d.startsWith(m + path.sep)) return true;
+    }
+    return false;
+  };
+  const rootFilesMap = new Map<string, EvidenceSurfaceFile>();
+  const rootDirSet = new Set<string>();
+  if (gitDir !== null) enumerateTopFiles(gitDir, rootFilesMap, rootDirSet);
+  if (commonDir !== null && commonDir !== gitDir) {
+    enumerateTopFiles(commonDir, rootFilesMap, rootDirSet);
+  }
+  const nestedFilesMap = new Map<string, EvidenceSurfaceFile>();
+  for (const d of rootDirSet) {
+    if (coveredByMember(d)) continue;
+    for (const [rel, st] of enumerateTreeFiles(d)) {
+      nestedFilesMap.set(path.join(d, rel), st);
+    }
+  }
+  const objectFilesMap = objectsAbs === null ? new Map() : enumerateTreeFiles(objectsAbs);
+  const worktreeFilesMap = worktreesDir === null ? new Map() : enumerateTreeFiles(worktreesDir);
+  const modulesFilesMap = modulesDir === null ? new Map() : enumerateTreeFiles(modulesDir);
+  const refsFilesMap = refsAbs === null ? new Map() : enumerateTreeFiles(refsAbs);
+  // A FIFO/device/other openable non-regular ANYWHERE in the enumerated
+  // surface feeds forged bytes to git's `$GIT_DIR/<name>` dwim while
+  // carrying no pinnable content — a `.git/main` FIFO shadows
+  // `refs/heads/main`, `.git/MERGE_HEAD` fabricates merge-in-progress
+  // (CX-r26-A). Sockets are excluded: `open()` fails, they cannot carry
+  // chosen bytes. Presence → the surface is unverifiable → hazards
+  // refuse before any judged spawn.
+  const unverifiableNodes: string[] = [];
+  const flagUnverifiable = (m: ReadonlyMap<string, EvidenceSurfaceFile>, base: string | null) => {
+    for (const [k, st] of m) {
+      if (st.kind !== undefined && st.kind !== "socket") {
+        unverifiableNodes.push(base === null ? k : path.join(base, k));
+      }
+    }
+  };
+  flagUnverifiable(objectFilesMap, objectsAbs);
+  flagUnverifiable(worktreeFilesMap, worktreesDir);
+  flagUnverifiable(modulesFilesMap, modulesDir);
+  flagUnverifiable(refsFilesMap, refsAbs);
+  flagUnverifiable(wtRefsFiles, wtRefsDir);
+  flagUnverifiable(rootFilesMap, null);
+  flagUnverifiable(nestedFilesMap, null);
   const fingerprint: EvidenceFingerprint = {
     dotGit,
     gitDir,
@@ -2943,30 +3332,18 @@ export async function captureEvidenceSurface(
     configBytes: configAbs === null ? null : safeReadBytes(configAbs),
     shapeFiles,
     objectsDir: objectsAbs,
-    objectFiles: objectsAbs === null ? new Map() : enumerateTreeFiles(objectsAbs),
+    objectFiles: objectFilesMap,
     worktreesDir,
-    worktreeFiles: worktreesDir === null ? new Map() : enumerateTreeFiles(worktreesDir),
+    worktreeFiles: worktreeFilesMap,
     modulesDir,
-    modulesFiles: modulesDir === null ? new Map() : enumerateTreeFiles(modulesDir),
+    modulesFiles: modulesFilesMap,
     refsDir: refsAbs,
-    refsFiles: refsAbs === null ? new Map() : enumerateTreeFiles(refsAbs),
-    // The PER-WORKTREE ref namespace (`refs/worktree/`, `refs/bisect/`)
-    // lives at `<gitdir>/refs` — distinct from the common `refsDir` only
-    // on linked-worktree cwds; identical paths dedupe to null (CX-r25).
-    wtRefsDir: (() => {
-      const p = gitDir === null ? null : path.join(gitDir, "refs");
-      return p === null || p === refsAbs ? null : p;
-    })(),
-    wtRefsFiles: (() => {
-      const p = gitDir === null ? null : path.join(gitDir, "refs");
-      return p === null || p === refsAbs ? new Map() : enumerateTreeFiles(p);
-    })(),
-    rootFiles: (() => {
-      const m = new Map<string, EvidenceSurfaceFile>();
-      if (gitDir !== null) enumerateTopFiles(gitDir, m);
-      if (commonDir !== null && commonDir !== gitDir) enumerateTopFiles(commonDir, m);
-      return m;
-    })(),
+    refsFiles: refsFilesMap,
+    wtRefsDir,
+    wtRefsFiles,
+    rootFiles: rootFilesMap,
+    rootDirs: rootDirSet,
+    nestedFiles: nestedFilesMap,
     packedRefsPath: packedRefsAbs,
     packedRefsBytes: packedRefsAbs === null ? null : safeReadBytes(packedRefsAbs),
     indexPath: indexAbs,
@@ -2980,7 +3357,7 @@ export async function captureEvidenceSurface(
     shapePaths,
     headBranch,
     anyFailed,
-    hazards,
+    hazards: [...hazards, ...unverifiableNodes],
     fingerprint,
   };
 }
@@ -3068,20 +3445,16 @@ function evidenceWindowDirs(repoRoot: string, fp: EvidenceFingerprint): string[]
 }
 
 /**
- * The verifier's own journal surface under the common gitdir —
- * `<gitdir>/forge/` carries reservations, gate-run manifests, locks and
- * journals that concurrent forge commands legitimately write WHILE a
- * judged child runs. Git never opens those paths, so events there
- * cannot steer the child's reads; refusing on them would let the
- * verifier's own bookkeeping deadlock a concurrent sibling channel.
+ * `<gitdir>/forge/` — the verifier's own journal surface (reservations,
+ * gate-run manifests, locks, ops claims) — is NOT excluded from
+ * watching/fingerprinting: git's `$GIT_DIR/<name>` dwim opens
+ * `forge/<name>` like any other pseudo-ref path, so an excluded dir
+ * would be a plant-invisible forged-rev channel (CX-r26-B). Concurrent
+ * forge bookkeeping writes therefore read as surface flux — transient
+ * mid-read refusals the caller-side ride-out absorbs; a sustained
+ * journal churn is an honestly unverifiable window, never a forged
+ * answer.
  */
-function evidenceForgeJournalDirs(fp: EvidenceFingerprint): string[] {
-  const out: string[] = [];
-  for (const d of [fp.gitDir, fp.commonDir]) {
-    if (d !== null) out.push(path.join(d, "forge"));
-  }
-  return out;
-}
 
 /**
  * Inode/path watches beyond the directory set: the verifier claims
@@ -3183,7 +3556,6 @@ export function armEvidenceWindowWatch(
   const dirs = evidenceWindowDirs(repoRoot, fp);
   if (dirs === null) return null;
   const extra = evidenceWindowFiles(preflight);
-  const journalDirs = evidenceForgeJournalDirs(fp);
   const events: string[] = [];
   const watchers: { close(): void }[] = [];
   let failed = false;
@@ -3195,7 +3567,10 @@ export function armEvidenceWindowWatch(
   // re-statting at settle turns every silent write into drift evidence.
   // `objects/` is excluded from the walk (the fingerprint's own tree
   // compare covers it at the post-drain reprove; its loose-object count
-  // can outsize the pin bound). `forge/` is the verifier's journal dir.
+  // can outsize the pin bound). `forge/` journal files stay pinned —
+  // they are a consultable pseudo-ref surface like any other
+  // (`rev-parse forge/<name>`), so journal churn reads as honest flux,
+  // not an exclusion (CX-r26-B).
   const pins = new Map<string, { ino: number; ctimeMs: number }>();
   // Bound the pin map, never its coverage — anchored ops pin the whole
   // object store too, so this sits well above a packed repo's loose set.
@@ -3204,7 +3579,7 @@ export function armEvidenceWindowWatch(
     for (const [rel, st] of enumerateTreeFiles(root)) {
       if (failed) return;
       const top = rel.includes("/") ? rel.slice(0, rel.indexOf("/")) : rel;
-      if (top === "objects" || top === "forge") continue;
+      if (top === "objects") continue;
       const abs = path.join(root, rel);
       if (ignore?.(abs) === true) continue;
       pins.set(abs, { ino: st.ino, ctimeMs: st.ctimeMs });
@@ -3275,9 +3650,6 @@ export function armEvidenceWindowWatch(
   }
   const record = (abs: string) => {
     if (ignore?.(abs) === true) return;
-    for (const j of journalDirs) {
-      if (abs === j || abs.startsWith(j + path.sep)) return;
-    }
     events.push(abs);
   };
   const arm = (target: string, nameFilter?: string, isFile = false) => {
@@ -3546,7 +3918,8 @@ export function reproveEvidenceSurface(
   {
     const roots = new Set([fp.gitDir, fp.commonDir].filter((r): r is string => r !== null));
     const cur = new Map<string, EvidenceSurfaceFile>();
-    for (const r of roots) enumerateTopFiles(r, cur);
+    const curDirs = new Set<string>();
+    for (const r of roots) enumerateTopFiles(r, cur, curDirs);
     if (cur.size !== fp.rootFiles.size) return false;
     for (const [abs, st] of fp.rootFiles) {
       const c = cur.get(abs);
@@ -3555,7 +3928,53 @@ export function reproveEvidenceSurface(
         c.ino !== st.ino ||
         c.ctimeMs !== st.ctimeMs ||
         c.size !== st.size ||
-        c.link !== st.link
+        c.link !== st.link ||
+        c.kind !== st.kind
+      ) {
+        return false;
+      }
+    }
+    // A dir appearing/disappearing at either root is drift even before
+    // its contents matter: a post-capture `.git/x/` means the nested
+    // sweep judged a smaller surface than the spawn can consult
+    // (CX-r26-B). Set equality covers create/delete; type-changes show
+    // up as a rootFiles/rootDirs entry move plus dirent events.
+    if (curDirs.size !== fp.rootDirs.size) return false;
+    for (const d of fp.rootDirs) {
+      if (!curDirs.has(d)) return false;
+    }
+    // Re-derive the member-root set the capture used, then sweep every
+    // uncovered dir and diff contents — a plant under `logs/`, `info/`,
+    // `hooks/`, or a novel dir reads as drift (CX-r26-B).
+    const memberRoots = new Set(
+      [fp.objectsDir, fp.refsDir, fp.wtRefsDir, fp.worktreesDir, fp.modulesDir].filter(
+        (r): r is string => r !== null,
+      ),
+    );
+    const nested = new Map<string, EvidenceSurfaceFile>();
+    for (const d of curDirs) {
+      let covered = false;
+      for (const m of memberRoots) {
+        if (d === m || d.startsWith(m + path.sep)) {
+          covered = true;
+          break;
+        }
+      }
+      if (covered) continue;
+      for (const [rel, st] of enumerateTreeFiles(d)) {
+        nested.set(path.join(d, rel), st);
+      }
+    }
+    if (nested.size !== fp.nestedFiles.size) return false;
+    for (const [abs, st] of fp.nestedFiles) {
+      const c = nested.get(abs);
+      if (
+        c === undefined ||
+        c.ino !== st.ino ||
+        c.ctimeMs !== st.ctimeMs ||
+        c.size !== st.size ||
+        c.link !== st.link ||
+        c.kind !== st.kind
       ) {
         return false;
       }
