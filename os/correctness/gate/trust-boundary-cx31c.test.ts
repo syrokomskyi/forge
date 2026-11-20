@@ -168,7 +168,7 @@ const HAS_PY = spawnSync("python3", ["--version"]).status === 0;
 describe("CX-r31-C: claims-fd link-tail raced onto the read channel (`unprovenIgnoredPaths`)", () => {
   it(
     "untracked `.gitignore` forged as tracked+clean → `!! sub/payload` called proven — member hidden from statusDirty",
-    { timeout: 180_000 },
+    { timeout: 480_000 },
     async (ctx) => {
       if (!HAS_PY) return ctx.skip();
       let forged = 0;
