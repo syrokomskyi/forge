@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r28 trust-boundary counterexamples — rewritten/ name bound + anchored-add staged-set coverage</item>
   <item>RFC-1616: bound rewritten/ exempt names to exact object-name length</item>
   <item>RFC-1616: close r29 trust-boundary counterexamples — NUL-delim ignore provenance + pre-arm rule-source pinning + staged-set coverage diff</item>
   <item>RFC-1616: parse reset rev-vs-pathspec per git's own rule in staged-set coverage (RFC-1616)</item>
   <item>RFC-1616: close r30 trust-boundary counterexamples — consulted-byte ignore provenance + snapshot fd byte-pins (RFC-1616)</item>
+  <item>RFC-1616: close r31 trust-boundary counterexamples — HEAD-bound ignore provenance + fd append size-pins (RFC-1616)</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -919,7 +919,16 @@ export function evidenceSpawnState(
       const childFd = openSync(`/dev/fd/${idx.fd}`, "r");
       const back = Buffer.alloc(idx.bytes.length);
       const got = readSync(childFd, back, 0, idx.bytes.length, 0);
-      if (got !== idx.bytes.length || !back.equals(idx.bytes)) {
+      // Size check alongside the prefix compare — a `/proc/<pid>/fd`
+      // APPEND preserves the pinned prefix while tacking a `link`
+      // extension (or trailing bytes git parses) onto the claims
+      // basis (CX-r31-B). Prefix-only attestation would merge foreign
+      // split-index entries into every claims child.
+      if (
+        got !== idx.bytes.length ||
+        !back.equals(idx.bytes) ||
+        fstatSync(childFd).size !== idx.bytes.length
+      ) {
         closeSync(childFd);
         unproven = true;
       } else {
@@ -3705,24 +3714,14 @@ export function armEvidenceWindowWatch(
   if (fp.configPath !== null && ignore?.(fp.configPath) !== true) pinFile(fp.configPath);
   const claims = preflight.index;
   if (claims?.path !== undefined) pinFile(claims.path);
-  // The claims fd pins the snapshot BYTES, not the inode's stat — a
-  // same-UID pwrite through `/proc/<pid>/fd/N` plus a ctime-restoring
-  // `utimensat` on the same handle would slip an ino+ctime pin while
-  // feeding attacker bytes to every claims child (CX-r30-B class).
-  let claimsFdPin: { fd: number; bytes: Buffer } | null = null;
-  if (claims?.fd !== undefined) {
-    try {
-      const st = fstatSync(claims.fd);
-      const bytes = Buffer.alloc(st.size);
-      if (readSync(claims.fd, bytes, 0, bytes.length, 0) !== bytes.length) {
-        failed = true;
-      } else {
-        claimsFdPin = { fd: claims.fd, bytes };
-      }
-    } catch {
-      failed = true;
-    }
-  }
+  // The claims fd pins the snapshot BYTES — the minted `claims.bytes`
+  // are the baseline, so no pin-time read is needed and a pre-arm
+  // rewrite can't launder itself as baseline. A same-UID pwrite
+  // through `/proc/<pid>/fd/N` plus a ctime-restoring `utimensat`
+  // would slip a stat pin, and a pure APPEND preserves the pinned
+  // prefix — the settle check therefore compares size AND bytes
+  // (CX-r30-B / CX-r31-B).
+  const claimsFdPin = claims?.fd !== undefined ? { fd: claims.fd, bytes: claims.bytes } : null;
   for (const f of extraFiles ?? []) {
     if (ignore?.(f) !== true) pinFile(f);
   }
@@ -3814,6 +3813,7 @@ export function armEvidenceWindowWatch(
         try {
           const back = Buffer.alloc(claimsFdPin.bytes.length);
           if (
+            fstatSync(claimsFdPin.fd).size !== back.length ||
             readSync(claimsFdPin.fd, back, 0, back.length, 0) !== back.length ||
             !back.equals(claimsFdPin.bytes)
           ) {
@@ -4674,7 +4674,14 @@ async function verifyAnchoredMutationCoverage(
       try {
         const back = Buffer.alloc(liveIndex.bytes.length);
         const got = readSync(liveIndex.fd, back, 0, back.length, 0);
-        if (got !== back.length || !back.equals(liveIndex.bytes)) {
+        // Size check alongside the prefix compare — a `/proc/<pid>/fd`
+        // append preserves the pinned prefix while tacking a `link`
+        // ext (or trailing parse bytes) onto the snapshot (CX-r31-B).
+        if (
+          got !== back.length ||
+          !back.equals(liveIndex.bytes) ||
+          fstatSync(liveIndex.fd).size !== back.length
+        ) {
           out = "live-index snapshot mutated mid-check — staged-set coverage unverifiable";
         }
       } catch {
@@ -5510,8 +5517,8 @@ export async function unprovenIgnoredPaths(
     for (let i = 0; i + 3 < rec.length; i += 4) sourceOf.set(rec[i + 3]!, rec[i]!);
   }
   // Byte-binding half of the CX-r30-A fix: each cited tracked source
-  // must be CLEAN against the claims index (`diff --name-only` lists
-  // the worktree-vs-blob divergent set) AND stat-stable since the pin
+  // must be CLEAN against HEAD (`diff --name-only HEAD` lists the
+  // worktree-vs-committed divergent set) AND stat-stable since the pin
   // above — a flip before the pins leaves foreign bytes (diff
   // diverges), a flip inside/around the windows drifts ctime, and a
   // deleted source fails both checks. All three land the `!!` in
@@ -5519,11 +5526,13 @@ export async function unprovenIgnoredPaths(
   const cited = new Set([...sourceOf.values()].filter((s) => trackedSet.has(s)));
   const dirtySrc = new Set<string>();
   if (cited.size > 0) {
-    // Whole-tree diff (no pathspec): a cited source's literal name
-    // could carry `:(`-pathspec magic and silently scope the query to
-    // a different path — enumerating the full dirty set and
-    // intersecting names needs no pathspec trust at all.
-    const dirty = await verifierGit(root, ["diff", "--name-only", "-z"], {
+    // Whole-tree diff against HEAD (no pathspec): the baseline is the
+    // COMMITTED tree — the claims index is the staged set, and `git
+    // add .gitignore` would make staged foreign bytes read as
+    // "tracked+clean" (CX-r31-A). A `:(`-magic-named source could
+    // silently scope a pathspec'd query away from itself, so the full
+    // dirty set is enumerated and intersected by name instead.
+    const dirty = await verifierGit(root, ["diff", "--name-only", "-z", "HEAD"], {
       extraWatchPaths: [...cited].map((s) => path.join(root, s)),
     });
     if (dirty.exitCode !== 0) return null;
