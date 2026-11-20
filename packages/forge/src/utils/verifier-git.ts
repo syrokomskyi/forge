@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1616: close r26 trust-boundary counterexamples — dwim consult surface fingerprinting, non-regular dirent hazards</item>
   <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <item>RFC-1616: close r28 trust-boundary counterexamples — rewritten/ name bound + anchored-add staged-set coverage</item>
   <item>RFC-1616: bound rewritten/ exempt names to exact object-name length</item>
+  <item>RFC-1616: close r29 trust-boundary counterexamples — NUL-delim ignore provenance + pre-arm rule-source pinning + staged-set coverage diff</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -4387,37 +4387,110 @@ export function spawnCaptured(
  * hides — worktree `.gitignore` files are session-writable and live
  * OUTSIDE the `.git` fingerprint, so a planted rule shrinks the staged
  * set while the op exits 0 and a caller's `staged: N` claim fabricates.
+ * Tracked `.gitignore` rule sources the `add` child may consult —
+ * enumerated from the CLAIMS index (the caller's pre-op intent, so the
+ * op's own writes and any same-window real-index write never enter
+ * it), resolved to worktree-absolute paths present at arm time. The
+ * caller folds them into the spawn window's pin+event watch: a
+ * mid-window rewrite of a tracked rule source then reads as drift
+ * instead of laundering a foreign rule through the staged-set verdict
+ * (CX-r29-B — the consult-time bytes and the verdict-time sample were
+ * otherwise unpinned against each other, so a flip→restore pair
+ * attested "clean" content the `add` never saw). A source absent at
+ * arm or untracked-in-claims can never be attested; `null` marks the
+ * domain unverifiable (claims index refused) and the op fails closed.
+ */
+async function enumerateTrackedRuleSources(
+  preflight: EvidencePreflight,
+): Promise<Set<string> | null> {
+  const wt = preflight.fingerprint?.workTree;
+  if (wt === null || wt === undefined) return new Set();
+  // The pre-op claims index is the only tracking basis the op cannot
+  // have written; an unproven index means the rule domain itself is
+  // unverifiable, not merely empty.
+  if (preflight.index === undefined) return null;
+  const cs = evidenceSpawnState(preflight, true);
+  if (cs.unproven || cs.env["GIT_INDEX_FILE"] === undefined) {
+    closeSpawnFds(cs);
+    return null;
+  }
+  const r = await spawnCaptured(resolveGitBin(), ["ls-files", "-z", "--", "*.gitignore"], {
+    cwd: wt,
+    env: { ...verifierGitEnv(), ...cs.env },
+    timeoutMs: 60_000,
+    maxBuffer: 64 * 1024 * 1024,
+    indexFd: cs.indexFd,
+  });
+  if (r.exitCode !== 0) return null;
+  const armed = new Set<string>();
+  for (const rel of r.stdout.toString("utf8").split("\0")) {
+    if (rel.length === 0) continue;
+    const abs = path.join(wt, rel);
+    if (existsSync(abs)) armed.add(abs);
+  }
+  return armed;
+}
+
+/**
  * Explicit file pathspecs fail honestly (git itself errors); the silent
  * surface is expansion coverage only.
  *
  * Runs INSIDE the armed window post-spawn so the consulted `.git`
- * surface is the same watched/pinned one the `add` used: every residual
- * untracked path under the pathspec must trace — via `check-ignore -v`
- * — to an ATTESTED source, and every newly-staged path must NOT be
- * attested-ignored (attested rules can never produce that stage). A
- * source is attested when its worktree bytes hash to its claims-index
- * entry (the caller's own staged intent — tracked or caller-pinned via
- * `extraWatchPaths`); `info/exclude` is refuse-on-presence upstream and
- * `core.excludesFile` is pinned DEVNULL, so any other named source is
- * foreign by construction. Post-state consistency is the bound: a
- * mid-window rule flip+restore lands bytes that either still justify
- * the staged set under attested content (outcome-honest) or expose a
- * drop the attested rules never explain (refuse).
+ * surface is the same watched/pinned one the op used. Three proofs
+ * combine:
+ *
+ * 1. STAGED-SET DIFF (CX-r29-C) — the armed watch deliberately ignores
+ *    `index`/`index.lock`/`sharedindex.*` events because the op itself
+ *    writes them, which leaves same-session `update-index`/`read-tree`
+ *    writers (and raw `write(2)` calls) invisible inside the window.
+ *    The real post-op index is therefore diffed against the pre-op
+ *    claims index: every entry that appeared, changed, or vanished must
+ *    sit under the judged pathspec extent, carry stage 0 only, and
+ *    match what the admitted op produces — for `add`, worktree bytes
+ *    (`git diff` drift — a staged blob ≠ worktree bytes is a foreign
+ *    stage or unverifiable churn, and a removed entry requires an
+ *    absent worktree file); for `reset`, the resolved tree itself
+ *    (`git diff --cached <rev>` must be empty under the extent). A
+ *    dry-run admits zero staged-set change.
+ *
+ * 2. IGNORE PROVENANCE (`add` only) — every residual untracked path
+ *    under the pathspec must trace — via `check-ignore -v -z` — to an
+ *    ATTESTED source, and every newly-staged path must NOT be
+ *    attested-ignored (attested rules can never produce that stage).
+ *    A source is attested when its worktree bytes were pinned for the
+ *    whole window (armed tracked sources from
+ *    `enumerateTrackedRuleSources`, or caller-pinned via
+ *    `extraWatchPaths`) AND — for the tracked set — hash to its
+ *    claims-index entry (the caller's own staged intent);
+ *    `info/exclude` is refuse-on-presence upstream and
+ *    `core.excludesFile` is pinned DEVNULL, so any other named source
+ *    is foreign by construction. The `-z` record format
+ *    (`source\0line\0pattern\0path\0`) removes the field-splitting
+ *    ambiguity a `.gitignore:`-bearing directory name exploited to
+ *    launder a foreign source through a tracked decoy (CX-r29-A).
+ *
+ * Tracked-entry-only `add` ops (`-u`/`--update`/`--unmerged`/
+ * `--refresh`/`--renormalize`) never expand pathspecs into the
+ * untracked set — the staged-set diff still applies, the ignore
+ * provenance does not.
  */
-async function verifyAnchoredAddCoverage(
+async function verifyAnchoredMutationCoverage(
   cwd: string,
   args: readonly string[],
   preflight: EvidencePreflight,
   extraWatchPaths: readonly string[] | undefined,
+  ruleSources: ReadonlySet<string> | undefined,
 ): Promise<string | null> {
   const wt = preflight.fingerprint?.workTree;
-  if (wt === null || wt === undefined) return null; // bare — the add cannot have staged
+  if (wt === null || wt === undefined) return null; // bare — the op cannot have staged
+  const op = args[0];
   const dd = args.indexOf("--");
   const head = dd === -1 ? args.slice(1) : args.slice(1, dd);
-  const spec = [
-    ...head.filter((a) => !a.startsWith("-")),
-    ...(dd === -1 ? [] : args.slice(dd + 1)),
-  ];
+  const nonFlag = head.filter((a) => !a.startsWith("-"));
+  // `reset [-q] [<rev>] -- <paths>`: the first non-flag head token is
+  // the rev git resolves (absent → HEAD); the rest are pathspecs.
+  const spec = [...nonFlag.slice(op === "reset" ? 1 : 0), ...(dd === -1 ? [] : args.slice(dd + 1))];
+  const resetRev = op === "reset" ? (nonFlag[0] ?? "HEAD") : undefined;
   // Short flags cluster (`-An` = `-A` + `-n`) — expand before matching.
   const flags = new Set<string>();
   for (const a of head) {
@@ -4425,17 +4498,20 @@ async function verifyAnchoredAddCoverage(
     else if (a.startsWith("-")) for (const ch of a.slice(1)) flags.add(`-${ch}`);
   }
   // Tracked-entry-only ops never expand pathspecs into the untracked
-  // set — no ignore consult can silently shrink their staged set.
-  if (["-u", "--update", "--unmerged", "--refresh", "--renormalize"].some((f) => flags.has(f))) {
-    return null;
-  }
+  // set — no ignore consult can silently shrink their staged set, so
+  // the provenance proof below does not apply. The staged-set diff
+  // still does: a foreign index write is indistinguishable to the
+  // armed watch regardless of the op's own consult surface (CX-r29-C).
+  const trackedOnly = ["-u", "--update", "--unmerged", "--refresh", "--renormalize"].some((f) =>
+    flags.has(f),
+  );
   // `-n`/`--dry-run` stages nothing by design — the fabricated surface
   // is the would-add REPORT, which omits only ignored members; residual
   // no-source paths are honest report entries there, never drops.
-  const dryRun = flags.has("-n") || flags.has("--dry-run");
-  // A pathspec-less `add -A` stages the WHOLE worktree even from a
-  // subdirectory cwd, while `ls-files` defaults to the cwd scope — the
-  // coverage query must use the same extent (`:/`).
+  const dryRun = op === "add" && (flags.has("-n") || flags.has("--dry-run"));
+  // A pathspec-less `add -A`/`reset` covers the WHOLE worktree even from
+  // a subdirectory cwd, while `ls-files` defaults to the cwd scope —
+  // the coverage query must use the same extent (`:/`).
   const coverageSpec = spec.length === 0 ? [":/"] : spec;
   const pinned = new Set((extraWatchPaths ?? []).map((p) => path.resolve(p)));
   const env = {
@@ -4443,18 +4519,81 @@ async function verifyAnchoredAddCoverage(
     ...evidenceSpawnState(preflight, false).env,
     ...evidencePinEnv(args, preflight),
   };
-  const run = (argv: string[], input?: string) =>
-    spawnCaptured(resolveGitBin(), argv, {
-      cwd,
-      env,
+  // Snapshot the post-op REAL index once — every live-index coverage
+  // child then reads THE SAME frozen bytes instead of three torn
+  // instants of a session-writable file. `git diff` opportunistically
+  // refreshes+rewrites its index (verified empirically — mtime AND
+  // ino change), so consulting the real path would land our own
+  // child's write as index-pin drift; the scratch copy absorbs it.
+  // The `/dev/fd` form has no `.lock` path — refresh writes degrade
+  // to a skipped lock, never a torn consult (CX-r29-C).
+  const liveIndex: { fd: number } | { path: string; ino: number; ctimeMs: number } | null = (() => {
+    const indexPath = preflight.fingerprint?.indexPath;
+    if (indexPath === null || indexPath === undefined) return null;
+    let bytes: Buffer;
+    try {
+      bytes = readFileSync(indexPath);
+    } catch {
+      return null;
+    }
+    const oTmpfile = (fsConstants as { O_TMPFILE?: number }).O_TMPFILE;
+    if (typeof oTmpfile === "number") {
+      try {
+        const fd = openSync(os.tmpdir(), oTmpfile | fsConstants.O_RDWR, 0o600);
+        writeSync(fd, bytes);
+        return { fd };
+      } catch {
+        /* tmpfs/fs lacks O_TMPFILE — named fallback below */
+      }
+    }
+    try {
+      const p = path.join(
+        os.tmpdir(),
+        `verifier-index-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      writeFileSync(p, bytes, { mode: 0o600 });
+      const st = statSync(p);
+      return { path: p, ino: st.ino, ctimeMs: st.ctimeMs };
+    } catch {
+      return null;
+    }
+  })();
+  if (liveIndex === null) {
+    return "index unreadable — staged-set coverage unverifiable";
+  }
+  // Live-index children: fd-form reopens `/dev/fd/N` per spawn for an
+  // independent file description (shared-offset races would tear
+  // concurrent index reads — the claims-index idiom); path-form
+  // exports the scratch path and re-stats it at the end.
+  const runLive = (argv: string[], opts?: { input?: string; cwd?: string }) => {
+    if ("fd" in liveIndex) {
+      let childFd: number;
+      try {
+        childFd = openSync(`/dev/fd/${liveIndex.fd}`, "r");
+      } catch {
+        return null;
+      }
+      return spawnCaptured(resolveGitBin(), argv, {
+        cwd: opts?.cwd ?? cwd,
+        env: { ...env, GIT_INDEX_FILE: "/dev/fd/3" },
+        timeoutMs: 60_000,
+        maxBuffer: 64 * 1024 * 1024,
+        indexFd: childFd,
+        input: opts?.input,
+      });
+    }
+    return spawnCaptured(resolveGitBin(), argv, {
+      cwd: opts?.cwd ?? cwd,
+      env: { ...env, GIT_INDEX_FILE: liveIndex.path },
       timeoutMs: 60_000,
-      maxBuffer: 16 * 1024 * 1024,
-      input,
+      maxBuffer: 64 * 1024 * 1024,
+      input: opts?.input,
     });
+  };
   // Every claims-index query mints its own fd (each spawn closes its
   // inherited copy) and pins the PRE-op staged set — the `add`'s own
   // writes never entered it.
-  const runClaims = (argv: string[]) => {
+  const runClaims = (argv: string[], cwdArg?: string) => {
     // Without a claims index there is no pre-op staged set to attest
     // against — and an unset GIT_INDEX_FILE would silently consult the
     // REAL (post-op) index, attesting the op's own writes.
@@ -4465,69 +4604,230 @@ async function verifyAnchoredAddCoverage(
       return null;
     }
     return spawnCaptured(resolveGitBin(), argv, {
-      cwd: wt,
+      cwd: cwdArg ?? wt,
       env: { ...env, ...cs.env },
       timeoutMs: 60_000,
       maxBuffer: 64 * 1024 * 1024,
       indexFd: cs.indexFd,
     });
   };
-  // Residual untracked set under the judged pathspec — the real index
-  // (the op's own write surface, now carrying its writes). `-o` without
-  // `--exclude-standard` answers EVERY unstaged file, ignored or not.
-  const res = await run(["ls-files", "-o", "-z", "--", ...coverageSpec]);
-  if (res.exitCode !== 0) return `post-add untracked enumeration failed (exit ${res.exitCode})`;
+  const finish = (out: string | null): string | null => {
+    // Path-form scratch: same-UID writable, so a mid-check rewrite
+    // would have fed torn basis bytes to the children — its stat
+    // drift refuses the whole proof (fd-form is O_TMPFILE: no path
+    // to write through).
+    if ("path" in liveIndex) {
+      try {
+        const st = statSync(liveIndex.path);
+        if (st.ino !== liveIndex.ino || st.ctimeMs !== liveIndex.ctimeMs) {
+          out = "live-index scratch mutated mid-check — staged-set coverage unverifiable";
+        }
+      } catch {
+        out = "live-index scratch mutated mid-check — staged-set coverage unverifiable";
+      }
+      try {
+        unlinkSync(liveIndex.path);
+      } catch {
+        /* already gone */
+      }
+    } else {
+      try {
+        closeSync(liveIndex.fd);
+      } catch {
+        /* already closed */
+      }
+    }
+    return out;
+  };
+  const stageMapOf = (buf: Buffer): Map<string, string> => {
+    const byPath = new Map<string, string[]>();
+    for (const rec of buf.toString("utf8").split("\0")) {
+      if (rec.length === 0) continue;
+      const tab = rec.indexOf("\t");
+      if (tab === -1) continue;
+      const p = rec.slice(tab + 1);
+      const l = byPath.get(p);
+      if (l === undefined) byPath.set(p, [rec.slice(0, tab)]);
+      else l.push(rec.slice(0, tab));
+    }
+    const out = new Map<string, string>();
+    for (const [p, l] of byPath) out.set(p, l.sort().join("\n"));
+    return out;
+  };
+  const pathsOf = (buf: Buffer): Set<string> => {
+    const out = new Set<string>();
+    for (const rec of buf.toString("utf8").split("\0")) {
+      const tab = rec.indexOf("\t");
+      if (tab !== -1) out.add(rec.slice(tab + 1));
+    }
+    return out;
+  };
+  // Claims/staged keys are toplevel-relative; cwd-relative outputs
+  // translate through the resolved worktree.
+  const topRel = (p: string) => path.relative(wt, path.resolve(cwd, p));
+
+  // ---- proof 1: staged-set diff (CX-r29-C) --------------------------
+  // The whole-index live snapshot vs the frozen claims map: every entry
+  // the armed watch ignored (same-session index writers, raw writes)
+  // shows here as a change the admitted op could not have made outside
+  // its judged extent.
+  const liveR = await runLive(["ls-files", "-s", "-z"], { cwd: wt });
+  if (liveR === null || liveR.exitCode !== 0) {
+    return finish(
+      `post-mutation staged enumeration failed (exit ${liveR === null ? "none" : liveR.exitCode})`,
+    );
+  }
+  const claimsR = await runClaims(["ls-files", "-s", "-z"]);
+  if (claimsR === null || claimsR.exitCode !== 0) {
+    return finish("index unproven — staged-set coverage unverifiable");
+  }
+  const liveMap = stageMapOf(liveR.stdout);
+  const claimsMap = stageMapOf(claimsR.stdout);
+  const changed = new Set<string>();
+  for (const p of new Set([...liveMap.keys(), ...claimsMap.keys()])) {
+    if (liveMap.get(p) !== claimsMap.get(p)) changed.add(p);
+  }
+  // Extent membership is judged by git's own pathspec expansion —
+  // `ls-files -- <spec>` on each index answers "under the spec" exactly
+  // as the op applied it, magic and all.
+  const liveScopedR = await runLive(["ls-files", "-s", "-z", "--", ...coverageSpec]);
+  if (liveScopedR === null || liveScopedR.exitCode !== 0) {
+    return finish(
+      `post-mutation scoped enumeration failed (exit ${liveScopedR === null ? "none" : liveScopedR.exitCode})`,
+    );
+  }
+  const claimsScopedR = await runClaims(["ls-files", "-s", "-z", "--", ...coverageSpec], cwd);
+  if (claimsScopedR === null || claimsScopedR.exitCode !== 0) {
+    return finish("index unproven — staged-set coverage unverifiable");
+  }
+  const covered = new Set<string>();
+  for (const p of pathsOf(liveScopedR.stdout)) covered.add(topRel(p));
+  for (const p of pathsOf(claimsScopedR.stdout)) covered.add(topRel(p));
+  for (const p of changed) {
+    if (!covered.has(p)) {
+      return finish(`foreign index write outside the judged pathspec (${p})`);
+    }
+  }
+  // Neither admitted op leaves unmerged entries under its pathspec —
+  // `add` resolves to stage 0, `reset` rewrites to stage-0 tree
+  // entries — so a stage>0 residue under the extent is foreign.
+  for (const rec of liveScopedR.stdout.toString("utf8").split("\0")) {
+    const meta = rec.slice(0, rec.indexOf("\t"));
+    const stage = meta.slice(meta.lastIndexOf(" ") + 1);
+    if (meta.length > 0 && stage !== "0") {
+      return finish(
+        `unmerged index residue under the judged pathspec (${rec.slice(rec.indexOf("\t") + 1)})`,
+      );
+    }
+  }
+  if (dryRun) {
+    if (changed.size > 0) {
+      return finish(`dry-run left staged-set drift (${[...changed][0]})`);
+    }
+  } else if (op === "reset") {
+    // `reset [<rev>] -- <paths>` sets the spec-scoped index to exactly
+    // <rev>'s tree entries — `diff --cached` empty is the whole proof.
+    // Anything it reports (phantom entry, foreign blob, missing entry)
+    // is a staged-set claim the op never produced.
+    const dc = await runLive([
+      "diff",
+      "--cached",
+      "-z",
+      "--name-only",
+      resetRev!,
+      "--",
+      ...coverageSpec,
+    ]);
+    if (dc === null || (dc.exitCode !== 0 && dc.exitCode !== 1)) {
+      return finish(
+        `reset result unverifiable (diff --cached exit ${dc === null ? "none" : dc.exitCode})`,
+      );
+    }
+    if (dc.stdout.toString("utf8").length > 0) {
+      return finish(`staged set under the judged pathspec diverges from ${resetRev}'s tree`);
+    }
+  } else {
+    // `add`-family: every changed path under the extent whose staged
+    // entry survives must carry worktree-byte content — `git diff`
+    // (index-vs-worktree) reports any divergence, which is a foreign
+    // `--cacheinfo`-style stage or unverifiable mid-window churn; a
+    // removed entry is legitimate only for a deleted file.
+    const driftR = await runLive(["diff", "--name-only", "-z", "--", ...coverageSpec]);
+    if (driftR === null || (driftR.exitCode !== 0 && driftR.exitCode !== 1)) {
+      return finish(
+        `staged content unverifiable (diff exit ${driftR === null ? "none" : driftR.exitCode})`,
+      );
+    }
+    const drift = new Set(
+      driftR.stdout
+        .toString("utf8")
+        .split("\0")
+        .filter((s) => s.length > 0)
+        .map(topRel),
+    );
+    for (const p of changed) {
+      const live = liveMap.get(p);
+      if (live !== undefined) {
+        if (drift.has(p)) {
+          return finish(`staged content for ${p} diverges from worktree bytes`);
+        }
+      } else if (existsSync(path.join(wt, p))) {
+        return finish(`staged entry for ${p} removed although its worktree file exists`);
+      }
+    }
+  }
+  if (op === "reset" || trackedOnly) return finish(null);
+
+  // ---- proof 2: ignore provenance (`add` only) ----------------------
+  // Residual untracked set under the judged pathspec — the live
+  // snapshot (the op's own write surface, now carrying its writes).
+  // `-o` without `--exclude-standard` answers EVERY unstaged file,
+  // ignored or not.
+  const res = await runLive(["ls-files", "-o", "-z", "--", ...coverageSpec]);
+  if (res === null || res.exitCode !== 0) {
+    return finish(
+      `post-add untracked enumeration failed (exit ${res === null ? "none" : res.exitCode})`,
+    );
+  }
   const residual = res.stdout
     .toString("utf8")
     .split("\0")
     .filter((s) => s.length > 0);
-  const stagedR = await run(["ls-files", "-s", "-z", "--", ...coverageSpec]);
-  if (stagedR.exitCode !== 0)
-    return `post-add staged enumeration failed (exit ${stagedR.exitCode})`;
-  const staged = stagedR.stdout
-    .toString("utf8")
-    .split("\0")
-    .filter((s) => s.length > 0)
-    .map((l) => l.slice(l.indexOf("\t") + 1));
-  if (residual.length === 0 && staged.length === 0) return null;
-  // `check-ignore -v` names each path's governing source —
-  // toplevel-relative regardless of cwd.
-  const claims = await runClaims(["ls-files", "-s", "-z"]);
-  if (claims === null || claims.exitCode !== 0) {
-    return "index unproven — staged-set coverage unverifiable";
-  }
-  const trackedAll = new Set<string>();
-  for (const line of claims.stdout.toString("utf8").split("\0")) {
-    const tab = line.indexOf("\t");
-    if (tab === -1) continue;
-    trackedAll.add(line.slice(tab + 1));
-  }
-  // Claims/staged keys are toplevel-relative; cwd-relative outputs
-  // translate through the resolved worktree.
-  const topRel = (p: string) => path.relative(wt, path.resolve(cwd, p));
-  const newly = staged.filter((p) => !trackedAll.has(topRel(p)));
+  const staged = [...covered].filter((p) => liveMap.has(p));
+  const trackedAll = new Set(claimsMap.keys());
+  // Residuals are cwd-relative (`ls-files -o` at `cwd`) and `check-ignore`
+  // interprets input paths relative to ITS cwd too — translate the
+  // toplevel-relative staged keys into the same cwd basis; the echoed
+  // output key then matches the input string verbatim.
+  const newly = staged
+    .filter((p) => !trackedAll.has(p))
+    .map((p) => path.relative(cwd, path.join(wt, p)));
   const candidates = [...residual, ...newly];
-  if (candidates.length === 0) return null;
-  const prov = await run(["check-ignore", "-v", "--stdin"], `${candidates.join("\n")}\n`);
-  if (prov.exitCode !== 0 && prov.exitCode !== 1) {
-    return `post-add ignore provenance failed (exit ${prov.exitCode})`;
-  }
-  const sourceOf = new Map<string, string>();
-  for (const line of prov.stdout.toString("utf8").split("\n")) {
-    const tab = line.lastIndexOf("\t");
-    if (tab === -1) continue;
-    const pre = line.slice(0, tab);
-    const gi = pre.indexOf(".gitignore:");
-    sourceOf.set(
-      line.slice(tab + 1),
-      gi === -1 ? pre.slice(0, pre.indexOf(":")) : pre.slice(0, gi + ".gitignore".length),
+  if (candidates.length === 0) return finish(null);
+  const prov = await runLive(["check-ignore", "-v", "-z", "--stdin"], {
+    input: `${candidates.join("\0")}\0`,
+  });
+  if (prov === null || (prov.exitCode !== 0 && prov.exitCode !== 1)) {
+    return finish(
+      `post-add ignore provenance failed (exit ${prov === null ? "none" : prov.exitCode})`,
     );
+  }
+  // `-z` records: `source\0linenum\0pattern\0pathname\0` — NUL can
+  // appear in none of them, so a `.gitignore:`-bearing directory name
+  // can no longer truncate the source into a tracked decoy (CX-r29-A).
+  const sourceOf = new Map<string, string>();
+  {
+    const rec = prov.stdout.toString("utf8").split("\0");
+    for (let i = 0; i + 3 < rec.length; i += 4) sourceOf.set(rec[i + 3]!, rec[i]!);
   }
   // `.gitignore` attestation = tracked in the caller's pre-op index AND
   // worktree-clean against it (git's own clean test, so attr-filtered
-  // entries compare consistently). One claims-index `status` answers
-  // every named source — `??`/` M`/`MM`/`A`/unmerged entries are
-  // foreign; an unlisted tracked path is clean → attested.
+  // entries compare consistently) AND byte-pinned for the whole window
+  // (armed at spawn — the consult-time sample and this verdict-time
+  // sample are otherwise two unconnected observations a flip→restore
+  // pair separates, CX-r29-B). One claims-index `status` answers every
+  // named source — `??`/` M`/`MM`/`A`/unmerged entries are foreign; an
+  // unlisted tracked path is clean → attested.
   const srcNames = [...new Set([...sourceOf.values()])].filter(
     (s) => s.endsWith(".gitignore") && trackedAll.has(s),
   );
@@ -4542,7 +4842,7 @@ async function verifyAnchoredAddCoverage(
       ...srcNames,
     ]);
     if (st === null || st.exitCode !== 0) {
-      return "index unproven — staged-set coverage unverifiable";
+      return finish("index unproven — staged-set coverage unverifiable");
     }
     for (const line of st.stdout.toString("utf8").split("\0")) {
       if (!/^[ A-Z?!]{2} /.test(line)) continue; // rename partner field
@@ -4551,18 +4851,20 @@ async function verifyAnchoredAddCoverage(
   }
   const provenSource = (src: string): boolean => {
     if (!src.endsWith(".gitignore")) return false;
-    return pinned.has(path.resolve(path.join(wt, src))) || clean.has(src);
+    const abs = path.resolve(path.join(wt, src));
+    return pinned.has(abs) || (ruleSources?.has(abs) === true && clean.has(src));
   };
   const provenCache = new Map<string, boolean>();
+  const newlySet = new Set(newly);
   for (const p of candidates) {
     const src = sourceOf.get(p);
-    const staged_ = newly.includes(p);
+    const staged_ = newlySet.has(p);
     if (src === undefined) {
       // No rule explains the residual: it stayed untracked although the
       // attested expansion admitted it — a silent drop (never a
       // violation for a would-add report line or a staged entry).
       if (!staged_ && !dryRun) {
-        return `add dropped ${p} under the pathspec with no ignore-rule justification`;
+        return finish(`add dropped ${p} under the pathspec with no ignore-rule justification`);
       }
       continue;
     }
@@ -4572,12 +4874,12 @@ async function verifyAnchoredAddCoverage(
       provenCache.set(src, ok);
     }
     if (staged_) {
-      if (ok) return `add staged ${p} although attested rules ignore it`;
+      if (ok) return finish(`add staged ${p} although attested rules ignore it`);
     } else if (!ok) {
-      return `add dropped ${p} under an unattested ignore source (${src})`;
+      return finish(`add dropped ${p} under an unattested ignore source (${src})`);
     }
   }
-  return null;
+  return finish(null);
 }
 
 /**
@@ -4628,6 +4930,9 @@ async function verifierGitSpawn(
   // `close` — a plant+unlink inside the spawn window still leaves its
   // inotify record and refuses the verdict.
   let windowWatch: EvidenceWindowWatch | null = null;
+  // Tracked `.gitignore` sources armed into the anchored `add` window —
+  // set only when the mutation consults ignore rules (CX-r29-B).
+  let ruleSources: Set<string> | undefined;
   // The scratch channel (`useIndexEnv=false`) gets the full claims-
   // index + watch path for its READ-TABLE argv too (CX-r25-E):
   // `for-each-ref`/`rev-parse`/`show` answer replay evidence on an
@@ -4654,6 +4959,26 @@ async function verifierGitSpawn(
         stderr: `${EVIDENCE_REFUSED_PREFIX}: no anchored judgment — the repo surface was never proven; refusing the mutation`,
       };
     }
+    // `add` consults `.gitignore` rule sources that live OUTSIDE the
+    // `.git` fingerprint — tracked sources enumerated from the claims
+    // index join the window's pin+event watch or a mid-window flip
+    // launders foreign rules through the staged-set verdict (CX-r29-B).
+    // A failed enumeration means the rule domain itself is unverifiable.
+    let anchoredExtraWatch = opts?.extraWatchPaths;
+    if (args[0] === "add") {
+      const enumerated = await enumerateTrackedRuleSources(preflight);
+      if (enumerated === null) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: rule-source domain unverifiable — refusing the mutation`,
+        };
+      }
+      ruleSources = enumerated;
+      if (enumerated.size > 0) {
+        anchoredExtraWatch = [...(anchoredExtraWatch ?? []), ...enumerated];
+      }
+    }
     // The window watch covers the mutation's lifetime too — events on
     // the op's OWN write surface (`index`, `objects/`, `refs/`, HEAD
     // files, locks) are the mutation working, but a shape-file plant or
@@ -4663,7 +4988,7 @@ async function verifierGitSpawn(
       cwd,
       preflight,
       anchoredMutationIgnorable(preflight.fingerprint, args[0]!),
-      opts?.extraWatchPaths,
+      anchoredExtraWatch,
       // Every anchored op that RESOLVES objects needs existing objects
       // pinned: `reset -q --` walks HEAD→commit→tree→blobs, and anchored
       // reads (`show`/`cat-file`/`log`/`rev-parse`) answer with object
@@ -4820,17 +5145,57 @@ async function verifierGitSpawn(
       indexFd: spawnState.indexFd,
       input: opts?.input,
     });
-    // `add` exit-0 is not yet an honest answer — a session `.gitignore`
-    // consult silently shrinks the staged set the caller will claim
-    // (CX-r28-B). Prove coverage inside the still-armed window before
-    // the verdict can escape.
+    // `add`/`reset` exit-0 is not yet an honest answer — a session
+    // `.gitignore` consult silently shrinks the staged set the caller
+    // will claim (CX-r28-B), and same-session index writes inside the
+    // window ride the op's own ignored-event whitelist (CX-r29-C). Pin
+    // the post-op index, prove staged-set coverage inside the
+    // still-armed window, then re-stat it after the drain — any write
+    // after the pin lands as drift, never as an attested result.
+    let indexPin: {
+      path: string;
+      ino: number;
+      ctimeMs: number;
+      mtimeMs: number;
+      size: number;
+    } | null = null;
     if (
       r.exitCode === 0 &&
       opts?.anchored !== undefined &&
-      args[0] === "add" &&
+      (args[0] === "add" || args[0] === "reset") &&
       preflight !== null
     ) {
-      const coverage = await verifyAnchoredAddCoverage(cwd, args, preflight, opts?.extraWatchPaths);
+      const indexPath = preflight.fingerprint?.indexPath ?? null;
+      if (indexPath === null) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven — staged-set coverage unverifiable`,
+        };
+      }
+      try {
+        const st = statSync(indexPath);
+        indexPin = {
+          path: indexPath,
+          ino: st.ino,
+          ctimeMs: st.ctimeMs,
+          mtimeMs: st.mtimeMs,
+          size: st.size,
+        };
+      } catch {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: index unreadable — staged-set coverage unverifiable`,
+        };
+      }
+      const coverage = await verifyAnchoredMutationCoverage(
+        cwd,
+        args,
+        preflight,
+        opts?.extraWatchPaths,
+        ruleSources,
+      );
       if (coverage !== null) {
         return {
           exitCode: -1,
@@ -4868,6 +5233,34 @@ async function verifierGitSpawn(
           exitCode: -1,
           stdout: "",
           stderr: `${EVIDENCE_REFUSED_PREFIX}: repository surface drifted during the judged read: git ${args.join(" ")}`,
+        };
+      }
+    }
+    // The index is the anchored op's own write surface — ignored by
+    // the watch — so the post-op stat pin is re-checked after the
+    // drain: a raw same-UID `write(2)` or an `update-index` that beat
+    // the coverage proof lands as ino/ctime drift here, never as an
+    // attested staged set (CX-r29-C).
+    if (indexPin !== null) {
+      try {
+        const st = statSync(indexPin.path);
+        if (
+          st.ino !== indexPin.ino ||
+          st.ctimeMs !== indexPin.ctimeMs ||
+          st.mtimeMs !== indexPin.mtimeMs ||
+          st.size !== indexPin.size
+        ) {
+          return {
+            exitCode: -1,
+            stdout: "",
+            stderr: `${EVIDENCE_REFUSED_PREFIX}: index drifted during the judged mutation — staged set unverifiable`,
+          };
+        }
+      } catch {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: index mutated during the judged mutation — staged set unverifiable`,
         };
       }
     }
@@ -4993,10 +5386,12 @@ export function evidenceSpawnArgs(args: readonly string[]): string[] {
  * transient plant is unproven — callers treat those paths as `??`
  * dirt/eligible (over-inclusive, never silent).
  *
- * `ignored` carries the raw porcelain path fields (C-quoted form is
- * fine — `check-ignore --stdin` fully unquotes quoted lines and
- * reports the same quoting back). `null` = the provenance could not be
- * established (channel refused) — every claim unverifiable.
+ * `ignored` carries the raw porcelain path fields. With `-z` the input
+ * is taken literally (no C-quote unquoting) — a quoted field simply
+ * reports no source and lands in `unproven`, which is the safe
+ * direction (over-inclusive, never silent). `null` = the provenance
+ * could not be established (channel refused) — every claim
+ * unverifiable.
  */
 export async function unprovenIgnoredPaths(
   worktree: string,
@@ -5015,19 +5410,20 @@ export async function unprovenIgnoredPaths(
   // The tracked sources' own bytes back each verdict — a transient
   // rewrite inside the -v child's window cites the tracked path while
   // serving forged rules, so their inodes join the spawn watch too.
-  const provenance = await verifierGit(root, ["check-ignore", "-v", "--stdin"], {
-    input: ignored.map((p) => `${p}\n`).join(""),
+  const provenance = await verifierGit(root, ["check-ignore", "-v", "-z", "--stdin"], {
+    input: `${ignored.join("\0")}\0`,
     extraWatchPaths: [...trackedSet].map((s) => path.join(root, s)),
   });
-  // `check-ignore -v` lines: `source:line:pattern\tpathname`. A path
-  // status marked `!!` that -v reports UNMATCHED means its rule source
-  // vanished with the child — the unverifiable case, same refusal class.
+  // `check-ignore -v -z` records: `source\0line\0pattern\0pathname\0` —
+  // NUL cannot appear in any field, so a `.gitignore:`/`:`-bearing
+  // directory name cannot truncate the source into a tracked decoy
+  // (CX-r29-A). A path status marked `!!` that -v reports UNMATCHED
+  // means its rule source vanished with the child — the unverifiable
+  // case, same refusal class.
   const sourceOf = new Map<string, string>();
-  for (const line of provenance.stdout.split("\n")) {
-    const tab = line.lastIndexOf("\t");
-    if (tab === -1) continue;
-    const src = line.slice(0, line.indexOf(":"));
-    sourceOf.set(line.slice(tab + 1), src);
+  {
+    const rec = provenance.stdout.split("\0");
+    for (let i = 0; i + 3 < rec.length; i += 4) sourceOf.set(rec[i + 3]!, rec[i]!);
   }
   const unproven = new Set<string>();
   for (const p of ignored) {
