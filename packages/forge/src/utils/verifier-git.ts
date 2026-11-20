@@ -19,7 +19,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r30 trust-boundary counterexamples — consulted-byte ignore provenance + snapshot fd byte-pins (RFC-1616)</item>
   <item>RFC-1616: close r31 trust-boundary counterexamples — HEAD-bound ignore provenance + fd append size-pins (RFC-1616)</item>
   <item>RFC-1616: bind ignored-path provenance to one armed window; re-proof live-index fd per spawn
 
@@ -47,6 +46,7 @@ CX-r33-D: enumerateTrackedRuleSources ran the only unarmed claims-fd
 spawn — the same gap forged trackedSet. prepareEvidenceIndex now
 retains parsed claim names on EvidenceIndex.names and the *.gitignore
 filter runs in-process; the spawn is deleted.</item>
+  <item>RFC-1616: pin ctimeNs + fsync-settle fd snapshots against mmap stores (RFC-1616 r34)</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -59,6 +59,7 @@ import {
   closeSync,
   existsSync,
   fstatSync,
+  fsyncSync,
   watch as fsWatch,
   lstatSync,
   openSync,
@@ -3754,8 +3755,20 @@ export function armEvidenceWindowWatch(
   // through `/proc/<pid>/fd/N` plus a ctime-restoring `utimensat`
   // would slip a stat pin, and a pure APPEND preserves the pinned
   // prefix — the settle check therefore compares size AND bytes
-  // (CX-r30-B / CX-r31-B).
-  const claimsFdPin = claims?.fd !== undefined ? { fd: claims.fd, bytes: claims.bytes } : null;
+  // (CX-r30-B / CX-r31-B). The ctimeNs pin covers the inotify-blind
+  // path: an `mmap(MAP_SHARED)` store fires no `change` event, but
+  // the kernel still bumps the inode's change time (eagerly on
+  // tmpfs, at writeback elsewhere — the settle `fsyncSync` flushes
+  // pending dirty pages first, so a flip→restore cannot leave the
+  // timestamp untouched).
+  const claimsFdPin =
+    claims?.fd !== undefined
+      ? {
+          fd: claims.fd,
+          bytes: claims.bytes,
+          ctimeNs: fstatSync(claims.fd, { bigint: true }).ctimeNs,
+        }
+      : null;
   for (const f of extraFiles ?? []) {
     if (ignore?.(f) !== true) pinFile(f);
   }
@@ -3846,8 +3859,11 @@ export function armEvidenceWindowWatch(
       if (claimsFdPin !== null) {
         try {
           const back = Buffer.alloc(claimsFdPin.bytes.length);
+          fsyncSync(claimsFdPin.fd);
+          const st = fstatSync(claimsFdPin.fd, { bigint: true });
           if (
-            fstatSync(claimsFdPin.fd).size !== back.length ||
+            st.size !== BigInt(back.length) ||
+            st.ctimeNs !== claimsFdPin.ctimeNs ||
             readSync(claimsFdPin.fd, back, 0, back.length, 0) !== back.length ||
             !back.equals(claimsFdPin.bytes)
           ) {
@@ -4578,7 +4594,7 @@ async function verifyAnchoredMutationCoverage(
   // restores ctime, so stat-pins alone would attest attacker bytes
   // (CX-r30-B).
   const liveIndex:
-    | { fd: number; bytes: Buffer }
+    | { fd: number; bytes: Buffer; ctimeNs: bigint }
     | { path: string; ino: number; ctimeMs: number; bytes: Buffer }
     | null = (() => {
     const indexPath = preflight.fingerprint?.indexPath;
@@ -4594,7 +4610,12 @@ async function verifyAnchoredMutationCoverage(
       try {
         const fd = openSync(os.tmpdir(), oTmpfile | fsConstants.O_RDWR, 0o600);
         writeSync(fd, bytes);
-        return { fd, bytes };
+        // ctimeNs pins the inode's kernel-managed change time at mint —
+        // an `mmap(MAP_SHARED)` store through `/proc/<pid>/fd` fires no
+        // inotify event the watch can see, but it cannot write the inode
+        // without bumping its change time (CX-r34-A).
+        const ctimeNs = fstatSync(fd, { bigint: true }).ctimeNs;
+        return { fd, bytes, ctimeNs };
       } catch {
         /* tmpfs/fs lacks O_TMPFILE — named fallback below */
       }
@@ -4738,13 +4759,22 @@ async function verifyAnchoredMutationCoverage(
       try {
         const back = Buffer.alloc(liveIndex.bytes.length);
         const got = readSync(liveIndex.fd, back, 0, back.length, 0);
+        // `fsyncSync` first: an `mmap(MAP_SHARED)` flip→restore leaves
+        // no inotify event and restores the compared bytes, but the
+        // dirty pages' writeback bumps the inode's change time — on
+        // kernels that defer the update to writeback, the sync forces
+        // it now (eager on tmpfs either way). ctimeNs is the pin the
+        // memory-store path cannot rewind (CX-r34-A).
+        fsyncSync(liveIndex.fd);
+        const st = fstatSync(liveIndex.fd, { bigint: true });
         // Size check alongside the prefix compare — a `/proc/<pid>/fd`
         // append preserves the pinned prefix while tacking a `link`
         // ext (or trailing parse bytes) onto the snapshot (CX-r31-B).
         if (
           got !== back.length ||
           !back.equals(liveIndex.bytes) ||
-          fstatSync(liveIndex.fd).size !== back.length
+          st.size !== BigInt(back.length) ||
+          st.ctimeNs !== liveIndex.ctimeNs
         ) {
           out = "live-index snapshot mutated mid-check — staged-set coverage unverifiable";
         }
