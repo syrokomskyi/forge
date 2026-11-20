@@ -205,6 +205,7 @@ the round-11 acceptance report.</item>
   <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
+  <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -518,7 +519,7 @@ export async function evidencePreflight(
   // dump/claims derive from. `prior` is the previous capture on a drift
   // re-preflight — its resolution anchors pin this capture's resolves
   // so a mid-flight commondir/gitfile plant cannot steer them (CX-143).
-  const { objectsDir, shapePaths, headBranch, anyFailed, fingerprint } =
+  const { objectsDir, shapePaths, headBranch, hazards, anyFailed, fingerprint } =
     await captureEvidenceSurface(repoRoot, gitEvidence, prior);
   if (anyFailed) {
     if (!existsSync(repoRoot)) return null;
@@ -542,13 +543,19 @@ export async function evidencePreflight(
   // that exists but could not be byte-captured cannot be drift-checked
   // (R13-D) — a NON-REGULAR one (FIFO, CX-144) additionally hangs git's
   // own dump read, so the dump is skipped and the unproven flag refuses
-  // every spawn on its own.
+  // every spawn on its own. A `hazards` member is the same class one
+  // level up — non-regular `.git` metadata anywhere in the consultable
+  // surface (CX-r27-C: a `.git/logs/FOO` fifo stalls a child's startup
+  // open to the timeout instead of refusing), so it feeds the same
+  // unproven flag before any judged spawn.
   const configUnproven =
-    fingerprint.configPath !== null &&
-    fingerprint.configBytes === null &&
-    existsSync(fingerprint.configPath)
-      ? ".git/config exists but could not be captured — spawn would read unjudged config"
-      : undefined;
+    hazards.length > 0
+      ? `non-regular .git metadata (${hazards.join(", ")}) — git startup reads would block`
+      : fingerprint.configPath !== null &&
+          fingerprint.configBytes === null &&
+          existsSync(fingerprint.configPath)
+        ? ".git/config exists but could not be captured — spawn would read unjudged config"
+        : undefined;
   const listed =
     configUnproven === undefined
       ? await gitEvidence(repoRoot, ["config", "--local", "--no-includes", "--list", "--null"], {
@@ -590,9 +597,12 @@ export async function evidencePreflight(
         return false;
       }
     })();
-  const prepared = indexNonRegular
-    ? { failure: ".git/index is a non-regular file — claims enumeration would block" }
-    : await prepareEvidenceIndex(repoRoot, internalEnv);
+  const prepared =
+    hazards.length > 0
+      ? { failure: "non-regular .git metadata — claims enumeration would block" }
+      : indexNonRegular
+        ? { failure: ".git/index is a non-regular file — claims enumeration would block" }
+        : await prepareEvidenceIndex(repoRoot, internalEnv);
   preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
   preflight.configUnproven = configUnproven;
