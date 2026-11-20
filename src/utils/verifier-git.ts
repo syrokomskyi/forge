@@ -19,7 +19,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r31 trust-boundary counterexamples — HEAD-bound ignore provenance + fd append size-pins (RFC-1616)</item>
   <item>RFC-1616: bind ignored-path provenance to one armed window; re-proof live-index fd per spawn
 
 CX-r32-A: unprovenIgnoredPaths chained per-child verifierGit windows —
@@ -47,6 +46,17 @@ spawn — the same gap forged trackedSet. prepareEvidenceIndex now
 retains parsed claim names on EvidenceIndex.names and the *.gitignore
 filter runs in-process; the spawn is deleted.</item>
   <item>RFC-1616: pin ctimeNs + fsync-settle fd snapshots against mmap stores (RFC-1616 r34)</item>
+  <item>RFC-1616: gate held evidence fds behind fchmod 0400 + post-spawn re-verify (RFC-1616 r34 follow-up)
+
+mmap(MAP_SHARED) stores ride no inotify signal and do not reliably
+bump i_ctime (read-first installs writable PTEs — stores are silent on
+every fs). Prevention: fchmod 0400 at every held-image mint so the
+proc-fd O_RDWR open is EACCES; the owner's chmodat reopen bumps ctime
+into the pinned ctimeNs and fires IN_ATTRIB on the armed watch. Adds
+EvidenceIndex.ctimeNs, a mode+ctime half to every spawn re-proof, and
+a post-spawn fsync+size+bytes+ctimeNs re-verify on the general
+verifierGit channel (CX-r34-E); prior /proc-fd write probes now
+prelude with the chmodat that is itself the detected event.</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -58,6 +68,8 @@ import {
   constants as fsConstants,
   closeSync,
   existsSync,
+  chmodSync,
+  fchmodSync,
   fstatSync,
   fsyncSync,
   watch as fsWatch,
@@ -889,6 +901,17 @@ export interface EvidenceIndex {
   path?: string;
   bytes: Buffer;
   /**
+   * Kernel-managed change time pinned at fd-form mint. The fd is
+   * `fchmod`ed `0400` at mint, so the only residual same-UID write
+   * channel — `mmap(MAP_SHARED)` stores ride no observable signal and
+   * do not reliably bump `i_ctime` on tmpfs — is an owner `chmodat`
+   * on `/proc/<pid>/fd/N`, which cannot avoid bumping this stamp.
+   * Optional: path-form held files carry no fd pin and pre-r34 mints
+   * lack it — an fd-form index WITHOUT it simply skips the ctime half
+   * of the re-verify (CX-r34-E).
+   */
+  ctimeNs?: bigint;
+  /**
    * Claim pathnames parsed from `ls-files --stage` at mint — the same
    * staged set `bytes` serializes, kept so a consult can answer
    * membership questions in-process instead of spawning an unarmed
@@ -955,11 +978,22 @@ export function evidenceSpawnState(
       // APPEND preserves the pinned prefix while tacking a `link`
       // extension (or trailing bytes git parses) onto the claims
       // basis (CX-r31-B). Prefix-only attestation would merge foreign
-      // split-index entries into every claims child.
+      // split-index entries into every claims child. ctimeNs catches
+      // the pre-spawn half of a chmodat-gated flip→restore: reopening
+      // the write channel requires an owner chmodat, which bumps the
+      // inode's change time, so a drifted pin here means the image was
+      // touched since mint even when the bytes read back equal
+      // (CX-r34-E — the post-spawn re-verify covers the in-flight half).
+      const st = fstatSync(childFd, { bigint: true });
       if (
         got !== idx.bytes.length ||
         !back.equals(idx.bytes) ||
-        fstatSync(childFd).size !== idx.bytes.length
+        st.size !== BigInt(idx.bytes.length) ||
+        (idx.ctimeNs !== undefined && st.ctimeNs !== idx.ctimeNs) ||
+        // The mint gate made the inode 0400 — a write bit means an
+        // owner `chmodat` reopened the channel (the escape valve), and
+        // the pinned bytes can no longer be trusted as the baseline.
+        (st.mode & 0o222n) !== 0n
       ) {
         closeSync(childFd);
         unproven = true;
@@ -2005,6 +2039,14 @@ function createHeldFile(bytes: Buffer, stem: string): number | null {
     // its enumeration probes to find.
     try {
       const fd = openSync(os.tmpdir(), oTmpfile | fsConstants.O_RDWR, 0o600);
+      // fchmod 0400 the held image read-only (CX-r34-E): the ONLY
+      // same-UID write channel to a nameless inode is
+      // `open("/proc/<pid>/fd/N", O_RDWR)` — gated by the inode's mode.
+      // Our own per-spawn reopens are "r" and unaffected; the owner's
+      // `chmodat` escape bumps ctime and fires IN_ATTRIB — both pinned
+      // layers see it. Do this BEFORE writing so the fd is never
+      // reachable in a writable mode.
+      fchmodSync(fd, 0o400);
       writeSync(fd, bytes);
       return fd;
     } catch {
@@ -2015,6 +2057,7 @@ function createHeldFile(bytes: Buffer, stem: string): number | null {
   try {
     writeFileSync(p, bytes, { mode: 0o600 });
     const fd = openSync(p, "r");
+    fchmodSync(fd, 0o400);
     const back = Buffer.alloc(bytes.length);
     const got = readSync(fd, back, 0, bytes.length, 0);
     unlinkSync(p);
@@ -2051,11 +2094,18 @@ export function heldPathProven(held: EvidenceIndex): boolean {
  */
 export function heldEvidenceFile(bytes: Buffer, stem: string): EvidenceIndex | null {
   const fd = createHeldFile(bytes, stem);
-  if (fd !== null && existsSync("/dev/fd")) return { fd, bytes };
+  if (fd !== null && existsSync("/dev/fd")) {
+    return { fd, bytes, ctimeNs: fstatSync(fd, { bigint: true }).ctimeNs };
+  }
   if (fd !== null) closeSync(fd);
   const p = path.join(os.tmpdir(), evidenceHeldName(stem));
   try {
     writeFileSync(p, bytes, { mode: 0o600 });
+    // Same 0400 gate as the fd form — a same-UID pwrite/mmap store on a
+    // writable named file is just as invisible (no inotify event, and
+    // mmap stores do not reliably bump ctime on tmpfs); the owner's
+    // chmodat escape bumps ctime, which the path's stat pin carries.
+    chmodSync(p, 0o400);
   } catch {
     return null;
   }
@@ -3755,12 +3805,12 @@ export function armEvidenceWindowWatch(
   // through `/proc/<pid>/fd/N` plus a ctime-restoring `utimensat`
   // would slip a stat pin, and a pure APPEND preserves the pinned
   // prefix — the settle check therefore compares size AND bytes
-  // (CX-r30-B / CX-r31-B). The ctimeNs pin covers the inotify-blind
-  // path: an `mmap(MAP_SHARED)` store fires no `change` event, but
-  // the kernel still bumps the inode's change time (eagerly on
-  // tmpfs, at writeback elsewhere — the settle `fsyncSync` flushes
-  // pending dirty pages first, so a flip→restore cannot leave the
-  // timestamp untouched).
+  // (CX-r30-B / CX-r31-B). The ctimeNs pin covers the chmodat escape
+  // from the mint-time `fchmod 0400`: `mmap(MAP_SHARED)` stores ride
+  // no inotify signal and do not reliably bump `i_ctime` on tmpfs,
+  // but they need a write-capable description the mode gate denies —
+  // the owner's only reopen path, `chmodat` on `/proc/<pid>/fd/N`,
+  // cannot avoid bumping the change time (CX-r34-E).
   const claimsFdPin =
     claims?.fd !== undefined
       ? {
@@ -3864,6 +3914,7 @@ export function armEvidenceWindowWatch(
           if (
             st.size !== BigInt(back.length) ||
             st.ctimeNs !== claimsFdPin.ctimeNs ||
+            (st.mode & 0o222n) !== 0n ||
             readSync(claimsFdPin.fd, back, 0, back.length, 0) !== back.length ||
             !back.equals(claimsFdPin.bytes)
           ) {
@@ -4609,11 +4660,17 @@ async function verifyAnchoredMutationCoverage(
     if (typeof oTmpfile === "number") {
       try {
         const fd = openSync(os.tmpdir(), oTmpfile | fsConstants.O_RDWR, 0o600);
+        // fchmod 0400 BEFORE writing (CX-r34-A): the only same-UID write
+        // channel to a nameless inode is `open("/proc/<pid>/fd/N",
+        // O_RDWR)`, gated by the inode's mode — an mmap(MAP_SHARED)
+        // store needs that write-capable description too. Our own
+        // reopens are "r" and unaffected. The owner's `chmodat` escape
+        // bumps ctime (pinned below) and fires IN_ATTRIB (armed watch).
+        fchmodSync(fd, 0o400);
         writeSync(fd, bytes);
-        // ctimeNs pins the inode's kernel-managed change time at mint —
-        // an `mmap(MAP_SHARED)` store through `/proc/<pid>/fd` fires no
-        // inotify event the watch can see, but it cannot write the inode
-        // without bumping its change time (CX-r34-A).
+        // ctimeNs pins the inode's change time at mint — the residual
+        // write path after fchmod is a `chmodat` mode reset, which
+        // cannot avoid bumping this stamp (CX-r34-A).
         const ctimeNs = fstatSync(fd, { bigint: true }).ctimeNs;
         return { fd, bytes, ctimeNs };
       } catch {
@@ -4626,6 +4683,11 @@ async function verifyAnchoredMutationCoverage(
         `verifier-index-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
       writeFileSync(p, bytes, { mode: 0o600 });
+      // 0400 gate parity with the fd form — pwrite/mmap writes on the
+      // scratch copy are otherwise invisible to inotify AND to the
+      // ctime pin (mmap stores do not stamp on tmpfs); chmodat is the
+      // only escape and it cannot avoid bumping ctime (CX-r34-A).
+      chmodSync(p, 0o400);
       const st = statSync(p);
       return { path: p, ino: st.ino, ctimeMs: st.ctimeMs, bytes };
     } catch {
@@ -4734,6 +4796,7 @@ async function verifyAnchoredMutationCoverage(
         if (
           st.ino !== liveIndex.ino ||
           st.ctimeMs !== liveIndex.ctimeMs ||
+          (st.mode & 0o222) !== 0 ||
           !readFileSync(liveIndex.path).equals(liveIndex.bytes)
         ) {
           out = "live-index scratch mutated mid-check — staged-set coverage unverifiable";
@@ -4759,12 +4822,11 @@ async function verifyAnchoredMutationCoverage(
       try {
         const back = Buffer.alloc(liveIndex.bytes.length);
         const got = readSync(liveIndex.fd, back, 0, back.length, 0);
-        // `fsyncSync` first: an `mmap(MAP_SHARED)` flip→restore leaves
-        // no inotify event and restores the compared bytes, but the
-        // dirty pages' writeback bumps the inode's change time — on
-        // kernels that defer the update to writeback, the sync forces
-        // it now (eager on tmpfs either way). ctimeNs is the pin the
-        // memory-store path cannot rewind (CX-r34-A).
+        // `fsyncSync` first, then size+bytes+ctimeNs: the mint-time
+        // `fchmod 0400` closed the `/proc/<pid>/fd` write channel, so
+        // the residual path is an owner `chmodat` reopen — it cannot
+        // avoid bumping the inode's change time, and the sync flushes
+        // any deferred stamp inside the check (CX-r34-A).
         fsyncSync(liveIndex.fd);
         const st = fstatSync(liveIndex.fd, { bigint: true });
         // Size check alongside the prefix compare — a `/proc/<pid>/fd`
@@ -4774,7 +4836,8 @@ async function verifyAnchoredMutationCoverage(
           got !== back.length ||
           !back.equals(liveIndex.bytes) ||
           st.size !== BigInt(back.length) ||
-          st.ctimeNs !== liveIndex.ctimeNs
+          st.ctimeNs !== liveIndex.ctimeNs ||
+          (st.mode & 0o222n) !== 0n
         ) {
           out = "live-index snapshot mutated mid-check — staged-set coverage unverifiable";
         }
@@ -5314,6 +5377,44 @@ async function verifierGitSpawn(
       indexFd: spawnState.indexFd,
       input: opts?.input,
     });
+    // Post-spawn re-verify of the held claims fd (CX-r34-E): the
+    // mint-time `fchmod 0400` closed the `/proc/<pid>/fd` write
+    // channel (mmap stores need a write-capable description too),
+    // so the residual primitive is an owner `chmodat` reopen — it
+    // fires no inotify event this channel armed but cannot avoid
+    // bumping the inode's change time. fsyncSync flushes any deferred
+    // stamp, then size+bytes+ctimeNs must all read minted. Drift
+    // means the image was touched mid-consult — this result is
+    // refused for index ops and the index stays unproven for every
+    // later consult.
+    const heldIdxFd = preflight?.index?.fd;
+    if (heldIdxFd !== undefined && preflight?.index !== undefined) {
+      const idx = preflight.index;
+      let mutated = true;
+      try {
+        fsyncSync(heldIdxFd);
+        const st = fstatSync(heldIdxFd, { bigint: true });
+        const back = Buffer.alloc(idx.bytes.length);
+        mutated =
+          st.size !== BigInt(idx.bytes.length) ||
+          (idx.ctimeNs !== undefined && st.ctimeNs !== idx.ctimeNs) ||
+          (st.mode & 0o222n) !== 0n ||
+          readSync(heldIdxFd, back, 0, back.length, 0) !== back.length ||
+          !back.equals(idx.bytes);
+      } catch {
+        /* held fd unreadable — treat as mutated */
+      }
+      if (mutated) {
+        preflight.indexUnproven = "held index mutated mid-consult";
+        if (isIndexConsultingRead(args)) {
+          return {
+            exitCode: -1,
+            stdout: "",
+            stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (held index mutated mid-consult): git ${args.join(" ")}`,
+          };
+        }
+      }
+    }
     // `add`/`reset` exit-0 is not yet an honest answer — a session
     // `.gitignore` consult silently shrinks the staged set the caller
     // will claim (CX-r28-B), and same-session index writes inside the

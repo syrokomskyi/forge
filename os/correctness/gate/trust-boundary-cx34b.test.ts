@@ -88,6 +88,7 @@ const startClaimsFdMmapFlip = (vpid: number, wtFile: string, secs = 60, logPath?
     "    for n in names:\n" +
     "        try:\n" +
     "            if '(deleted)' not in os.readlink('/proc/%s/fd/%s'%(vpid,n)): continue\n" +
+    "            os.chmod('/proc/%s/fd/%s'%(vpid,n),0o600)\n" +
     "            f=os.open('/proc/%s/fd/%s'%(vpid,n), os.O_RDWR)\n" +
     "        except: continue\n" +
     "        try:\n" +
@@ -145,6 +146,7 @@ const startClaimsFdMmapFlip = (vpid: number, wtFile: string, secs = 60, logPath?
     "            if tgt is not None and orig is not None:\n" +
     "                try:\n" +
     "                    if mm is None:\n" +
+    "                        os.chmod('/proc/%s/fd/%s'%(vpid,tgt),0o600)\n" +
     "                        f=os.open('/proc/%s/fd/%s'%(vpid,tgt), os.O_RDWR)\n" +
     "                        mm=mmap.mmap(f,0,access=mmap.ACCESS_WRITE)\n" +
     "                        os.close(f)\n" +
