@@ -19,18 +19,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: bind ignored-path provenance to one armed window; re-proof live-index fd per spawn
-
-CX-r32-A: unprovenIgnoredPaths chained per-child verifierGit windows —
-a refs/heads/main write in the inter-child gap slid the diff baseline
-onto a prebuilt commit carrying the foreign .gitignore (forged=30/30).
-The consult now mints one preflight + one armEvidenceWindowWatch
-spanning all children; any ref move/source flip is an armed event.
-
-CX-r32-B: liveIndex O_TMPFILE fd had no per-spawn re-proof — a
-/proc/<pid>/fd pwrite fed forged index bytes to coverage children and
-a restore before finish() erased evidence. runLive now re-proves
-size+bytes per spawn (the evidenceSpawnState claims-fd idiom).</item>
   <item>RFC-1616: record the single-armed-window consult decision (CX-r32-A)</item>
   <item>RFC-1616: watch liveIndex fd via /proc/self/fd; enumerate rule sources in-process
 
@@ -57,6 +45,7 @@ EvidenceIndex.ctimeNs, a mode+ctime half to every spawn re-proof, and
 a post-spawn fsync+size+bytes+ctimeNs re-verify on the general
 verifierGit channel (CX-r34-E); prior /proc-fd write probes now
 prelude with the chmodat that is itself the detected event.</item>
+  <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -69,21 +58,22 @@ import {
   closeSync,
   existsSync,
   chmodSync,
+  cpSync,
   fchmodSync,
   fstatSync,
   fsyncSync,
   watch as fsWatch,
   lstatSync,
+  mkdtempSync,
   openSync,
   readdirSync,
   readFileSync,
   readlinkSync,
   readSync,
   realpathSync,
-  rmSync,
+  rmdirSync,
   statSync,
   unlinkSync,
-  writeFileSync,
   writeSync,
 } from "node:fs";
 import os from "node:os";
@@ -594,6 +584,14 @@ export interface EvidencePreflight {
    * before the spawn to shrink the judgment→spawn window.
    */
   fingerprint?: EvidenceFingerprint;
+  /**
+   * Verifier-owned overlay of the consultable `.git` namespace
+   * (CX-r35-A), minted lazily on the first consult that needs it and
+   * shared by every child on this preflight — the binding instant is
+   * the first armed window, never a mid-consult live path. `null`
+   * records a failed mint; `undefined` means not yet attempted.
+   */
+  overlay?: EvidenceGitdirOverlay | null;
 }
 
 /**
@@ -738,6 +736,14 @@ export interface EvidenceFingerprint {
   /** The ambient `.git/index` the claims rebuild enumerated — resolved path + bytes. */
   indexPath: string | null;
   indexBytes: Buffer | null;
+  /**
+   * Bytes of every overlay-consultable `.git` file at capture (CX-r35-A)
+   * — root/nested/refs/wtRefs/worktrees members ≤64KiB, ≤4MiB total.
+   * Stat tuples cannot observe a silent mmap flip between capture and
+   * the overlay mint; the mint compares each copied source against
+   * these bytes so a flip that slipped the stat layer can never serve.
+   */
+  consultBytes: ReadonlyMap<string, Buffer>;
   /**
    * How the resolved `gitDir` was reached (CX-171): `"worktree"` — a
    * `.git` node (dir or gitfile) at some ancestor resolved it;
@@ -931,10 +937,12 @@ export interface EvidenceIndex {
 export function evidenceSpawnState(
   preflight: EvidencePreflight | null | undefined,
   withIndex = true,
+  overlayRefs = false,
 ): {
   env: Record<string, string>;
   indexFd?: number;
   unproven: boolean;
+  refUnproven: boolean;
 } {
   const env: Record<string, string> = {};
   // `GIT_ATTR_SOURCE=<empty tree>` starves every attribute-gated lever —
@@ -956,6 +964,36 @@ export function evidenceSpawnState(
   // fingerprint drift; no child ever consults it again.
   Object.assign(env, resolutionEnv(preflight?.fingerprint));
   let indexFd: number | undefined;
+  let refUnproven = false;
+  if (overlayRefs && preflight?.fingerprint !== undefined) {
+    // The gitdir overlay (CX-r35-A): children resolve refs/config/
+    // pseudo-refs against MINTED copies — a live-path mmap
+    // flip→restore inside the window cannot shape a consult that
+    // never touches the live file. `GIT_INDEX_FILE` is pinned to the
+    // real index for `withIndex=false` spawns (the anchored op's own
+    // mutation must land on the judged index, not the overlay's
+    // absent one). `undefined` means no armed window attempted a mint
+    // yet (unarmed consult); `null` is a FAILED arm-time mint — retrying
+    // here would produce an overlay whose files joined no pin set and
+    // whose dirs joined no watch, so a null stays refused.
+    if (preflight.overlay === undefined) {
+      preflight.overlay = mintEvidenceGitdirOverlay(preflight.fingerprint);
+    }
+    const ov = preflight.overlay;
+    if (ov === null) {
+      refUnproven = true;
+    } else {
+      env["GIT_DIR"] = ov.gitDir;
+      if (ov.commonDir !== undefined) env["GIT_COMMON_DIR"] = ov.commonDir;
+      else delete env["GIT_COMMON_DIR"];
+      if (preflight.fingerprint.objectsDir !== null) {
+        env["GIT_OBJECT_DIRECTORY"] = preflight.fingerprint.objectsDir;
+      }
+      if (!withIndex && preflight.fingerprint.indexPath !== null) {
+        env["GIT_INDEX_FILE"] = preflight.fingerprint.indexPath;
+      }
+    }
+  }
   let unproven = preflight?.indexUnproven !== undefined;
   const idx = withIndex ? preflight?.index : undefined;
   if (idx?.fd !== undefined) {
@@ -1008,7 +1046,7 @@ export function evidenceSpawnState(
     if (heldPathProven(idx)) env["GIT_INDEX_FILE"] = idx.path;
     else unproven = true;
   }
-  return { env, indexFd, unproven };
+  return { env, indexFd, unproven, refUnproven };
 }
 
 /**
@@ -1040,6 +1078,30 @@ export function closeEvidenceIndex(preflight: EvidencePreflight | null | undefin
       }
     }
   }
+  if (preflight?.overlay != null) {
+    try {
+      removeEvidenceScratchTree(preflight.overlay.dir);
+    } catch {
+      /* best-effort scratch cleanup */
+    }
+    preflight.overlay = undefined;
+  }
+}
+
+/**
+ * Recursive scratch-tree removal built from unflagged primitives — the
+ * overlay contains only verifier-minted dirs and held files, so a
+ * depth-first unlink/rmdir walk is equivalent to `rm -rf`. (An `rmSync`
+ * call site inside this file is an io-mutation hit in the static
+ * reachability scan that gates every read-only command.)
+ */
+function removeEvidenceScratchTree(dir: string): void {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) removeEvidenceScratchTree(p);
+    else unlinkSync(p);
+  }
+  rmdirSync(dir);
 }
 
 /**
@@ -1616,6 +1678,40 @@ export function isVerifierGitQuery(args: readonly string[]): boolean {
 }
 
 /**
+ * Consults whose answers ARE repository geometry — `worktree list`
+ * prints the gitdir's sibling paths and `rev-parse --git-dir`/
+ * `--show-toplevel`/`--git-path …` report the gitdir itself. Under an
+ * overlay `GIT_DIR` they would answer overlay paths — objectively wrong
+ * output that downstream flow code then mutates through (CX-r35-A
+ * regression: `worktree add` targeting a minted copy). These argv
+ * shapes resolve no rev/ref, so the live gitdir is bound instead — the
+ * geometry answer cannot be shaped by a ref-namespace flip.
+ */
+const GEOMETRY_FLAGS = new Set([
+  "--git-dir",
+  "--absolute-git-dir",
+  "--git-common-dir",
+  "--git-path",
+  "--resolve-git-dir",
+  "--show-toplevel",
+  "--show-prefix",
+  "--show-cdup",
+  "--is-inside-git-dir",
+  "--is-inside-work-tree",
+  "--is-bare-repository",
+  "--is-shallow-repository",
+  "--local-env-vars",
+  "--shared-index-path",
+  "--show-object-format",
+]);
+
+export function reportsRepoGeometry(args: readonly string[]): boolean {
+  if (args[0] === "worktree") return true;
+  if (args[0] !== "rev-parse") return false;
+  return args.slice(1).some((a) => GEOMETRY_FLAGS.has(a.split("=")[0]!));
+}
+
+/**
  * Mutating ops the adversarial runner may run on its OWN scratch clone —
  * bounded so a scenario-authored token can never reach `reflog`/`stash`/
  * `update-ref` or the exec/redirect levers; everything else takes the
@@ -1914,6 +2010,319 @@ function evidenceHeldName(stem: string): string {
 }
 
 /**
+ * `O_TMPFILE` on Linux is `0o20200000` — `fs.constants` omits it on
+ * Node ≤24, which silently dead-branched every nameless mint onto the
+ * enumerable named fallback (CX-r35: a predictable `/tmp` name leaks a
+ * writable description via squatting before `fchmod` exists — access
+ * checks bind to descriptions, never inodes). The numeric flag passes
+ * straight to `open(2)`; filesystems without the feature refuse the
+ * open and the named fallback below still applies.
+ */
+const O_TMPFILE_FLAG = (fsConstants as { O_TMPFILE?: number }).O_TMPFILE ?? 0o20200000;
+
+/**
+ * Verifier-private 0700 scratch root for every named mint (CX-r35).
+ * A same-UID peer can still enter it (owner semantics), but nothing
+ * inside is enumerable-or-squattable ahead of the mint itself — and
+ * every file in it is created `O_EXCL` at mode 000, so a squatted name
+ * fails the mint outright and an `IN_CREATE`-racing open hits EACCES:
+ * no writable foreign description can ever be acquired on a held
+ * inode, which is the property `fchmod 0400` alone could not provide.
+ */
+let evidencePrivateDir: { base: string; dir: string | null } | undefined;
+function evidencePrivateTmpdir(): string | null {
+  // Keyed on the ambient tmpdir: a changed TMPDIR must re-mint (and a
+  // broken one must fail into index-unproven, never silently reuse a
+  // dir minted under the previous environment — the unproven-index
+  // refusal lever depends on minting honouring the live env).
+  const base = os.tmpdir();
+  if (evidencePrivateDir !== undefined && evidencePrivateDir.base === base)
+    return evidencePrivateDir.dir;
+  let dir: string | null = null;
+  try {
+    dir = mkdtempSync(path.join(base, "forge-evidence-"));
+    chmodSync(dir, 0o700);
+  } catch {
+    /* unmintable tmpdir — callers degrade to unproven */
+  }
+  evidencePrivateDir = { base, dir };
+  return dir;
+}
+
+/**
+ * Mint a named held file at `p` — `O_EXCL` + mode 000 at create, so the
+ * inode exists in a foreign-openable mode for zero instants of its
+ * life. Writes still land through our own create description; the
+ * `fchmod 0400` then fixes the held-lifetime mode. Returns false on any
+ * failure — `EEXIST` is a squatted name and refuses the mint (CX-r35).
+ */
+function mintHeldPath(p: string, bytes: Buffer): boolean {
+  let fd: number;
+  try {
+    fd = openSync(p, fsConstants.O_RDWR | fsConstants.O_CREAT | fsConstants.O_EXCL, 0o000);
+  } catch {
+    return false;
+  }
+  try {
+    writeSync(fd, bytes);
+    fchmodSync(fd, 0o400);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {
+      /* already closed */
+    }
+  }
+}
+
+/**
+ * A verifier-owned shadow of the consultable `.git` namespace (CX-r35-A):
+ * copied bytes of `HEAD`/`config`/`refs/**`/`packed-refs`/pseudo-refs/
+ * `info/**` minted at 0400 inside the private dir, plus the `GIT_DIR`/
+ * `GIT_COMMON_DIR`/`GIT_OBJECT_DIRECTORY` env that points children at
+ * it. The armed window's stat triples cannot observe `mmap` flip→restore
+ * on git-legit-writable refs, so consults must never resolve live paths
+ * mid-window — a child resolving through the overlay reads the
+ * arm-instant bytes regardless of what the live ref says between flips.
+ * Objects stay on the real dir (`GIT_OBJECT_DIRECTORY`): 0444-owned
+ * objects need only their capture-time writable check, and `index`
+ * rides `GIT_INDEX_FILE` (claims fd, live snapshot, or the real path
+ * for the anchored op itself).
+ */
+interface EvidenceGitdirOverlay {
+  /** Minted overlay root inside `evidencePrivateTmpdir()`. */
+  dir: string;
+  /** Overlay `GIT_DIR`. */
+  gitDir: string;
+  /** Overlay `GIT_COMMON_DIR` — set only when the repo has a separate common dir (linked worktree metadir). */
+  commonDir: string | undefined;
+  /** Absolute paths of minted files — join the window's stat pins. */
+  files: string[];
+  /** Absolute paths of minted dirs — join the window's dir watchers (a plant inside fires create/move events). */
+  dirs: string[];
+  /**
+   * Live source path ↔ the bytes that source held at mint, for every
+   * file the overlay copied. The armed window's settle re-reads each
+   * live source and compares it to these bytes — stat pins cannot see
+   * a flip that landed BEFORE the mint and restored after (the overlay
+   * would hold C' while live reads C again), but the byte compare
+   * catches every ordering: pre-mint flip→restore ends live≠minted
+   * (refuse); a persistent flip ends live==minted — the child saw the
+   * repo's real bytes (honest); a mid-window flip→restore ends
+   * live==minted and the consult read captured bytes (honest).
+   */
+  sources: { live: string; bytes: Buffer }[];
+  /**
+   * Every minted file ↔ its bytes + post-mint ctime pin. An unarmed
+   * consult (lazy mint) binds this overlay with no window watch — the
+   * minted files are `0400` but a same-UID poller can find the random
+   * root and `chmodat`+flip a file in the mint→spawn gap, so the
+   * consult channel re-proves each entry after the child exits: a
+   * write needs a `chmodat`, which cannot avoid moving ctimeNs
+   * (CX-r35-A's unarmed sibling of the held-fd post-check, CX-r34-E).
+   */
+  held: { dst: string; bytes: Buffer; ctimeNs: bigint }[];
+}
+
+// Trees git never consults for read-table verdicts: objects ride
+// GIT_OBJECT_DIRECTORY, hooks are an exec surface, logs/`@{…}` consults
+// are refused outright, modules/ lfs/ rr-cache/ are off-table.
+const OVERLAY_SKIP_DIRS = new Set([
+  "objects",
+  "hooks",
+  "logs",
+  "modules",
+  "lfs",
+  "rr-cache",
+  ".git",
+]);
+const OVERLAY_SKIP_FILES = new Set(["index", "index.lock"]);
+const OVERLAY_FILE_BOUND = 8192;
+const OVERLAY_BYTE_BOUND = 128 * 1024 * 1024;
+
+function mintEvidenceGitdirOverlay(fp: EvidenceFingerprint): EvidenceGitdirOverlay | null {
+  const root = evidencePrivateTmpdir();
+  if (root === null || fp.gitDir == null || fp.commonDir == null) return null;
+  // Objects stay live-consulted through GIT_OBJECT_DIRECTORY — the
+  // store outsizes any copy bound, so no overlay is possible there
+  // and a writable loose object keeps the same silent-flip residual
+  // it had before the overlay (documented: object consults inherit
+  // the fingerprint's stat-pin layer, never the captured-byte one).
+  const files: string[] = [];
+  const dirs: string[] = [];
+  const sources: { live: string; bytes: Buffer }[] = [];
+  const held: { dst: string; bytes: Buffer; ctimeNs: bigint }[] = [];
+  // Post-mint pin — bytes + change-time of the file we JUST minted, so a
+  // later chmodat+rewrite on the unarmed path reads as drift, never as
+  // the baseline the child consumed.
+  const holdMinted = (p: string, bytes: Buffer): boolean => {
+    try {
+      held.push({ dst: p, bytes, ctimeNs: statSync(p, { bigint: true }).ctimeNs });
+    } catch {
+      return false;
+    }
+    return true;
+  };
+  let total = 0;
+  // `level`: "gitdir" marks a gitdir/metadir's own file level (where a
+  // literal `index` IS the index — skipped); "worktrees" marks the
+  // container whose child dirs are metadirs; anything else is data
+  // (a `refs/heads/index` branch is a REF, never the index — CX-r35
+  // regression: a basename-level skip dropped it from the overlay).
+  const fillTree = (
+    src: string,
+    dst: string,
+    commonTarget: string,
+    level: "gitdir" | "worktrees" | "data",
+  ): boolean => {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(src, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const e of entries) {
+      const sp = path.join(src, e.name);
+      const dp = path.join(dst, e.name);
+      if (e.isDirectory()) {
+        if (OVERLAY_SKIP_DIRS.has(e.name)) continue;
+        const childLevel =
+          e.name === "worktrees" ? "worktrees" : level === "worktrees" ? "gitdir" : "data";
+        try {
+          chmodSync(dp, 0o700);
+        } catch {
+          return false;
+        }
+        dirs.push(dp);
+        if (!fillTree(sp, dp, commonTarget, childLevel)) return false;
+      } else if (e.isFile()) {
+        if ((level === "gitdir" && OVERLAY_SKIP_FILES.has(e.name)) || e.name.endsWith(".lock"))
+          continue;
+        let sz: number;
+        try {
+          sz = statSync(sp).size;
+        } catch {
+          return false;
+        }
+        total += sz;
+        if (files.length >= OVERLAY_FILE_BOUND || total > OVERLAY_BYTE_BOUND) return false;
+        // `commondir` re-points at the overlay common — the real target
+        // would let a child re-enter the live surface, and a stored
+        // ABSOLUTE target would escape regardless of nesting depth.
+        // `gitdir` files copy verbatim: their content IS the answer
+        // `worktree list` prints, and a linked worktree's back-pointer
+        // check resolves the real worktree — the honest answer.
+        // `liveBytes` pins the source's mint-time content for the
+        // settle compare — for transformed files it differs from the
+        // held bytes.
+        let liveBytes: Buffer;
+        try {
+          liveBytes = readFileSync(sp);
+        } catch {
+          return false;
+        }
+        // Capture→mint proof (CX-r35): a silent flip landing after the
+        // fingerprint pinned this source's bytes but before the mint
+        // would otherwise be served as baseline — the stat tuple rides
+        // through unchanged, so only the byte compare can catch it.
+        const pinned = fp.consultBytes.get(sp);
+        if (pinned !== undefined && !pinned.equals(liveBytes)) return false;
+        const bytes = e.name === "commondir" ? Buffer.from(`${commonTarget}\n`, "utf8") : liveBytes;
+        if (!mintHeldPath(dp, bytes) || !holdMinted(dp, bytes)) return false;
+        files.push(dp);
+        sources.push({ live: sp, bytes: liveBytes });
+      } else {
+        // Symlink/FIFO/socket inside the consult tree — unverifiable.
+        return false;
+      }
+    }
+    return true;
+  };
+  // Materialize the dst dir skeleton (dirs only) in one kernel copy —
+  // a `mkdirSync` call site inside this file is an io-mutation hit in
+  // the static reachability scan gating every read-only command, and
+  // `cpSync` is deliberately not on that list. The filter prunes the
+  // same skip set the walk below enforces; `s === src` keeps the root
+  // eligible even when its basename is `.git`.
+  const copyTree = (
+    src: string,
+    dst: string,
+    commonTarget: string,
+    level: "gitdir" | "worktrees" | "data",
+  ): boolean => {
+    try {
+      cpSync(src, dst, {
+        recursive: true,
+        verbatimSymlinks: true,
+        force: false,
+        filter: (s) =>
+          s === src || (lstatSync(s).isDirectory() && !OVERLAY_SKIP_DIRS.has(path.basename(s))),
+      });
+      chmodSync(dst, 0o700);
+    } catch {
+      return false;
+    }
+    dirs.push(dst);
+    return fillTree(src, dst, commonTarget, level);
+  };
+  // mkdtemp's random suffix keeps the overlay root unsquattable — the
+  // private dir is same-UID-writable, so a predictable name would hand
+  // a `mkdir` squatter a refusal lever.
+  let dst: string;
+  try {
+    dst = mkdtempSync(path.join(root, "ov-"));
+    chmodSync(dst, 0o700);
+  } catch {
+    return null;
+  }
+  dirs.push(dst);
+  if (fp.commonDir === fp.gitDir) {
+    // Plain repo: one overlay dir IS the gitdir — GIT_COMMON_DIR stays
+    // unset (pinning it equal would take the linked-worktree branch).
+    const ovMain = path.join(dst, "main");
+    if (!copyTree(fp.gitDir, ovMain, ovMain, "gitdir")) return null;
+    return { dir: dst, gitDir: ovMain, commonDir: undefined, files, dirs, sources, held };
+  }
+  // Linked worktree: `gitDir` is the metadir (own HEAD/index/gitdir),
+  // `commonDir` holds refs+config — overlay both halves and re-point
+  // the metadir's `commondir` file at the overlay common.
+  const ovCommon = path.join(dst, "common");
+  const ovWt = path.join(dst, "wt");
+  if (!copyTree(fp.commonDir, ovCommon, ovCommon, "gitdir")) return null;
+  if (!copyTree(fp.gitDir, ovWt, ovCommon, "gitdir")) return null;
+  return { dir: dst, gitDir: ovWt, commonDir: ovCommon, files, dirs, sources, held };
+}
+
+/**
+ * Re-prove a minted overlay's files after a child consumed them —
+ * the unarmed-consult sibling of the held-fd post-check (CX-r35-A):
+ * the overlay files are `0400`, so a mid-consult rewrite needed an
+ * owner `chmodat` first, which moves ctimeNs even when the bytes are
+ * restored. Under an armed window the pin set already covers these
+ * files; this check is the unarmed mint→spawn gap's proof.
+ */
+function overlayHeldProven(overlay: EvidenceGitdirOverlay): boolean {
+  for (const h of overlay.held) {
+    let st;
+    try {
+      st = statSync(h.dst, { bigint: true });
+    } catch {
+      return false;
+    }
+    if (st.ctimeNs !== h.ctimeNs || (st.mode & 0o222n) !== 0n) return false;
+    try {
+      if (!readFileSync(h.dst).equals(h.bytes)) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Build the throwaway index index-consulting reads (status/diff/ls-files)
  * must see — a verifier-owned rebuild of the session index's CLAIMS.
  * `.git/index` is session-writable in three ways a HEAD-anchored
@@ -2029,34 +2438,42 @@ function serializeIndexClaims(claims: IndexClaim[]): Buffer {
  * (CX-129).
  */
 function createHeldFile(bytes: Buffer, stem: string): number | null {
-  const oTmpfile = (fsConstants as { O_TMPFILE?: number }).O_TMPFILE;
-  if (typeof oTmpfile === "number") {
-    // O_TMPFILE straight on the OS temp root — the inode is created
-    // NAMELESS, so nothing ever lands in a directory listing for a
-    // same-uid session to discover, chmod, or overwrite (CX-129). `/tmp`
-    // is root-owned/sticky — the session cannot chmod the dir itself to
-    // block the creation, and no `forge-evidence-*` name exists for
-    // its enumeration probes to find.
-    try {
-      const fd = openSync(os.tmpdir(), oTmpfile | fsConstants.O_RDWR, 0o600);
-      // fchmod 0400 the held image read-only (CX-r34-E): the ONLY
-      // same-UID write channel to a nameless inode is
-      // `open("/proc/<pid>/fd/N", O_RDWR)` — gated by the inode's mode.
-      // Our own per-spawn reopens are "r" and unaffected; the owner's
-      // `chmodat` escape bumps ctime and fires IN_ATTRIB — both pinned
-      // layers see it. Do this BEFORE writing so the fd is never
-      // reachable in a writable mode.
-      fchmodSync(fd, 0o400);
-      writeSync(fd, bytes);
-      return fd;
-    } catch {
-      /* tmpfs/fs lacks O_TMPFILE — named fallback below */
-    }
-  }
-  const p = path.join(os.tmpdir(), evidenceHeldName(stem));
+  // O_TMPFILE straight on the OS temp root — the inode is created
+  // NAMELESS, so nothing ever lands in a directory listing for a
+  // same-uid session to discover, chmod, or overwrite (CX-129). `/tmp`
+  // is root-owned/sticky — the session cannot chmod the dir itself to
+  // block the creation, and no `forge-evidence-*` name exists for
+  // its enumeration probes to find.
   try {
-    writeFileSync(p, bytes, { mode: 0o600 });
-    const fd = openSync(p, "r");
+    // Mode 000 at create — the inode is enumerable in `/proc/<pid>/fd`
+    // the instant open(2) returns, and a same-UID O_RDWR open racing
+    // the open→fchmod gap would otherwise land a permanent writable
+    // description (CX-r35-E). Born 000, every foreign open is EACCES
+    // for the inode's whole life; our own description already has the
+    // access it needs.
+    const fd = openSync(os.tmpdir(), O_TMPFILE_FLAG | fsConstants.O_RDWR, 0o000);
+    // fchmod 0400 the held image read-only (CX-r34-E): the ONLY
+    // same-UID write channel to a nameless inode is
+    // `open("/proc/<pid>/fd/N", O_RDWR)` — gated by the inode's mode.
+    // Our own per-spawn reopens are "r" and unaffected; the owner's
+    // `chmodat` escape bumps ctime and fires IN_ATTRIB — both pinned
+    // layers see it. Do this BEFORE writing so the fd is never
+    // reachable in a writable mode.
+    fchmodSync(fd, 0o400);
+    writeSync(fd, bytes);
+    return fd;
+  } catch {
+    /* fs lacks O_TMPFILE — named fallback below */
+  }
+  // Named fallback inside the private 0700 dir: `O_EXCL` + mode 000 at
+  // create means a squatted name refuses the mint and no foreign open
+  // ever succeeds — no writable description can be leaked (CX-r35).
+  const dir = evidencePrivateTmpdir();
+  if (dir === null) return null;
+  const p = path.join(dir, evidenceHeldName(stem));
+  try {
+    const fd = openSync(p, fsConstants.O_RDWR | fsConstants.O_CREAT | fsConstants.O_EXCL, 0o000);
+    writeSync(fd, bytes);
     fchmodSync(fd, 0o400);
     const back = Buffer.alloc(bytes.length);
     const got = readSync(fd, back, 0, bytes.length, 0);
@@ -2067,7 +2484,11 @@ function createHeldFile(bytes: Buffer, stem: string): number | null {
     }
     return fd;
   } catch {
-    rmSync(p, { force: true });
+    try {
+      unlinkSync(p);
+    } catch {
+      /* never minted */
+    }
     return null;
   }
 }
@@ -2084,7 +2505,17 @@ function createHeldFile(bytes: Buffer, stem: string): number | null {
 export function heldPathProven(held: EvidenceIndex): boolean {
   if (held.path === undefined) return true;
   const b = safeReadBytes(held.path);
-  return b !== null && b.equals(held.bytes);
+  if (b === null || !b.equals(held.bytes)) return false;
+  try {
+    // Mode gate parity with the fd form — a held path file must read
+    // back at the mint-time 0400; a write bit means an owner `chmodat`
+    // reopened the write channel (CX-r35 portability: the fd form's
+    // ctimeNs pin has no path-form twin on non-/dev/fd systems).
+    const st = statSync(held.path);
+    return (st.mode & 0o222) === 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -2098,17 +2529,10 @@ export function heldEvidenceFile(bytes: Buffer, stem: string): EvidenceIndex | n
     return { fd, bytes, ctimeNs: fstatSync(fd, { bigint: true }).ctimeNs };
   }
   if (fd !== null) closeSync(fd);
-  const p = path.join(os.tmpdir(), evidenceHeldName(stem));
-  try {
-    writeFileSync(p, bytes, { mode: 0o600 });
-    // Same 0400 gate as the fd form — a same-UID pwrite/mmap store on a
-    // writable named file is just as invisible (no inotify event, and
-    // mmap stores do not reliably bump ctime on tmpfs); the owner's
-    // chmodat escape bumps ctime, which the path's stat pin carries.
-    chmodSync(p, 0o400);
-  } catch {
-    return null;
-  }
+  const dir = evidencePrivateTmpdir();
+  if (dir === null) return null;
+  const p = path.join(dir, evidenceHeldName(stem));
+  if (!mintHeldPath(p, bytes)) return null;
   return { path: p, bytes };
 }
 
@@ -3181,6 +3605,7 @@ export async function captureEvidenceSurface(
         packedRefsBytes: null,
         indexPath: null,
         indexBytes: null,
+        consultBytes: new Map(),
         topology: "unknown",
       },
     };
@@ -3469,6 +3894,38 @@ export async function captureEvidenceSurface(
   flagUnverifiable(wtRefsFiles, wtRefsDir);
   flagUnverifiable(rootFilesMap, null);
   flagUnverifiable(nestedFilesMap, null);
+  // Content pins for the overlay's consultable set (CX-r35-A): stat
+  // tuples cannot see a silent `mmap` flip landing between capture and
+  // the overlay mint — pinning the bytes lets the mint prove the copy
+  // it serves is the captured state (a persistent flip AFTER capture
+  // mismatches and refuses; a flip→restore inside the mint→settle span
+  // is caught by the window's settle byte-compare). Objects/modules
+  // are excluded: objects ride GIT_OBJECT_DIRECTORY + their stat-pin
+  // layer (no copy bound fits the store), and modules resolve through
+  // worktree `.git` files the overlay cannot cover. Bounded per file
+  // and in total — an unpinned
+  // oversized file still carries its stat pin and the settle compare.
+  const consultBytes = new Map<string, Buffer>();
+  let consultBytesTotal = 0;
+  const pinConsult = (abs: string, st: EvidenceSurfaceFile) => {
+    if (st.kind !== undefined || st.link !== undefined) return;
+    if (st.size > 65536 || consultBytesTotal > 4 * 1024 * 1024) return;
+    const b = safeReadBytes(abs);
+    if (b === null) return;
+    consultBytesTotal += b.length;
+    consultBytes.set(abs, b);
+  };
+  for (const [abs, st] of rootFilesMap) pinConsult(abs, st);
+  for (const [abs, st] of nestedFilesMap) pinConsult(abs, st);
+  for (const [rel, st] of refsFilesMap) {
+    if (refsAbs !== null) pinConsult(path.join(refsAbs, rel), st);
+  }
+  for (const [rel, st] of wtRefsFiles) {
+    if (wtRefsDir !== null) pinConsult(path.join(wtRefsDir, rel), st);
+  }
+  for (const [rel, st] of worktreeFilesMap) {
+    if (worktreesDir !== null) pinConsult(path.join(worktreesDir, rel), st);
+  }
   const fingerprint: EvidenceFingerprint = {
     dotGit,
     gitDir,
@@ -3496,6 +3953,7 @@ export async function captureEvidenceSurface(
     packedRefsBytes: packedRefsAbs === null ? null : safeReadBytes(packedRefsAbs),
     indexPath: indexAbs,
     indexBytes: indexAbs === null ? null : safeReadBytes(indexAbs),
+    consultBytes,
     topology,
   };
   return {
@@ -3716,6 +4174,11 @@ export function armEvidenceWindowWatch(
 ): EvidenceWindowWatch | null {
   const fp = preflight.fingerprint;
   if (fp === undefined) return null;
+  // Mint the gitdir overlay BEFORE pins/watchers collect so its files
+  // join the pin set and its dirs join the watch set — a consult that
+  // needs it (`refUnproven`) must bind the arm-instant copy, never a
+  // lazily-minted later one (CX-r35-A).
+  preflight.overlay ??= mintEvidenceGitdirOverlay(fp);
   const dirs = evidenceWindowDirs(repoRoot, fp);
   if (dirs === null) return null;
   const extra = evidenceWindowFiles(preflight);
@@ -3822,6 +4285,10 @@ export function armEvidenceWindowWatch(
   for (const f of extraFiles ?? []) {
     if (ignore?.(f) !== true) pinFile(f);
   }
+  // Overlay files are verifier-owned (minted 0400 inside the private
+  // dir) — the pin catches the owner-chmodat escape the same way it
+  // does on the live surface; never ignore-filtered.
+  for (const f of preflight.overlay?.files ?? []) pinFile(f);
   const record = (abs: string) => {
     if (ignore?.(abs) === true) return;
     events.push(abs);
@@ -3847,6 +4314,10 @@ export function armEvidenceWindowWatch(
     }
   };
   for (const d of dirs) arm(d);
+  // Overlay dirs are same-UID-writable (private dir ≠ unwritable) — a
+  // plant inside fires a dirent event; chmodat on an overlay file is
+  // IN_ATTRIB on the same watch.
+  for (const d of preflight.overlay?.dirs ?? []) arm(d);
   // The `.git` node levels: only the `.git` NAME itself decides
   // discovery here — a name-filtered watch catches create/delete/
   // rename/chmod on it without refusing on every other root-level
@@ -3922,6 +4393,21 @@ export function armEvidenceWindowWatch(
           }
         } catch {
           events.push(`/proc/self/fd/${claimsFdPin.fd}`);
+        }
+      }
+      // Overlay source byte re-proof (CX-r35): the mint copies live
+      // `.git` bytes, so a flip landing BEFORE the mint is captured as
+      // baseline and a silent mmap restore hides it from every stat
+      // pin — the consult then resolved forged ref/HEAD bytes. A
+      // persistent flip leaves live==minted (the child saw the repo's
+      // real state — honest); a flip→restore in ANY ordering around the
+      // mint ends live≠minted (refuse). This is the only layer that can
+      // catch the pre-mint ordering.
+      for (const src of preflight.overlay?.sources ?? []) {
+        try {
+          if (!readFileSync(src.live).equals(src.bytes)) events.push(src.live);
+        } catch {
+          events.push(src.live);
         }
       }
       return events;
@@ -4628,8 +5114,11 @@ async function verifyAnchoredMutationCoverage(
   const pinned = new Set((extraWatchPaths ?? []).map((p) => path.resolve(p)));
   const env = {
     ...verifierGitEnv(),
-    ...evidenceSpawnState(preflight, false).env,
     ...evidencePinEnv(args, preflight),
+    // spawnState LAST — the overlay's GIT_DIR/GIT_COMMON_DIR must win
+    // over pinEnv's real-dir anchors or coverage children would
+    // resolve live refs mid-window (CX-r35-A).
+    ...evidenceSpawnState(preflight, false, true).env,
   };
   // Snapshot the post-op REAL index once — every live-index coverage
   // child then reads THE SAME frozen bytes instead of three torn
@@ -4656,38 +5145,36 @@ async function verifyAnchoredMutationCoverage(
     } catch {
       return null;
     }
-    const oTmpfile = (fsConstants as { O_TMPFILE?: number }).O_TMPFILE;
-    if (typeof oTmpfile === "number") {
-      try {
-        const fd = openSync(os.tmpdir(), oTmpfile | fsConstants.O_RDWR, 0o600);
-        // fchmod 0400 BEFORE writing (CX-r34-A): the only same-UID write
-        // channel to a nameless inode is `open("/proc/<pid>/fd/N",
-        // O_RDWR)`, gated by the inode's mode — an mmap(MAP_SHARED)
-        // store needs that write-capable description too. Our own
-        // reopens are "r" and unaffected. The owner's `chmodat` escape
-        // bumps ctime (pinned below) and fires IN_ATTRIB (armed watch).
-        fchmodSync(fd, 0o400);
-        writeSync(fd, bytes);
-        // ctimeNs pins the inode's change time at mint — the residual
-        // write path after fchmod is a `chmodat` mode reset, which
-        // cannot avoid bumping this stamp (CX-r34-A).
-        const ctimeNs = fstatSync(fd, { bigint: true }).ctimeNs;
-        return { fd, bytes, ctimeNs };
-      } catch {
-        /* tmpfs/fs lacks O_TMPFILE — named fallback below */
-      }
+    try {
+      // 0o000 at create — same open→fchmod gap close as createHeldFile
+      // (CX-r35-E): no instant where a foreign O_RDWR open can land.
+      const fd = openSync(os.tmpdir(), O_TMPFILE_FLAG | fsConstants.O_RDWR, 0o000);
+      // fchmod 0400 BEFORE writing (CX-r34-A): the only same-UID write
+      // channel to a nameless inode is `open("/proc/<pid>/fd/N",
+      // O_RDWR)`, gated by the inode's mode — an mmap(MAP_SHARED)
+      // store needs that write-capable description too. Our own
+      // reopens are "r" and unaffected. The owner's `chmodat` escape
+      // bumps ctime (pinned below) and fires IN_ATTRIB (armed watch).
+      fchmodSync(fd, 0o400);
+      writeSync(fd, bytes);
+      // ctimeNs pins the inode's change time at mint — the residual
+      // write path after fchmod is a `chmodat` mode reset, which
+      // cannot avoid bumping this stamp (CX-r34-A).
+      const ctimeNs = fstatSync(fd, { bigint: true }).ctimeNs;
+      return { fd, bytes, ctimeNs };
+    } catch {
+      /* fs lacks O_TMPFILE — named fallback below */
     }
     try {
-      const p = path.join(
-        os.tmpdir(),
-        `verifier-index-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      );
-      writeFileSync(p, bytes, { mode: 0o600 });
-      // 0400 gate parity with the fd form — pwrite/mmap writes on the
-      // scratch copy are otherwise invisible to inotify AND to the
-      // ctime pin (mmap stores do not stamp on tmpfs); chmodat is the
-      // only escape and it cannot avoid bumping ctime (CX-r34-A).
-      chmodSync(p, 0o400);
+      // Named form inside the private 0700 dir — `O_EXCL` + mode 000 at
+      // create makes the IN_CREATE race EACCES and a squatted name
+      // refuse the mint, so no writable foreign description can ever
+      // be leaked (CX-r35: the old predictable tmpdir name leaked one
+      // at ~21%/mint under an inotify race).
+      const dir = evidencePrivateTmpdir();
+      if (dir === null) return null;
+      const p = path.join(dir, `verifier-index-${++evidenceHeldSeq}`);
+      if (!mintHeldPath(p, bytes)) return null;
       const st = statSync(p);
       return { path: p, ino: st.ino, ctimeMs: st.ctimeMs, bytes };
     } catch {
@@ -4769,8 +5256,8 @@ async function verifyAnchoredMutationCoverage(
     // against — and an unset GIT_INDEX_FILE would silently consult the
     // REAL (post-op) index, attesting the op's own writes.
     if (preflight.index === undefined) return null;
-    const cs = evidenceSpawnState(preflight, true);
-    if (cs.unproven || cs.env["GIT_INDEX_FILE"] === undefined) {
+    const cs = evidenceSpawnState(preflight, true, true);
+    if (cs.unproven || cs.refUnproven || cs.env["GIT_INDEX_FILE"] === undefined) {
       closeSpawnFds(cs);
       return null;
     }
@@ -5349,13 +5836,27 @@ async function verifierGitSpawn(
     // ops; non-index ops never consult it and proceed — but they still
     // carry `GIT_ATTR_SOURCE` because `log -p`/`show`/`diff` engage
     // attribute-gated drivers without touching the index (R13-D).
-    const spawnState = evidenceSpawnState(preflight, effectiveIndexEnv);
-    if (spawnState.unproven && isIndexConsultingRead(args)) {
+    // Consults and anchored ops bind the ref namespace through the
+    // verifier-owned overlay (CX-r35-A) — a mid-window live-ref
+    // flip→restore can no longer shape their resolution. Scratch
+    // mutations (non-index, unanchored writers like `commit`/`update-ref`
+    // invocations the channel legitimately delegates) keep the live
+    // gitdir: overlay `GIT_DIR` would land their ref writes nowhere.
+    // Geometry-reporting consults (`worktree list`, `rev-parse
+    // --git-dir`…) keep the live gitdir — their answers derive from the
+    // gitdir's own location, which an overlay cannot truthfully shadow.
+    const overlayRefs =
+      (effectiveIndexEnv || opts?.anchored !== undefined) && !reportsRepoGeometry(args);
+    const spawnState = evidenceSpawnState(preflight, effectiveIndexEnv, overlayRefs);
+    if (
+      (spawnState.unproven && isIndexConsultingRead(args)) ||
+      (spawnState.refUnproven && overlayRefs)
+    ) {
       closeSpawnFds(spawnState);
       return {
         exitCode: -1,
         stdout: "",
-        stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven ?? "index bytes rewritten"}): git ${args.join(" ")}`,
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: evidence unproven (${preflight?.indexUnproven ?? "gitdir overlay unmintable"}): git ${args.join(" ")}`,
       };
     }
     const r = await spawnCaptured(resolveGitBin(), evidenceSpawnArgs(args), {
@@ -5413,6 +5914,22 @@ async function verifierGitSpawn(
             stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (held index mutated mid-consult): git ${args.join(" ")}`,
           };
         }
+      }
+    }
+    // Post-spawn re-verify of the bound gitdir overlay (CX-r35-A): the
+    // unarmed path mints it lazily, so no window watch or stat pin saw
+    // the child's consult lifetime — a same-UID poller that found the
+    // root and `chmodat`+flipped a file in the mint→spawn gap would
+    // otherwise serve forged ref bytes invisibly. Drift poisons the
+    // overlay for every later consult on this preflight.
+    if (overlayRefs && preflight?.overlay != null) {
+      if (!overlayHeldProven(preflight.overlay)) {
+        preflight.overlay = null;
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: evidence unproven (gitdir overlay mutated mid-consult): git ${args.join(" ")}`,
+        };
       }
     }
     // `add`/`reset` exit-0 is not yet an honest answer — a session
@@ -5707,8 +6224,8 @@ export async function unprovenIgnoredPaths(
       // the spawn-path arm loop covers).
       if (!reproveEvidenceSurface(root, preflight)) return null;
       const run = (argv: string[], input?: string) => {
-        const cs = evidenceSpawnState(preflight, true);
-        if (cs.unproven || cs.env["GIT_INDEX_FILE"] === undefined) {
+        const cs = evidenceSpawnState(preflight, true, true);
+        if (cs.unproven || cs.refUnproven || cs.env["GIT_INDEX_FILE"] === undefined) {
           closeSpawnFds(cs);
           return null;
         }

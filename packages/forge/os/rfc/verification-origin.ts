@@ -21,47 +21,11 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
-
-Independent clean-context verification (round 11, candidate 029219ca9)
-returned REFUTED with seven live counterexamples against the
-r10-remediated channel — this commit closes all of them.
-
-- `.git/info/attributes` joins the shape-violation paths (CX-125): the
-  r6 reasoning covered only program reach, but working-tree-encoding /
-  text / eol / ident are built-in clean-side conversions that rewrite
-  what the zero-stat index content-hash sees with no external program.
-- Index-consulting classification is argv-exact (CX-126/127/128):
-  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
-  ambiguous diff forms (a nonrev second positional is a pathspec, not a
-  rev) refuse under an unproven index, describe --dirty/--broken are
-  index-consuming, and grep is parsed option-aware so a worktree grep
-  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
-- The verifier claims index has no discoverable path (CX-129): a
-  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
-  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
-  through a freshly opened independent file description per spawn;
-  the named flat-file fallback re-proves its bytes against the expected
-  image before every spawn, and child descriptors close on every return
-  path.
-- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
-  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
-  specs under an unproven index), answering positional nulls so the
-  record stream can never desynchronize spec attribution.
-- Trusted transports refuse file-class targets and URL rewrites
-  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
-  and ls-remote/fetch spawn with protocol.file.allow=never so file:
-  URLs and bare-path remotes fail honestly; the pin is transport-only
-  so verifierScratchGit's judged `clone <path>` still works. Test
-  origins moved from local path/file remotes to a loopback git daemon
-  so fixtures keep exercising real fetch/ls-remote behavior.
-
-The port commit that follows carries the ported cx11 probe file plus
-the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
+  <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -79,6 +43,7 @@ import {
   closeSpawnFds,
   isIndexConsultingRead,
   isVerifierGitQuery,
+  reportsRepoGeometry,
   reproveEvidenceSurface,
   resolveGitBin,
   spawnCaptured,
@@ -289,7 +254,14 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
     // exists but could not be byte-captured cannot be drift-checked, so
     // no query class runs against it (R13-D).
     if (pf?.configUnproven !== undefined) return null;
-    const spawnState = evidenceSpawnState(pf);
+    // Overlay-bound (CX-r35-A): `HEAD:`/branch specs resolve refs — a
+    // live-path flip→restore must not shape them; `spawnWatched`'s arm
+    // then pins the minted overlay for the child's lifetime.
+    const spawnState = evidenceSpawnState(pf, true, true);
+    if (spawnState.refUnproven) {
+      closeSpawnFds(spawnState);
+      return null;
+    }
     // `@{` rev syntax is a fabrication channel in batch specs too — the
     // argv judges block it for run/runExit, and a `HEAD@{0}` spec here
     // would resolve through the session-fabricable reflog (r12 hunt
@@ -331,9 +303,12 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       if (!isVerifierGitQuery(args)) return null;
       const { ok, pf } = await surfaceState();
       if (!ok || pf === null || pf.configUnproven !== undefined) return null;
-      // An unproven index refuses index-consulting ops (CX-124/CX-129).
-      const spawnState = evidenceSpawnState(pf);
-      if (spawnState.unproven && isIndexConsultingRead(args)) {
+      // An unproven index refuses index-consulting ops (CX-124/CX-129);
+      // every read-table op binds the ref namespace through the
+      // overlay (CX-r35-A) — except geometry reports, whose answers
+      // derive from the gitdir path itself and stay on the live dir.
+      const spawnState = evidenceSpawnState(pf, true, !reportsRepoGeometry(args));
+      if ((spawnState.unproven && isIndexConsultingRead(args)) || spawnState.refUnproven) {
         closeSpawnFds(spawnState);
         return null;
       }
@@ -349,8 +324,11 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       if (!isVerifierGitQuery(args)) return null;
       const { ok, pf } = await surfaceState();
       if (!ok || pf === null || pf.configUnproven !== undefined) return null;
-      const spawnState = evidenceSpawnState(pf);
-      if (spawnState.unproven && isIndexConsultingRead(args)) {
+      const spawnState = evidenceSpawnState(pf, true, !reportsRepoGeometry(args));
+      if (
+        (spawnState.unproven && isIndexConsultingRead(args)) ||
+        (spawnState.refUnproven && !reportsRepoGeometry(args))
+      ) {
         closeSpawnFds(spawnState);
         return null;
       }

@@ -206,6 +206,7 @@ the round-11 acceptance report.</item>
   <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
+  <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -238,6 +239,7 @@ import {
   EVIDENCE_REFUSED_PREFIX,
   isEvidenceGitQuery,
   isIndexConsultingRead,
+  reportsRepoGeometry,
   repoShaped,
 } from "../../src/utils/verifier-git.ts";
 
@@ -424,13 +426,24 @@ async function gitEvidenceAttempt(
     // before the redirect is trusted. An unproven index (rebuild
     // failed, CX-124, or a rewrite caught just now) refuses
     // index-consulting ops; non-index ops never consult it and proceed.
-    const spawnState = evidenceSpawnState(preflight);
-    if (spawnState.unproven && isIndexConsultingRead(args)) {
+    // Read consults bind the ref namespace through the verifier-owned
+    // overlay (CX-r35-A) — the arm above already minted+pinned it, so a
+    // mid-window live-ref flip→restore cannot shape resolution. An
+    // overlay the arm failed to mint is `refUnproven` and refuses.
+    // Mutations the channel legitimately runs (`worktree add` and the
+    // bounded scratch set) keep the live gitdir — overlay `GIT_DIR`
+    // would land their admin writes inside the copy.
+    const overlayRefs = isEvidenceGitQuery(args) && !reportsRepoGeometry(args);
+    const spawnState = evidenceSpawnState(preflight, true, overlayRefs);
+    if (
+      (spawnState.unproven && isIndexConsultingRead(args)) ||
+      (spawnState.refUnproven && overlayRefs)
+    ) {
       closeSpawnFds(spawnState);
       return {
         exitCode: -1,
         stdout: "",
-        stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven ?? "index bytes rewritten"}): git ${args.join(" ")}`,
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: evidence unproven (${preflight?.indexUnproven ?? "gitdir overlay unmintable"}): git ${args.join(" ")}`,
       };
     }
     const r = await spawnCaptured(resolveGitBin(), ["-C", repoRoot, ...evidenceSpawnArgs(args)], {
