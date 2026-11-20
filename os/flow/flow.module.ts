@@ -9,13 +9,13 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1589: declare FORGE_INTEGRATE_PRELOCK in flow.integrate envInputs</item>
   <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1592: retire 3 unprobeable rules (F-0288 recurrence) unblocking this worktree's RFC-1592 ratchet</item>
+  <item>RFC-1626: make gate-isolation sweeps durable and refuse foreign uncommitted work</item>
   <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589</history>
 </CHANGE_SUMMARY>
 */
@@ -37,6 +37,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowPublicationRetire } = await import("./handlers/flow-publication-retire.ts");
   const { runFlowStatus } = await import("./handlers/flow-status.ts");
   const { runFlowPeers } = await import("./handlers/flow-peers.ts");
+  const { runFlowSweptList, runFlowSweptGc } = await import("./handlers/flow-swept.ts");
   const { runFlowUnhold } = await import("./handlers/flow-unhold.ts");
   const { runFlowVersion } = await import("./handlers/flow-version.ts");
   return {
@@ -921,6 +922,61 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         cacheable: false,
         flags: {},
         execute: runFlowPeers,
+      },
+      {
+        name: "flow.swept.list",
+        description:
+          "Read-only enumeration of durable gate-isolation swept refs " +
+          "(refs/forge/swept/<worktree>/<timestamp>, RFC-1626): the " +
+          "recoverable copies ecosystem.commit writes per sweep, grouped " +
+          "by worktree with age. Recovery is self-service git — " +
+          "git checkout <ref> -- <path>.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [],
+        mutatesState: false,
+        execOnReadOnly: true,
+        writes: [],
+        coverage: "operator",
+        coverageNote: "swept-work evidence surface — RFC-1626 / F-0329",
+        reads: [".git/**"],
+        cacheable: false,
+        flags: {},
+        execute: runFlowSweptList,
+      },
+      {
+        name: "flow.swept.gc",
+        description:
+          "Delete expired gate-isolation swept refs older than --keep-days " +
+          "(default 30, RFC-1626). Manual-only like hygiene.gc: without " +
+          "--apply it prints the deletion plan with applied:false and " +
+          "deletes nothing.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        execOnReadOnly: false,
+        mutatingFlags: ["apply"],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "swept-ref lifecycle — RFC-1626 / F-0329",
+        reads: [".git/**"],
+        cacheable: false,
+        flags: {
+          "keep-days": {
+            kind: "string",
+            required: false,
+            description: "Age in days after which a swept ref expires (default 30).",
+          },
+          apply: {
+            kind: "boolean",
+            required: false,
+            description: "Actually delete the expired refs — without it the plan only prints.",
+          },
+        },
+        execute: runFlowSweptGc,
       },
     ],
     pipelines: [],
