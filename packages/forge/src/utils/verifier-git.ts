@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r26 trust-boundary counterexamples — dwim consult surface fingerprinting, non-regular dirent hazards</item>
   <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <item>RFC-1616: close r28 trust-boundary counterexamples — rewritten/ name bound + anchored-add staged-set coverage</item>
   <item>RFC-1616: bound rewritten/ exempt names to exact object-name length</item>
   <item>RFC-1616: close r29 trust-boundary counterexamples — NUL-delim ignore provenance + pre-arm rule-source pinning + staged-set coverage diff</item>
+  <item>RFC-1616: parse reset rev-vs-pathspec per git's own rule in staged-set coverage (RFC-1616)</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -4488,9 +4488,10 @@ async function verifyAnchoredMutationCoverage(
   const head = dd === -1 ? args.slice(1) : args.slice(1, dd);
   const nonFlag = head.filter((a) => !a.startsWith("-"));
   // `reset [-q] [<rev>] -- <paths>`: the first non-flag head token is
-  // the rev git resolves (absent → HEAD); the rest are pathspecs.
-  const spec = [...nonFlag.slice(op === "reset" ? 1 : 0), ...(dd === -1 ? [] : args.slice(dd + 1))];
-  const resetRev = op === "reset" ? (nonFlag[0] ?? "HEAD") : undefined;
+  // tried as a rev — an unresolvable one begins the pathspec list
+  // (git's own parse; resolved below once `runLive` exists).
+  let spec = [...nonFlag.slice(op === "reset" ? 1 : 0), ...(dd === -1 ? [] : args.slice(dd + 1))];
+  let resetRev = op === "reset" ? (nonFlag[0] ?? "HEAD") : undefined;
   // Short flags cluster (`-An` = `-A` + `-n`) — expand before matching.
   const flags = new Set<string>();
   for (const a of head) {
@@ -4512,7 +4513,7 @@ async function verifyAnchoredMutationCoverage(
   // A pathspec-less `add -A`/`reset` covers the WHOLE worktree even from
   // a subdirectory cwd, while `ls-files` defaults to the cwd scope —
   // the coverage query must use the same extent (`:/`).
-  const coverageSpec = spec.length === 0 ? [":/"] : spec;
+  let coverageSpec = spec.length === 0 ? [":/"] : spec;
   const pinned = new Set((extraWatchPaths ?? []).map((p) => path.resolve(p)));
   const env = {
     ...verifierGitEnv(),
@@ -4665,6 +4666,25 @@ async function verifyAnchoredMutationCoverage(
   // Claims/staged keys are toplevel-relative; cwd-relative outputs
   // translate through the resolved worktree.
   const topRel = (p: string) => path.relative(wt, path.resolve(cwd, p));
+
+  // `reset <arg>` without `--` resolves the first non-flag token as a
+  // rev ONLY if it parses — an unresolvable one begins the pathspec
+  // list with the rev defaulting to HEAD (git's own parse, ambient-
+  // verified). A pathspec there must not be fed to `diff --cached`
+  // as a tree-ish or an honest `reset -q <dir>` would refuse.
+  if (op === "reset" && dd === -1 && nonFlag.length > 0) {
+    const rev = await runLive([
+      "rev-parse",
+      "--verify",
+      "--end-of-options",
+      `${nonFlag[0]}^{tree}`,
+    ]);
+    if (rev === null || rev.exitCode !== 0) {
+      resetRev = "HEAD";
+      spec = [...nonFlag, ...(dd === -1 ? [] : args.slice(dd + 1))];
+      coverageSpec = spec.length === 0 ? [":/"] : spec;
+    }
+  }
 
   // ---- proof 1: staged-set diff (CX-r29-C) --------------------------
   // The whole-index live snapshot vs the frozen claims map: every entry
