@@ -19,7 +19,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: parse reset rev-vs-pathspec per git's own rule in staged-set coverage (RFC-1616)</item>
   <item>RFC-1616: close r30 trust-boundary counterexamples — consulted-byte ignore provenance + snapshot fd byte-pins (RFC-1616)</item>
   <item>RFC-1616: close r31 trust-boundary counterexamples — HEAD-bound ignore provenance + fd append size-pins (RFC-1616)</item>
   <item>RFC-1616: bind ignored-path provenance to one armed window; re-proof live-index fd per spawn
@@ -35,6 +34,19 @@ CX-r32-B: liveIndex O_TMPFILE fd had no per-spawn re-proof — a
 a restore before finish() erased evidence. runLive now re-proves
 size+bytes per spawn (the evidenceSpawnState claims-fd idiom).</item>
   <item>RFC-1616: record the single-armed-window consult decision (CX-r32-A)</item>
+  <item>RFC-1616: watch liveIndex fd via /proc/self/fd; enumerate rule sources in-process
+
+CX-r33-B: the fd-form liveIndex re-proof left a re-proof→spawn gap —
+a pwrite inside a frozen coverage child, restored before finish()'s
+readback, fed a forged index to ls-files -s (forged=30/30 on
+O_TMPFILE builds). The fd now arms a dedicated fsWatch on
+/proc/self/fd/<fd> — write fires change at write time, restore can't
+erase it; unwatchable fd-form refuses.
+
+CX-r33-D: enumerateTrackedRuleSources ran the only unarmed claims-fd
+spawn — the same gap forged trackedSet. prepareEvidenceIndex now
+retains parsed claim names on EvidenceIndex.names and the *.gitignore
+filter runs in-process; the spawn is deleted.</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -875,6 +887,13 @@ export interface EvidenceIndex {
   fd?: number;
   path?: string;
   bytes: Buffer;
+  /**
+   * Claim pathnames parsed from `ls-files --stage` at mint — the same
+   * staged set `bytes` serializes, kept so a consult can answer
+   * membership questions in-process instead of spawning an unarmed
+   * claims-index child (CX-r33-D).
+   */
+  names?: string[];
 }
 
 /**
@@ -2067,6 +2086,9 @@ export async function prepareEvidenceIndex(
   }
   const bytes = serializeIndexClaims(parsed);
   const index = heldEvidenceFile(bytes, "index");
+  if (index !== null) {
+    index.names = parsed.map((c) => c.name.toString("utf8"));
+  }
   // No /dev/fd (win32): the on-disk fallback stays addressable but every
   // spawn re-verifies its bytes against `bytes` before trusting it —
   // a session rewrite flips the index to unproven, never to forged data.
@@ -4431,31 +4453,22 @@ export function spawnCaptured(
  * arm or untracked-in-claims can never be attested; `null` marks the
  * domain unverifiable (claims index refused) and the op fails closed.
  */
-async function enumerateTrackedRuleSources(
-  preflight: EvidencePreflight,
-): Promise<Set<string> | null> {
+function enumerateTrackedRuleSources(preflight: EvidencePreflight): Set<string> | null {
   const wt = preflight.fingerprint?.workTree;
   if (wt === null || wt === undefined) return new Set();
   // The pre-op claims index is the only tracking basis the op cannot
   // have written; an unproven index means the rule domain itself is
-  // unverifiable, not merely empty.
-  if (preflight.index === undefined) return null;
-  const cs = evidenceSpawnState(preflight, true);
-  if (cs.unproven || cs.env["GIT_INDEX_FILE"] === undefined) {
-    closeSpawnFds(cs);
-    return null;
-  }
-  const r = await spawnCaptured(resolveGitBin(), ["ls-files", "-z", "--", "*.gitignore"], {
-    cwd: wt,
-    env: { ...verifierGitEnv(), ...cs.env },
-    timeoutMs: 60_000,
-    maxBuffer: 64 * 1024 * 1024,
-    indexFd: cs.indexFd,
-  });
-  if (r.exitCode !== 0) return null;
+  // unverifiable, not merely empty. The claim NAMES are already
+  // parsed at mint — filtering them in-process deletes the claims-fd
+  // `ls-files` spawn, whose re-proof→child-open gap was the last
+  // unarmed consult a `/proc/<pid>/fd` flip could forge (CX-r33-D).
+  const names = preflight.index?.names;
+  if (names === undefined) return null;
   const armed = new Set<string>();
-  for (const rel of r.stdout.toString("utf8").split("\0")) {
-    if (rel.length === 0) continue;
+  for (const rel of names) {
+    // `*.gitignore` pathspec semantics: wildmatch `*` crosses `/`, so
+    // the suffix test reproduces `ls-files -- "*.gitignore"` exactly.
+    if (!rel.endsWith(".gitignore")) continue;
     const abs = path.join(wt, rel);
     if (existsSync(abs)) armed.add(abs);
   }
@@ -4601,6 +4614,27 @@ async function verifyAnchoredMutationCoverage(
   if (liveIndex === null) {
     return "index unreadable — staged-set coverage unverifiable";
   }
+  // CX-r33-B: the fd-form snapshot joins an armed fsWatch on
+  // `/proc/self/fd/<fd>` — the path resolves to the held inode, so a
+  // same-UID pwrite fires `change` at write time (the claims-fd idiom).
+  // The per-spawn re-proof alone leaves a re-proof→child-open gap: a
+  // pwrite landing inside a frozen coverage child, restored before
+  // `finish()`'s readback, escaped both layers. An unwatchable fd-form
+  // is an unproven consult surface — refuse, never degrade silently.
+  let liveIndexDirty = false;
+  let liveIndexWatcher: { close(): void } | null = null;
+  if ("fd" in liveIndex) {
+    try {
+      liveIndexWatcher = fsWatch(`/proc/self/fd/${liveIndex.fd}`, { persistent: false }, () => {
+        liveIndexDirty = true;
+      });
+    } catch {
+      liveIndexWatcher = null;
+    }
+    if (liveIndexWatcher === null) {
+      return "live-index snapshot unwatchable — staged-set coverage unverifiable";
+    }
+  }
   // Live-index children: fd-form reopens `/dev/fd/N` per spawn for an
   // independent file description (shared-offset races would tear
   // concurrent index reads — the claims-index idiom); path-form
@@ -4692,11 +4726,15 @@ async function verifyAnchoredMutationCoverage(
         /* already gone */
       }
     } else {
-      // fd-form settle: read the snapshot back and byte-compare —
-      // the only pin a `/proc/<pid>/fd/N` pwrite + ctime-restoring
-      // `utimensat` cannot defeat (CX-r30-B). A short/mismatched read
-      // means the inode's bytes were swapped under the coverage
-      // children.
+      // fd-form settle: the armed `/proc/self/fd` watch saw every
+      // write at fire time (CX-r33-B — a flip timed inside a frozen
+      // coverage child then restored would slip the byte compare
+      // below); readback + size still catch any event the watch could
+      // not observe.
+      if (liveIndexDirty) {
+        out = "live-index snapshot mutated mid-check — staged-set coverage unverifiable";
+      }
+      liveIndexWatcher?.close();
       try {
         const back = Buffer.alloc(liveIndex.bytes.length);
         const got = readSync(liveIndex.fd, back, 0, back.length, 0);
@@ -5067,7 +5105,7 @@ async function verifierGitSpawn(
     // A failed enumeration means the rule domain itself is unverifiable.
     let anchoredExtraWatch = opts?.extraWatchPaths;
     if (args[0] === "add") {
-      const enumerated = await enumerateTrackedRuleSources(preflight);
+      const enumerated = enumerateTrackedRuleSources(preflight);
       if (enumerated === null) {
         return {
           exitCode: -1,
@@ -5528,7 +5566,7 @@ export async function unprovenIgnoredPaths(
     // claims fd BEFORE the arm so their worktree inodes join the
     // window's pin+event set at arm time (CX-r29-B contract). A
     // source absent from the claims index can never be attested.
-    const armedSrc = await enumerateTrackedRuleSources(preflight);
+    const armedSrc = enumerateTrackedRuleSources(preflight);
     if (armedSrc === null) return null;
     let windowWatch = armEvidenceWindowWatch(root, preflight, undefined, [...armedSrc]);
     if (windowWatch === null) return null;
