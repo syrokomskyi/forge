@@ -18,11 +18,22 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: bound rewritten/ exempt names to exact object-name length</item>
   <item>RFC-1616: close r29 trust-boundary counterexamples — NUL-delim ignore provenance + pre-arm rule-source pinning + staged-set coverage diff</item>
   <item>RFC-1616: parse reset rev-vs-pathspec per git's own rule in staged-set coverage (RFC-1616)</item>
   <item>RFC-1616: close r30 trust-boundary counterexamples — consulted-byte ignore provenance + snapshot fd byte-pins (RFC-1616)</item>
   <item>RFC-1616: close r31 trust-boundary counterexamples — HEAD-bound ignore provenance + fd append size-pins (RFC-1616)</item>
+  <item>RFC-1616: bind ignored-path provenance to one armed window; re-proof live-index fd per spawn
+
+CX-r32-A: unprovenIgnoredPaths chained per-child verifierGit windows —
+a refs/heads/main write in the inter-child gap slid the diff baseline
+onto a prebuilt commit carrying the foreign .gitignore (forged=30/30).
+The consult now mints one preflight + one armEvidenceWindowWatch
+spanning all children; any ref move/source flip is an armed event.
+
+CX-r32-B: liveIndex O_TMPFILE fd had no per-spawn re-proof — a
+/proc/<pid>/fd pwrite fed forged index bytes to coverage children and
+a restore before finish() erased evidence. runLive now re-proves
+size+bytes per spawn (the evidenceSpawnState claims-fd idiom).</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -4598,6 +4609,20 @@ async function verifyAnchoredMutationCoverage(
       let childFd: number;
       try {
         childFd = openSync(`/dev/fd/${liveIndex.fd}`, "r");
+        // Per-spawn re-proof (the claims-fd idiom): the snapshot fd has
+        // no fs.watch — a `/proc/<pid>/fd` pwrite between children
+        // feeds a forged index to the NEXT child, and a restore before
+        // finish() erases the evidence (CX-r32-B). Size+bytes re-check
+        // on the fresh description catches any mutation of the inode.
+        const back = Buffer.alloc(liveIndex.bytes.length);
+        if (
+          fstatSync(childFd).size !== liveIndex.bytes.length ||
+          readSync(childFd, back, 0, back.length, 0) !== back.length ||
+          !back.equals(liveIndex.bytes)
+        ) {
+          closeSync(childFd);
+          return null;
+        }
       } catch {
         return null;
       }
@@ -5476,86 +5501,125 @@ export async function unprovenIgnoredPaths(
   const top = await verifierGit(worktree, ["rev-parse", "--show-toplevel"]);
   const root = top.exitCode === 0 ? top.stdout.trim() : "";
   if (root.length === 0) return null;
-  // The claims index pins the tracked set — `*.gitignore` pathspec
-  // matches at any depth. A mid-window `.gitignore` plant is never
-  // tracked, so its `!!`s can never be proven by construction.
-  const tracked = await verifierGit(root, ["ls-files", "-z", "--", "*.gitignore"]);
-  if (tracked.exitCode !== 0) return null;
-  const trackedSet = new Set(tracked.stdout.split("\0").filter((p) => p.length > 0));
-  // CX-r30-A: tracked-PATH membership is not provenance — the child
-  // consults the source's WORKTREE bytes, which can be flipped to
-  // foreign rules between the caller's earlier status child and this
-  // one (entirely outside any armed window). Pin each source's stat
-  // now (ctime is kernel-managed: a flip-then-restore still drifts),
-  // then bind the consulted bytes to the claims-index blob below.
-  const srcStats = new Map<string, { ino: number; ctimeMs: number }>();
-  for (const s of trackedSet) {
+  // CX-r32-A: every consult runs under ONE armed evidence window —
+  // per-child windows leave the inter-child gap uncovered, so a
+  // `refs/heads/main` write between children could slide the
+  // committed baseline onto a prebuilt commit carrying the worktree's
+  // foreign `.gitignore` bytes (`diff HEAD` then judges the staged
+  // rules "clean"). Under a single window a ref move, source flip,
+  // or claims-index swap anywhere in the consult is an armed event
+  // or pin/stat drift — the verdict either reflects one stable
+  // instant or refuses.
+  const preflight = await evidenceRepoPreflight(root);
+  if (preflight === null) return null;
+  try {
+    // Without a claims index there is no staged set to attest
+    // against, and an unset GIT_INDEX_FILE would silently consult
+    // the LIVE index.
+    if (
+      preflight.index === undefined ||
+      preflight.refusedKeys.length > 0 ||
+      preflight.shapeViolations.length > 0
+    ) {
+      return null;
+    }
+    // Claims-tracked rule sources — enumerated on the byte-pinned
+    // claims fd BEFORE the arm so their worktree inodes join the
+    // window's pin+event set at arm time (CX-r29-B contract). A
+    // source absent from the claims index can never be attested.
+    const armedSrc = await enumerateTrackedRuleSources(preflight);
+    if (armedSrc === null) return null;
+    let windowWatch = armEvidenceWindowWatch(root, preflight, undefined, [...armedSrc]);
+    if (windowWatch === null) return null;
     try {
-      const st = statSync(path.join(root, s));
-      srcStats.set(s, { ino: st.ino, ctimeMs: st.ctimeMs });
-    } catch {
-      /* absent source — nothing to pin, cite is unprovable anyway */
-    }
-  }
-  // The tracked sources' own bytes back each verdict — a transient
-  // rewrite inside the -v child's window cites the tracked path while
-  // serving forged rules, so their inodes join the spawn watch too.
-  const provenance = await verifierGit(root, ["check-ignore", "-v", "-z", "--stdin"], {
-    input: `${ignored.join("\0")}\0`,
-    extraWatchPaths: [...trackedSet].map((s) => path.join(root, s)),
-  });
-  if (provenance.exitCode !== 0) return null;
-  // `check-ignore -v -z` records: `source\0line\0pattern\0pathname\0` —
-  // NUL cannot appear in any field, so a `.gitignore:`/`:`-bearing
-  // directory name cannot truncate the source into a tracked decoy
-  // (CX-r29-A). A path status marked `!!` that -v reports UNMATCHED
-  // means its rule source vanished with the child — the unverifiable
-  // case, same refusal class.
-  const sourceOf = new Map<string, string>();
-  {
-    const rec = provenance.stdout.split("\0");
-    for (let i = 0; i + 3 < rec.length; i += 4) sourceOf.set(rec[i + 3]!, rec[i]!);
-  }
-  // Byte-binding half of the CX-r30-A fix: each cited tracked source
-  // must be CLEAN against HEAD (`diff --name-only HEAD` lists the
-  // worktree-vs-committed divergent set) AND stat-stable since the pin
-  // above — a flip before the pins leaves foreign bytes (diff
-  // diverges), a flip inside/around the windows drifts ctime, and a
-  // deleted source fails both checks. All three land the `!!` in
-  // `unproven` — over-inclusive, never silent.
-  const cited = new Set([...sourceOf.values()].filter((s) => trackedSet.has(s)));
-  const dirtySrc = new Set<string>();
-  if (cited.size > 0) {
-    // Whole-tree diff against HEAD (no pathspec): the baseline is the
-    // COMMITTED tree — the claims index is the staged set, and `git
-    // add .gitignore` would make staged foreign bytes read as
-    // "tracked+clean" (CX-r31-A). A `:(`-magic-named source could
-    // silently scope a pathspec'd query away from itself, so the full
-    // dirty set is enumerated and intersected by name instead.
-    const dirty = await verifierGit(root, ["diff", "--name-only", "-z", "HEAD"], {
-      extraWatchPaths: [...cited].map((s) => path.join(root, s)),
-    });
-    if (dirty.exitCode !== 0) return null;
-    for (const n of dirty.stdout.split("\0")) {
-      if (n.length > 0) dirtySrc.add(n);
-    }
-  }
-  const unproven = new Set<string>();
-  for (const p of ignored) {
-    const src = sourceOf.get(p);
-    let proven = src !== undefined && trackedSet.has(src) && !dirtySrc.has(src);
-    if (proven) {
-      const st0 = srcStats.get(src!);
-      try {
-        const st1 = statSync(path.join(root, src!));
-        proven = st0 !== undefined && st1.ino === st0.ino && st1.ctimeMs === st0.ctimeMs;
-      } catch {
-        proven = false;
+      // A write between the preflight capture and the arm lands in no
+      // checker's scope — re-prove under the armed watch (same gap
+      // the spawn-path arm loop covers).
+      if (!reproveEvidenceSurface(root, preflight)) return null;
+      const run = (argv: string[], input?: string) => {
+        const cs = evidenceSpawnState(preflight, true);
+        if (cs.unproven || cs.env["GIT_INDEX_FILE"] === undefined) {
+          closeSpawnFds(cs);
+          return null;
+        }
+        return spawnCaptured(resolveGitBin(), argv, {
+          cwd: root,
+          env: { ...verifierGitEnv(), ...cs.env },
+          timeoutMs: 60_000,
+          maxBuffer: 64 * 1024 * 1024,
+          indexFd: cs.indexFd,
+          input,
+        });
+      };
+      // `armedSrc` is the claims-index `*.gitignore` enumeration —
+      // `pathspec` matches at any depth and the claims fd pins the
+      // pre-consult staged set. A `.gitignore` plant is never
+      // tracked, so its `!!`s can never be proven by construction.
+      const trackedSet = new Set(
+        [...armedSrc].map((abs) => path.relative(root, abs).split(path.sep).join("/")),
+      );
+      const provenance = await run(
+        ["check-ignore", "-v", "-z", "--stdin"],
+        `${ignored.join("\0")}\0`,
+      );
+      if (provenance === null || provenance.exitCode !== 0) return null;
+      // `check-ignore -v -z` records: `source\0line\0pattern\0pathname\0`
+      // — NUL cannot appear in any field, so a
+      // `.gitignore:`/`:`-bearing directory name cannot truncate the
+      // source into a tracked decoy (CX-r29-A). A path status marked
+      // `!!` that -v reports UNMATCHED means its rule source vanished
+      // with the child — the unverifiable case, same refusal class.
+      const sourceOf = new Map<string, string>();
+      {
+        const rec = provenance.stdout.toString("utf8").split("\0");
+        for (let i = 0; i + 3 < rec.length; i += 4) sourceOf.set(rec[i + 3]!, rec[i]!);
       }
+      // Byte-binding: each cited tracked source must be CLEAN
+      // against HEAD (`diff --name-only HEAD` lists the
+      // worktree-vs-committed divergent set) — a flip before the
+      // window leaves foreign bytes (diff diverges), a flip inside
+      // it drifts the armed pins, and a deleted source fails both
+      // checks. All three land the `!!` in `unproven` —
+      // over-inclusive, never silent. The HEAD name binds inside
+      // the single armed instant the window guarantees.
+      const cited = new Set([...sourceOf.values()].filter((s) => trackedSet.has(s)));
+      const dirtySrc = new Set<string>();
+      if (cited.size > 0) {
+        // Whole-tree diff against HEAD (no pathspec): the baseline
+        // is the COMMITTED tree — the claims index is the staged
+        // set, and `git add .gitignore` would make staged foreign
+        // bytes read as "tracked+clean" (CX-r31-A). A
+        // `:(`-magic-named source could silently scope a
+        // pathspec'd query away from itself, so the full dirty set
+        // is enumerated and intersected by name instead.
+        const dirty = await run(["diff", "--name-only", "-z", "HEAD"]);
+        if (dirty === null || dirty.exitCode !== 0) return null;
+        for (const n of dirty.stdout.toString("utf8").split("\0")) {
+          if (n.length > 0) dirtySrc.add(n);
+        }
+      }
+      const unproven = new Set<string>();
+      for (const p of ignored) {
+        const src = sourceOf.get(p);
+        if (!(src !== undefined && trackedSet.has(src) && !dirtySrc.has(src))) {
+          unproven.add(p);
+        }
+      }
+      // Any armed event inside the consult — the HEAD move, a
+      // source flip, a claims-index tail — means no single instant
+      // backs the verdict: refuse, never a mixed-instant
+      // provenance.
+      const events = await windowWatch.settle();
+      windowWatch = null;
+      if (events.length > 0) return null;
+      if (!reproveEvidenceSurface(root, preflight)) return null;
+      return unproven;
+    } finally {
+      if (windowWatch !== null) await windowWatch.settle();
     }
-    if (!proven) unproven.add(p);
+  } finally {
+    closeEvidenceIndex(preflight);
   }
-  return unproven;
 }
 
 export async function sessionIgnoreRulePaths(
