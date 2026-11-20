@@ -124,12 +124,16 @@ describe("CX-r23-A stat pins catch dirent-invisible writes", () => {
     const fd = pre!.index!.fd;
     if (fd !== undefined) {
       // CX-r23-A channel: procfs exposes the inherited fd to a same-UID
-      // child; an mmap store through it fires no inotify event.
+      // child; an mmap store through it fires no inotify event. The
+      // mint-time `fchmod 0400` gate (CX-r34-E) makes the O_RDWR open
+      // EACCES — the owner's reopen is `chmodat` on the proc-fd path,
+      // and that chmod is itself an IN_ATTRIB the window records.
       const r = spawnSync(
         "python3",
         [
           "-c",
           "import mmap,os,sys\n" +
+            "os.chmod(sys.argv[1],0o600)\n" +
             "fd=os.open(sys.argv[1],os.O_RDWR)\n" +
             "m=mmap.mmap(fd,0)\n" +
             "m[0:4]=b'PWN!'\n" +

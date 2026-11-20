@@ -37,7 +37,7 @@ Round-22 findings:
 */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -116,6 +116,10 @@ describe("CX-r22 spawn-window watchset (A/B/F/D)", () => {
     const watch = armEvidenceWindowWatch(root, pre!);
     if (pre!.index!.fd !== undefined) {
       // CX-r22-D channel: the inherited fd stays addressable via procfs.
+      // The mint-time `fchmod 0400` gate (CX-r34-E) makes the direct
+      // write EACCES — the owner's reopen is `chmodat` on the proc-fd
+      // path, and that chmod is itself the armed-window event.
+      chmodSync(`/proc/self/fd/${pre!.index!.fd}`, 0o600);
       writeFileSync(`/proc/self/fd/${pre!.index!.fd}`, Buffer.from("PWNED"));
     } else {
       writeFileSync(pre!.index!.path!, Buffer.from("PWNED"));

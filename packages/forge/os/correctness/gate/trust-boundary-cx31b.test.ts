@@ -54,6 +54,7 @@ byte-compared full content — appends were caught there.
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   closeSync,
   mkdirSync,
   mkdtempSync,
@@ -276,7 +277,11 @@ describe("CX-r31-B: appended `link` tail on the claims fd forges the staged-set 
         // Same-UID write channel: the held fd is opened read-only, but
         // the inode is writable through a /proc re-open (fresh inode open
         // on a 0600 same-UID file — same for the named fallback whose
-        // unlink already ran, and for O_TMPFILE upstream).
+        // unlink already ran, and for O_TMPFILE upstream). The mint-time
+        // `fchmod 0400` gate (CX-r34-E) makes that open EACCES — the
+        // owner's reopen is `chmodat` on the proc-fd path, and the chmod
+        // bumps ctime + fires IN_ATTRIB before any byte lands.
+        chmodSync(`/proc/self/fd/${pre!.index!.fd}`, 0o600);
         const wfd = openSync(`/proc/self/fd/${pre!.index!.fd}`, "r+");
         writeSync(wfd, full.subarray(pinnedLen), 0, APPEND_LEN, pinnedLen);
         closeSync(wfd);
