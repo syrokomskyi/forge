@@ -21,27 +21,12 @@ at cleanup without moving develop again.</purpose>
   <item>docs.archive's deferral clears only when every deferred owner ran — a skipped owner keeps .git/forge/deferred-regen.json.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
-  <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
-
-docs.archive recorded ~12-minute inline owner regen blocking session end
-(F-0212) and left pnpm-lock.yaml MM after its safety-net restore (F-0245).
-The invalidated owner inventory now lands in .git/forge/deferred-regen.json
-for flow.integrate's post-rebase fold to sweep (record cleared only when
-every owner ran); bookkeeping pathspecs are validated before the first
-git add, the lockfile restore gained its index-side counterpart, and a
-post-staging sweep surfaces MM residue with the git show : remediation.
-
-RFC-1602</item>
-  <item>RFC-1602: document the deferred-regen fold contract in the guide and compass decisions</item>
-  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
-  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
-  <item>RFC-1619: bind the integration-gate manifests step to post-rebase regen provenance (RFC-1619)</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
   <item>RFC-1622: record RFC-1622 integration phase timings</item>
   <item>RFC-1622: honor RFC-1622 receipt capability</item>
   <item>RFC-1622: revalidate RFC-1622 owner on retry</item>
-  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589, RFC-1597, RFC-1598, RFC-1599, RFC-1600, RFC-1602</history>
+  <item>RFC-1616: ride evidence-flux refusals through the integrate gate phase</item>
+  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589, RFC-1597, RFC-1598, RFC-1599, RFC-1600, RFC-1602, RFC-1616, RFC-1619</history>
 </CHANGE_SUMMARY>
 */
 
@@ -55,6 +40,7 @@ import type {
   WorkspaceIO,
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
+import { EVIDENCE_REFUSED_PREFIX } from "../../../src/utils/verifier-git.ts";
 import {
   AUTO_CLEAN_PASS_CLASSES,
   FOREIGN_PRIMARY_DIRT_HINT,
@@ -1802,8 +1788,39 @@ async function integrateFlowBranchAttempt(
     };
   };
 
+  // RFC-1616 follow-up: the gate phase's consult preamble (rev-parse /
+  // branchExists / worktreeList / statusDirty) is judged evidence — a
+  // foreign write landing mid-consult refuses the same transient class the
+  // preflight's foreign-dirt wait already rides out. The phase is rerun-safe
+  // by construction (integratePreLock loops it, and every mutation inside is
+  // idempotent under re-validation), so a consult refusal retries the phase
+  // while the flux cap holds — a surface that stays unprovable past it is
+  // structural, not merely churning, and still throws.
+  const GATE_PHASE_FLUX_MS = 30_000;
+  const integrateGatePhaseRidingFlux = async (
+    gateModeEnv?: IntegrateGateMode,
+  ): Promise<GatePhaseResult> => {
+    const fluxDeadline = Date.now() + GATE_PHASE_FLUX_MS;
+    for (;;) {
+      try {
+        return await integrateGatePhase(gateModeEnv);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!msg.includes(EVIDENCE_REFUSED_PREFIX) || Date.now() >= fluxDeadline) {
+          throw e;
+        }
+        opts.onProgress?.(
+          `primary surface unprovable mid-read — retrying the gate phase consult (up to ${Math.ceil((fluxDeadline - Date.now()) / 1000)}s)`,
+        );
+        await new Promise((r) =>
+          setTimeout(r, Math.min(5_000, Math.max(0, fluxDeadline - Date.now()))),
+        );
+      }
+    }
+  };
+
   const integrateInner = async (): Promise<FlowIntegrateData> => {
-    const phase = await integrateGatePhase();
+    const phase = await integrateGatePhaseRidingFlux();
     if (!("state" in phase)) return phase;
     return measure(
       "finalization",
@@ -2071,7 +2088,7 @@ async function integrateFlowBranchAttempt(
    * attempt (bounded — the last attempt runs locked-full). */
   const integratePreLock = async (): Promise<FlowIntegrateData> => {
     for (let attempt = 1; attempt <= MAX_PRELOCK_ATTEMPTS; attempt++) {
-      const phase = await integrateGatePhase("pre-lock");
+      const phase = await integrateGatePhaseRidingFlux("pre-lock");
       if (!("state" in phase)) return phase;
       const s = phase.state;
       await recordPreLockVerdict(io, common, {
