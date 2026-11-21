@@ -398,7 +398,7 @@ describe("r28 coverage controls — honest-refusal assertions on neighboring sur
     expect(r.exitCode === -1 || !r.stdout.includes(foreign)).toBe(true);
   });
 
-  it("worktrees/<id>/logs/FOO planted oid refuses (embedded-gitdir check position)", async () => {
+  it("worktrees/<id>/logs/FOO planted oid never served (embedded-gitdir check position)", async () => {
     const root = mkRepo();
     const foreign = foreignTip(root);
     git(root, ["worktree", "add", "-q", "--detach", path.join(root, "wt2")]);
@@ -406,7 +406,10 @@ describe("r28 coverage controls — honest-refusal assertions on neighboring sur
     mkdirSync(path.join(meta, "logs"), { recursive: true });
     writeFileSync(path.join(meta, "logs", "FOO"), `${foreign}\n`);
     const r = await verifierGit(root, ["rev-parse", "worktrees/wt2/logs/FOO"]);
-    expect(r.exitCode === -1).toBe(true);
+    // R36 metadir carve: a sibling metadir is foreign write surface the
+    // overlay never serves — the consult is unresolvable (128) rather
+    // than a judged refuse (-1); either way the planted oid is unserved.
+    expect(r.exitCode === -1 || !r.stdout.includes(foreign)).toBe(true);
   });
 
   it("lost-found/other/<non-oid-name> planted oid refuses; lost-found/other/<oid> is a payload-arbitrary residual", async () => {

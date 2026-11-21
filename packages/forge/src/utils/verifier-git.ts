@@ -19,7 +19,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: record the single-armed-window consult decision (CX-r32-A)</item>
   <item>RFC-1616: watch liveIndex fd via /proc/self/fd; enumerate rule sources in-process
 
 CX-r33-B: the fd-form liveIndex re-proof left a re-proof→spawn gap —
@@ -46,6 +45,7 @@ a post-spawn fsync+size+bytes+ctimeNs re-verify on the general
 verifierGit channel (CX-r34-E); prior /proc-fd write probes now
 prelude with the chmodat that is itself the detected event.</item>
   <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
+  <item>RFC-1616: scope the judged metadir set to the own worktree (RFC-1616 R35 follow-up)</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -662,6 +662,17 @@ export interface EvidenceFingerprint {
    * reads as drift; well-formedness of each entry is the judge's job.
    */
   worktreesDir: string | null;
+  /**
+   * This worktree's OWN metadir — `gitDir` when it sits directly under
+   * `worktreesDir`, else null. Sibling `<common>/worktrees/<other-id>`
+   * metadirs are a CONCURRENT session's write surface (rebases, index
+   * refreshes, reflog appends) that no consult of ours resolves
+   * through, so pinning/watching them turned sibling activity into
+   * systematic mid-window refuses; only the own metadir (and loose
+   * container files) stays judged (FLOW-INT flake under parallel
+   * session worktrees).
+   */
+  worktreeMetadir: string | null;
   worktreeFiles: ReadonlyMap<string, EvidenceSurfaceFile>;
   /**
    * The `--git-path modules`-resolved submodule-gitdir tree — the judge
@@ -2167,6 +2178,10 @@ function mintEvidenceGitdirOverlay(fp: EvidenceFingerprint): EvidenceGitdirOverl
     return true;
   };
   let total = 0;
+  // Sibling `worktrees/<other-id>` metadirs are a foreign session's
+  // write surface — never consulted for OUR verdicts — so only the own
+  // metadir (when this cwd is a linked worktree) is overlaid.
+  const ownWtId = fp.worktreeMetadir === null ? null : path.basename(fp.worktreeMetadir);
   // `level`: "gitdir" marks a gitdir/metadir's own file level (where a
   // literal `index` IS the index — skipped); "worktrees" marks the
   // container whose child dirs are metadirs; anything else is data
@@ -2189,6 +2204,7 @@ function mintEvidenceGitdirOverlay(fp: EvidenceFingerprint): EvidenceGitdirOverl
       const dp = path.join(dst, e.name);
       if (e.isDirectory()) {
         if (OVERLAY_SKIP_DIRS.has(e.name)) continue;
+        if (level === "worktrees" && e.name !== ownWtId) continue;
         const childLevel =
           e.name === "worktrees" ? "worktrees" : level === "worktrees" ? "gitdir" : "data";
         try {
@@ -2258,8 +2274,15 @@ function mintEvidenceGitdirOverlay(fp: EvidenceFingerprint): EvidenceGitdirOverl
         recursive: true,
         verbatimSymlinks: true,
         force: false,
-        filter: (s) =>
-          s === src || (lstatSync(s).isDirectory() && !OVERLAY_SKIP_DIRS.has(path.basename(s))),
+        filter: (s) => {
+          if (s === src) return true;
+          if (!lstatSync(s).isDirectory()) return false;
+          const bn = path.basename(s);
+          return (
+            !OVERLAY_SKIP_DIRS.has(bn) &&
+            (path.dirname(s) !== path.join(src, "worktrees") || bn === ownWtId)
+          );
+        },
       });
       chmodSync(dst, 0o700);
     } catch {
@@ -3591,6 +3614,7 @@ export async function captureEvidenceSurface(
         objectsDir: null,
         objectFiles: new Map(),
         worktreesDir: null,
+        worktreeMetadir: null,
         worktreeFiles: new Map(),
         modulesDir: null,
         modulesFiles: new Map(),
@@ -3820,6 +3844,12 @@ export async function captureEvidenceSurface(
   // dir — a subdirectory cwd now fingerprints the parent repo's
   // worktree registry the same way a root cwd does (CX-143).
   const worktreesDir = commonDir === null ? null : path.join(commonDir, "worktrees");
+  // This worktree's own metadir inside the registry — every sibling
+  // entry is a foreign session's write surface, not our evidence.
+  const worktreeMetadir =
+    gitDir !== null && worktreesDir !== null && path.dirname(gitDir) === worktreesDir
+      ? gitDir
+      : null;
   // `modules` resolved through the same `--git-path` query as every
   // refuse shape path; a populated dir is a violation the fingerprint
   // must see (CX-179) — enumerate its tree like objects/worktrees.
@@ -3869,7 +3899,20 @@ export async function captureEvidenceSurface(
     }
   }
   const objectFilesMap = objectsAbs === null ? new Map() : enumerateTreeFiles(objectsAbs);
-  const worktreeFilesMap = worktreesDir === null ? new Map() : enumerateTreeFiles(worktreesDir);
+  // Only the OWN metadir is evidence — sibling `worktrees/<other-id>`
+  // trees carry a concurrent session's rebase/index/reflog churn that
+  // no consult resolves through. Loose files directly inside
+  // `worktrees/` (no separator — plants, registry junk) stay pinned:
+  // `rev-parse worktrees/<name>` still dwims them.
+  const worktreeFilesMap = (() => {
+    if (worktreesDir === null) return new Map<string, EvidenceSurfaceFile>();
+    const m = enumerateTreeFiles(worktreesDir);
+    const ownId = worktreeMetadir === null ? null : `${path.basename(worktreeMetadir)}${path.sep}`;
+    for (const k of m.keys()) {
+      if (k.includes(path.sep) && (ownId === null || !k.startsWith(ownId))) m.delete(k);
+    }
+    return m;
+  })();
   const modulesFilesMap = modulesDir === null ? new Map() : enumerateTreeFiles(modulesDir);
   const refsFilesMap = refsAbs === null ? new Map() : enumerateTreeFiles(refsAbs);
   // A FIFO/device/other openable non-regular ANYWHERE in the enumerated
@@ -3939,6 +3982,7 @@ export async function captureEvidenceSurface(
     objectsDir: objectsAbs,
     objectFiles: objectFilesMap,
     worktreesDir,
+    worktreeMetadir,
     worktreeFiles: worktreeFilesMap,
     modulesDir,
     modulesFiles: modulesFilesMap,
@@ -4061,6 +4105,19 @@ function evidenceWindowDirs(repoRoot: string, fp: EvidenceFingerprint): string[]
   if (fp.commonDir !== null) roots.add(fp.commonDir);
   for (const r of roots) {
     if (!collectTreeDirs(r, dirs, EVIDENCE_WATCH_DIR_BOUND)) return null;
+  }
+  // Sibling `worktrees/<other-id>` subtrees are a concurrent session's
+  // write surface — a foreign rebase/index-refresh/reflog append inside
+  // them fires events on surfaces no consult of ours resolves, turning
+  // parallel worktree activity into systematic mid-window refuses. The
+  // `worktrees/` container itself stays watched (a foreign worktree
+  // add/remove is honest registry drift); only per-sibling subtrees drop.
+  if (fp.worktreesDir !== null) {
+    const wtRoot = `${fp.worktreesDir}${path.sep}`;
+    const ownId = fp.worktreeMetadir === null ? null : path.basename(fp.worktreeMetadir);
+    return dirs.filter(
+      (d) => !d.startsWith(wtRoot) || d.slice(wtRoot.length).split(path.sep)[0] === ownId,
+    );
   }
   return dirs;
 }
@@ -4496,7 +4553,15 @@ export function reproveEvidenceSurface(
     }
   }
   if (fp.worktreesDir !== null) {
+    // Same narrowing as the capture: only the own metadir's subtree
+    // (and loose container files) is judged — sibling metadir churn is
+    // a foreign session's writes, never drift in our surface.
     const cur = enumerateTreeFiles(fp.worktreesDir);
+    const ownId =
+      fp.worktreeMetadir === null ? null : `${path.basename(fp.worktreeMetadir)}${path.sep}`;
+    for (const k of cur.keys()) {
+      if (k.includes(path.sep) && (ownId === null || !k.startsWith(ownId))) cur.delete(k);
+    }
     if (cur.size !== fp.worktreeFiles.size) return false;
     for (const [rel, st] of fp.worktreeFiles) {
       const c = cur.get(rel);
@@ -6197,116 +6262,128 @@ export async function unprovenIgnoredPaths(
   // or claims-index swap anywhere in the consult is an armed event
   // or pin/stat drift — the verdict either reflects one stable
   // instant or refuses.
-  const preflight = await evidenceRepoPreflight(root);
-  if (preflight === null) return null;
-  try {
-    // Without a claims index there is no staged set to attest
-    // against, and an unset GIT_INDEX_FILE would silently consult
-    // the LIVE index.
-    if (
-      preflight.index === undefined ||
-      preflight.refusedKeys.length > 0 ||
-      preflight.shapeViolations.length > 0
-    ) {
-      return null;
-    }
-    // Claims-tracked rule sources — enumerated on the byte-pinned
-    // claims fd BEFORE the arm so their worktree inodes join the
-    // window's pin+event set at arm time (CX-r29-B contract). A
-    // source absent from the claims index can never be attested.
-    const armedSrc = enumerateTrackedRuleSources(preflight);
-    if (armedSrc === null) return null;
-    let windowWatch = armEvidenceWindowWatch(root, preflight, undefined, [...armedSrc]);
-    if (windowWatch === null) return null;
+  // No flux ride-out here (CX-r32-A): this consult ATTESTS provenance,
+  // so a retry after mid-window drift accepts the instant the writer
+  // selected — the HEAD-move laundering class the single window exists
+  // to refuse. Single-read channels may ride out flux because the
+  // retried answer is just "current state"; an attestation may not.
+  const attempt = async (): Promise<Set<string> | null> => {
+    const preflight = await evidenceRepoPreflight(root);
+    if (preflight === null) return null;
     try {
-      // A write between the preflight capture and the arm lands in no
-      // checker's scope — re-prove under the armed watch (same gap
-      // the spawn-path arm loop covers).
-      if (!reproveEvidenceSurface(root, preflight)) return null;
-      const run = (argv: string[], input?: string) => {
-        const cs = evidenceSpawnState(preflight, true, true);
-        if (cs.unproven || cs.refUnproven || cs.env["GIT_INDEX_FILE"] === undefined) {
-          closeSpawnFds(cs);
-          return null;
-        }
-        return spawnCaptured(resolveGitBin(), argv, {
-          cwd: root,
-          env: { ...verifierGitEnv(), ...cs.env },
-          timeoutMs: 60_000,
-          maxBuffer: 64 * 1024 * 1024,
-          indexFd: cs.indexFd,
-          input,
-        });
-      };
-      // `armedSrc` is the claims-index `*.gitignore` enumeration —
-      // `pathspec` matches at any depth and the claims fd pins the
-      // pre-consult staged set. A `.gitignore` plant is never
-      // tracked, so its `!!`s can never be proven by construction.
-      const trackedSet = new Set(
-        [...armedSrc].map((abs) => path.relative(root, abs).split(path.sep).join("/")),
-      );
-      const provenance = await run(
-        ["check-ignore", "-v", "-z", "--stdin"],
-        `${ignored.join("\0")}\0`,
-      );
-      if (provenance === null || provenance.exitCode !== 0) return null;
-      // `check-ignore -v -z` records: `source\0line\0pattern\0pathname\0`
-      // — NUL cannot appear in any field, so a
-      // `.gitignore:`/`:`-bearing directory name cannot truncate the
-      // source into a tracked decoy (CX-r29-A). A path status marked
-      // `!!` that -v reports UNMATCHED means its rule source vanished
-      // with the child — the unverifiable case, same refusal class.
-      const sourceOf = new Map<string, string>();
-      {
-        const rec = provenance.stdout.toString("utf8").split("\0");
-        for (let i = 0; i + 3 < rec.length; i += 4) sourceOf.set(rec[i + 3]!, rec[i]!);
+      // Without a claims index there is no staged set to attest
+      // against, and an unset GIT_INDEX_FILE would silently consult
+      // the LIVE index.
+      if (
+        preflight.index === undefined ||
+        preflight.refusedKeys.length > 0 ||
+        preflight.shapeViolations.length > 0
+      ) {
+        return null;
       }
-      // Byte-binding: each cited tracked source must be CLEAN
-      // against HEAD (`diff --name-only HEAD` lists the
-      // worktree-vs-committed divergent set) — a flip before the
-      // window leaves foreign bytes (diff diverges), a flip inside
-      // it drifts the armed pins, and a deleted source fails both
-      // checks. All three land the `!!` in `unproven` —
-      // over-inclusive, never silent. The HEAD name binds inside
-      // the single armed instant the window guarantees.
-      const cited = new Set([...sourceOf.values()].filter((s) => trackedSet.has(s)));
-      const dirtySrc = new Set<string>();
-      if (cited.size > 0) {
-        // Whole-tree diff against HEAD (no pathspec): the baseline
-        // is the COMMITTED tree — the claims index is the staged
-        // set, and `git add .gitignore` would make staged foreign
-        // bytes read as "tracked+clean" (CX-r31-A). A
-        // `:(`-magic-named source could silently scope a
-        // pathspec'd query away from itself, so the full dirty set
-        // is enumerated and intersected by name instead.
-        const dirty = await run(["diff", "--name-only", "-z", "HEAD"]);
-        if (dirty === null || dirty.exitCode !== 0) return null;
-        for (const n of dirty.stdout.toString("utf8").split("\0")) {
-          if (n.length > 0) dirtySrc.add(n);
+      // Claims-tracked rule sources — enumerated on the byte-pinned
+      // claims fd BEFORE the arm so their worktree inodes join the
+      // window's pin+event set at arm time (CX-r29-B contract). A
+      // source absent from the claims index can never be attested.
+      const armedSrc = enumerateTrackedRuleSources(preflight);
+      if (armedSrc === null) return null;
+      let windowWatch = armEvidenceWindowWatch(root, preflight, undefined, [...armedSrc]);
+      if (windowWatch === null) return null;
+      try {
+        // A write between the preflight capture and the arm lands in no
+        // checker's scope — re-prove under the armed watch (same gap
+        // the spawn-path arm loop covers).
+        if (!reproveEvidenceSurface(root, preflight)) return null;
+        const run = (argv: string[], input?: string) => {
+          const cs = evidenceSpawnState(preflight, true, true);
+          if (cs.unproven || cs.refUnproven || cs.env["GIT_INDEX_FILE"] === undefined) {
+            closeSpawnFds(cs);
+            return null;
+          }
+          return spawnCaptured(resolveGitBin(), argv, {
+            cwd: root,
+            env: { ...verifierGitEnv(), ...cs.env },
+            timeoutMs: 60_000,
+            maxBuffer: 64 * 1024 * 1024,
+            indexFd: cs.indexFd,
+            input,
+          });
+        };
+        // `armedSrc` is the claims-index `*.gitignore` enumeration —
+        // `pathspec` matches at any depth and the claims fd pins the
+        // pre-consult staged set. A `.gitignore` plant is never
+        // tracked, so its `!!`s can never be proven by construction.
+        const trackedSet = new Set(
+          [...armedSrc].map((abs) => path.relative(root, abs).split(path.sep).join("/")),
+        );
+        const provenance = await run(
+          ["check-ignore", "-v", "-z", "--stdin"],
+          `${ignored.join("\0")}\0`,
+        );
+        // A null child is an unproven spawn state (index/overlay mint
+        // raced) — the unverifiable refusal class.
+        if (provenance === null) return null;
+        if (provenance.exitCode !== 0) return null;
+        // `check-ignore -v -z` records: `source\0line\0pattern\0pathname\0`
+        // — NUL cannot appear in any field, so a
+        // `.gitignore:`/`:`-bearing directory name cannot truncate the
+        // source into a tracked decoy (CX-r29-A). A path status marked
+        // `!!` that -v reports UNMATCHED means its rule source vanished
+        // with the child — the unverifiable case, same refusal class.
+        const sourceOf = new Map<string, string>();
+        {
+          const rec = provenance.stdout.toString("utf8").split("\0");
+          for (let i = 0; i + 3 < rec.length; i += 4) sourceOf.set(rec[i + 3]!, rec[i]!);
         }
-      }
-      const unproven = new Set<string>();
-      for (const p of ignored) {
-        const src = sourceOf.get(p);
-        if (!(src !== undefined && trackedSet.has(src) && !dirtySrc.has(src))) {
-          unproven.add(p);
+        // Byte-binding: each cited tracked source must be CLEAN
+        // against HEAD (`diff --name-only HEAD` lists the
+        // worktree-vs-committed divergent set) — a flip before the
+        // window leaves foreign bytes (diff diverges), a flip inside
+        // it drifts the armed pins, and a deleted source fails both
+        // checks. All three land the `!!` in `unproven` —
+        // over-inclusive, never silent. The HEAD name binds inside
+        // the single armed instant the window guarantees.
+        const cited = new Set([...sourceOf.values()].filter((s) => trackedSet.has(s)));
+        const dirtySrc = new Set<string>();
+        if (cited.size > 0) {
+          // Whole-tree diff against HEAD (no pathspec): the baseline
+          // is the COMMITTED tree — the claims index is the staged
+          // set, and `git add .gitignore` would make staged foreign
+          // bytes read as "tracked+clean" (CX-r31-A). A
+          // `:(`-magic-named source could silently scope a
+          // pathspec'd query away from itself, so the full dirty set
+          // is enumerated and intersected by name instead.
+          const dirty = await run(["diff", "--name-only", "-z", "HEAD"]);
+          if (dirty === null) return null;
+          if (dirty.exitCode !== 0) return null;
+          for (const n of dirty.stdout.toString("utf8").split("\0")) {
+            if (n.length > 0) dirtySrc.add(n);
+          }
         }
+        const unproven = new Set<string>();
+        for (const p of ignored) {
+          const src = sourceOf.get(p);
+          if (!(src !== undefined && trackedSet.has(src) && !dirtySrc.has(src))) {
+            unproven.add(p);
+          }
+        }
+        // Any armed event inside the consult — the HEAD move, a
+        // source flip, a claims-index tail — means no single instant
+        // backs the verdict: refuse, never a mixed-instant
+        // provenance.
+        const events = await windowWatch.settle();
+        windowWatch = null;
+        if (events.length > 0) return null;
+        if (!reproveEvidenceSurface(root, preflight)) return null;
+        return unproven;
+      } finally {
+        if (windowWatch !== null) await windowWatch.settle();
       }
-      // Any armed event inside the consult — the HEAD move, a
-      // source flip, a claims-index tail — means no single instant
-      // backs the verdict: refuse, never a mixed-instant
-      // provenance.
-      const events = await windowWatch.settle();
-      windowWatch = null;
-      if (events.length > 0) return null;
-      if (!reproveEvidenceSurface(root, preflight)) return null;
-      return unproven;
     } finally {
-      if (windowWatch !== null) await windowWatch.settle();
+      closeEvidenceIndex(preflight);
     }
-  } finally {
-    closeEvidenceIndex(preflight);
-  }
+  };
+  return attempt();
 }
 
 export async function sessionIgnoreRulePaths(
