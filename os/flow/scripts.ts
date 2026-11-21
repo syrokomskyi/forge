@@ -15,12 +15,12 @@ the branch worktree and the declared FLOW_* environment.</purpose>
   <item>stderrTail is the last 40 lines — enough for the report without flooding it (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 2 — primary-side hook-script runner</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1502: step 2 — release-prepare hook name</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
-  <history>RFC-1532</history>
+  <item>RFC-1616: outlive the integration gate's own budgets in the hook spawn cap (RFC-1616 follow-up)</item>
+  <history>RFC-1487, RFC-1532</history>
 </CHANGE_SUMMARY>
 */
 
@@ -69,10 +69,13 @@ export async function runFlowScript(
   // The gate hook is a trust-boundary subprocess: session env (NODE_OPTIONS,
   // BASH_ENV, a shim PATH dir) must not reach the hook or the forge it spawns
   // (CX-41 class). verifierSpawn replaces the env wholesale — `opts.env`
-  // carries caller-owned FLOW_* context only.
+  // carries caller-owned FLOW_* context only. The spawn cap must outlive the
+  // hook's own inner budgets — the integration gate's per-package runs take
+  // --timeout 900 and its cold e2e --e2e-timeout 1800, so a 600 s cap turned a
+  // legitimately long (all-checks-pass) run into a killed exit -1.
   const result = await verifierSpawn("sh", [scriptPath], {
     cwd: opts.cwd,
-    timeoutMs: 600_000,
+    timeoutMs: name === "integration-gate" ? 3_600_000 : 600_000,
     extraEnv: opts.env,
   });
   // A failing hook may report only on stdout (forge commands do); an empty tail
