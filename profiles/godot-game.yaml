@@ -1194,8 +1194,8 @@ firstWorkspace:
       content: |
         {
           "sdk": {
-            "version": "10.0.400",
-            "rollForward": "latestFeature"
+            "version": "8.0.100",
+            "rollForward": "latestMajor"
           }
         }
     - path: Game.sln
