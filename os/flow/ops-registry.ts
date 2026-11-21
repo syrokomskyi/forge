@@ -20,6 +20,7 @@ reclaimed by the next reader, never trusted.</purpose>
   <item>RFC-1543: op-claim registry — claim/release/liveClaims, pid+bootId+heartbeat liveness, lazy dead-record sweep</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: surface evidence refusals through claims and consult paths honestly (RFC-1616 follow-up)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,6 +30,7 @@ import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import type { WorkspaceIO } from "../../src/types.ts";
 import { currentBootId, holderIsDead } from "../core/lock-holder.ts";
 import { gitEvidence } from "./git.ts";
+import { EVIDENCE_REFUSED_PREFIX, repoShaped } from "../../src/utils/verifier-git.ts";
 
 export const OP_CLAIM_SCHEMA = "forge/op-claim@1";
 /** Expected heartbeat write cadence — a claim goes stale at 5× this age. */
@@ -49,12 +51,24 @@ export interface OpClaim {
 }
 
 /** `<git-common-dir>/forge/ops` — shared across linked worktrees. */
-async function opsDir(repo: string, _io: WorkspaceIO): Promise<string | null> {
+async function opsDir(repo: string, _io: WorkspaceIO, strict = false): Promise<string | null> {
   let r;
   try {
     r = await gitEvidence(repo, ["rev-parse", "--git-common-dir"]);
   } catch {
     return null;
+  }
+  // RFC-1616: under `strict` a refused consult must not degrade to "no claims
+  // dir" — a foreign write's claim vanishing mid-read would let its dirt
+  // classify as unattributed, and callers polling claim liveness would see a
+  // fabricated empty set instead of the unprovable surface it is. The
+  // repoShaped discriminator (CX-151) keeps that honest: absent any repo
+  // surface there is no git state to forge — "no claims dir" is then a true
+  // empty, not a fabricated one.
+  if (strict && r.exitCode === -1 && repoShaped(repo)) {
+    throw new Error(
+      `${EVIDENCE_REFUSED_PREFIX}: common dir could not be resolved — claims unprovable`,
+    );
   }
   if (r.exitCode !== 0) return null;
   const dir = r.stdout.trim();
@@ -166,7 +180,7 @@ async function readClaims(
   repo: string,
   io: WorkspaceIO,
 ): Promise<{ live: OpClaim[]; dead: string[] }> {
-  const dir = await opsDir(repo, io);
+  const dir = await opsDir(repo, io, true);
   if (dir === null || !(await io.exists(dir))) return { live: [], dead: [] };
   const files = (await io.glob("*.yaml", { cwd: dir })).filter((f) => !f.endsWith("/"));
   const live: OpClaim[] = [];
