@@ -13,200 +13,11 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
-  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
-  <item>RFC-1515: record rfc-1515 review r1 fixes, key decisions and corrected probe path</item>
-  <item>ADR-0124: enable git rerere in flow-managed repositories</item>
-  <item>RFC-1531: worktreeAdd for --reattach; isForgeStatePath exported for the shared dirty classifier</item>
-  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
-  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
-  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
-  <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
-  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
-
-Independent clean-context verification (round 7, candidate d2f270ad6)
-returned REFUTED with eleven live counterexamples against the
-r6-hardened evidence channel — this commit closes all nine root causes.
-
-- remote.<name>.fetch is value-judged: only the clone-default
-  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
-  UNIONs configured refspecs with the pinned fetch argv and a session
-  spec writes arbitrary local refs inside the trusted fetch (CX-94).
-  remote.<name>.tagopt|promirror|followremotehead|prunetags|
-  skipfetchall|mirror move to REFUSE for the same reason.
-- Alternates/shape comment lexing is col-0 `#` only — git's parser does
-  not treat whitespace-led `#` as a comment, so `   # forged` is a real
-  alternates path the shape check must count (CX-95).
-- config reads forbid the alternate-source selectors --file/-f, --blob,
-  --worktree (reaches config.worktree even under the disabled-extension
-  pin), --system/--global, --default and --includes, plus the
-  write-action spellings, on both the evidence and shared read-only
-  tables (CX-96).
-- verifierGit judges fabrication argv on the runner/policy channel:
-  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
-  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
-  can no longer verify an unattested advance (CX-97).
-- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
-  both tables — the flag opts the trusted walk into the session-
-  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
-- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
-  on both tables — they block on input the no-stdin spawn never
-  supplies (CX-101).
-- The workflow-adoption heredoc lexer is bash-faithful: openers are
-  scanned on the raw line before the # comment strip (quoted-#
-  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
-  the terminator match is strict — << wants the delimiter alone, <<-/
-  <<~ skip leading tabs only (CX-100).
-- Trailer scans read %e beside %(trailers): a commit declaring a
-  non-UTF-8 encoding header recodes every trusted message read, so the
-  digest trail and the push-time scan flag it as unverifiable and the
-  policy attestation scan skips it (CX-102).
-
-Probe premise updates for the tightened contract: CX-61's decoy
-remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
-EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
-decoy-namespace guard it replaces. The independent r7 probe file and
-acceptance report land in the follow-up port commit.</item>
-  <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
-
-Independent clean-context verification (round 8, candidate 9da0bf515)
-returned REFUTED with nine live counterexamples against the r7-hardened
-evidence channel — this commit closes all root causes.
-
-- Committed-object reads carry an integrity anchor: loose objects under
-  .git/objects whose inflated bytes do not hash to their object name
-  refuse the channel — forged loose bytes and loose-over-packed
-  shadowing can no longer serve the anchored base (CX-104a/b).
-- policy.digest --verify --base accepts only concrete immutable commit
-  identifiers — symbolic/message/index/path revspecs (HEAD^{/...},
-  :/..., bare HEAD, branch names) are rejected before verify (CX-103).
-- The heredoc lexer is a bash word-grammar scan: <<~EOF arms literal
-  ~EOF (CX-105), quote removal applies across the whole word so
-  <<'E'OF and <<E"OF" arm EOF (CX-106), and $/command-substitution
-  words arm a never-matching sentinel so body lines stay stdin (CX-107).
-- verifierGit is a subcommand + option allowlist: reflog/stash and
-  write commands (config writes, update-ref) are refused, caller
-  -c/-C/--git-dir/--work-tree/--exec-path are rejected instead of
-  landing after the pins, and -g inside short-option clusters (-ng) is
-  judged (CX-108/109).
-- Every remote.<name>.* class keys the name as greedy .+ so dotted
-  remotes no longer escape the REFUSE table or fetch value-judge —
-  remote.o.r.uploadpack refuses the channel instead of executing inside
-  fetch o.r (CX-110); fetch/ls-remote positional remotes are
-  form-judged.
-
-The independent r8 probe file and acceptance report land in the
-follow-up port commit.</item>
-  <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
-
-Independent clean-context verification (round 9, candidate 4436339db)
-returned REFUTED with ten live counterexamples against the r8-hardened
-
-- Pack-carried objects get the loose-sweep integrity anchor: every
-  .idx/.pack pair under objects/pack is verify-pack -s'd at preflight
-  and the sweep memo key is the unforgeable (ino, ctimeMs, size) stat
-  triple (CX-113/114); pack.useBitmapIndex=false pins the bitmap
-  reachability cache off.
-- Every trusted-path git call routes through the judged/preflighted
-  channel: execGit/readCommittedEnvelope/readAcceptanceReports/
-  listWorkspaceFiles and the snapshot gitGrep closure now run
-  verifierGit/createOriginGit with structured fail-closed dirty
-  verdicts (CX-115/118/120/122).
-- Export materialization no longer trusts git archive, ambient tar, or
-  committed .gitattributes: exportTree enumerates ls-tree -r -z and
-  materializes committed bytes through the re-hashed cat-file --batch
-  channel, bounding symlink targets to the export root (CX-116/117).
-- Index-consulting reads run on a verifier-owned claims rebuild:
-  prepareEvidenceIndex copies staged object claims into a fresh index
-  with zeroed stat metadata, so status/diff content-hash the worktree
-  instead of trusting a session-written stat tuple (CX-121).
-- The heredoc lexer is quote-aware: a << inside quotes is string
-  content, never an operator (CX-119).
-- Pins ride GIT_CONFIG_* env so the spawned argv stays the judged
-  query verbatim; diff.external moved from a broken pin to
-  refuse-on-presence; OriginGit.run/runExit now judge caller argv with
-  the same read table; batch stdin is EPIPE-safe.
-- kernel-source-scan models the two channel files as judged bodies so
-  the channel migration does not read as new unguarded subprocess hits
-  in the werkstatt-site mutation ratchet.
-
-The independent r9 probe file and acceptance report land in the
-  <item>RFC-1616: close RFC-1616 r10 trust-boundary counterexamples
-
-Independent clean-context verification (round 10, candidate 17c0ec075)
-returned REFUTED with two live counterexamples against the
-r9-remediated channel — this commit closes both root causes.
-
-- The core.hooksPath pin target is the null device, not a plantable
-  temp dir (CX-123): the mkdtemp evidenceHooksDir persisted for the
-  process lifetime under the session-owned OS temp root, so a
-  concurrent same-uid session could poll, discover it, and plant an
-  executable reference-transaction hook that the next pinned fetch
-  executed inside the trusted spawn. The pin now aims at DEVNULL —
-  the ENOTDIR hook stat skips every hook silently and a char device
-  has no plantable entries; no verifier hooks dir exists at all,
-  removing the TMPDIR amplifier too.
-- A failed claims rebuild is fail-closed, scoped to the reads it can
-  poison (CX-124): prepareEvidenceIndex returned {} on a failed
-  update-index --index-info, routing index-consulting reads at the
-  ambient session-writable .git/index — a CX-121 stat-forged index
-  then answered clean on dirty bytes on both channels. The failure
-  now marks the index unproven in the preflight, and
-  isUnprovenIndexRead refuses exactly the index-consulting ops
-  (status/ls-files always; diff unless tree-to-tree; grep unless
-  tree-anchored; ambiguous shapes refuse) on all three channels.
-  Non-index reads proceed, so a corrupt-index fixture degrades
-  per-read (the gate's git-read-failed contract) instead of dying
-  channel-wide.
-
-The independent r10 probe file and acceptance report land in the
-  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
-
-Independent clean-context verification (round 11, candidate 029219ca9)
-returned REFUTED with seven live counterexamples against the
-r10-remediated channel — this commit closes all of them.
-
-- `.git/info/attributes` joins the shape-violation paths (CX-125): the
-  r6 reasoning covered only program reach, but working-tree-encoding /
-  text / eol / ident are built-in clean-side conversions that rewrite
-  what the zero-stat index content-hash sees with no external program.
-- Index-consulting classification is argv-exact (CX-126/127/128):
-  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
-  ambiguous diff forms (a nonrev second positional is a pathspec, not a
-  rev) refuse under an unproven index, describe --dirty/--broken are
-  index-consuming, and grep is parsed option-aware so a worktree grep
-  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
-- The verifier claims index has no discoverable path (CX-129): a
-  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
-  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
-  through a freshly opened independent file description per spawn;
-  the named flat-file fallback re-proves its bytes against the expected
-  image before every spawn, and child descriptors close on every return
-  path.
-- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
-  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
-  specs under an unproven index), answering positional nulls so the
-  record stream can never desynchronize spec attribution.
-- Trusted transports refuse file-class targets and URL rewrites
-  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
-  and ls-remote/fetch spawn with protocol.file.allow=never so file:
-  URLs and bare-path remotes fail honestly; the pin is transport-only
-  so verifierScratchGit's judged `clone <path>` still works. Test
-  origins moved from local path/file remotes to a loopback git daemon
-  so fixtures keep exercising real fetch/ls-remote behavior.
-
-The port commit that follows carries the ported cx11 probe file plus
-the round-11 acceptance report.</item>
-  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
-  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
-  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
-  <item>RFC-1616: close r19 counterexamples CX-166 through CX-171</item>
-  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
-  <item>RFC-1616: close r22 counterexamples — spawn-window watch, topology honor, !! provenance</item>
   <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
+  <item>RFC-1616: surface evidence refusals through claims and consult paths honestly (RFC-1616 follow-up)</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -1112,7 +923,7 @@ export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<Di
   });
   if (sessionRules === null) {
     throw new Error(
-      "git status --porcelain succeeded but the worktree toplevel became unresolvable — dirty verdict unverifiable",
+      `${EVIDENCE_REFUSED_PREFIX}: git status --porcelain succeeded but the worktree toplevel became unresolvable — dirty verdict unverifiable`,
     );
   }
   for (const p of sessionRules) {
@@ -1133,7 +944,7 @@ export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<Di
     const unproven = await unprovenIgnoredPaths(worktree, ignoredClaims);
     if (unproven === null) {
       throw new Error(
-        "git status --porcelain succeeded but ignored-path rule provenance is unverifiable",
+        `${EVIDENCE_REFUSED_PREFIX}: git status --porcelain succeeded but ignored-path rule provenance is unverifiable`,
       );
     }
     for (const p of unproven) {

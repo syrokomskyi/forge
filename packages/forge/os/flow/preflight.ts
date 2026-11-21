@@ -14,39 +14,12 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1591: typed agent tool surface generated from the command manifest
-
-command.tools.generate projects docs/command-manifest.generated.yaml plus
-forge.yaml agentTools.{front,deny} into docs/agent-tools.generated.json
-(forge/agent-tools@1); forge agent-tools serve (forge-tools in .mcp.json)
-serves it over stdio MCP — three meta tools (command_search /
-command_describe / command_run) plus one typed tool per front entry.
-Agents now call kernel commands as schema-validated tools instead of
-shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
-
-- flag→JSON-Schema mapping (string/boolean/string[]/enum; flagsOpen keeps
-  additionalProperties); required list mirrors the manifest's required
-  flags; annotations derive from mutatesState
-- command_run refuses AGENT-TOOL-01 on undeclared args (RFC-1514
-  nearest-flag suggestion inlined for autonomy), AGENT-TOOL-02 on the
-  deny list, AGENT-TOOL-05 on unknown names; detachable commands spawn
-  with --detach and return the gate-run id; runner is pnpm exec
-  werkstatt run where the bin resolves, pnpm exec forge otherwise
-- generator refusals: AGENT-TOOL-03 (>40 front), AGENT-TOOL-04 (front
-  name absent from the manifest); --check fails on byte drift
-- serve regenerates the file in memory on manifestHash drift and warns;
-  agent-tools.generated.json joins the flow.integrate step-(3b) owner
-  registry
-- forge.yaml seeds 20 front + 7 deny entries; agent-operations guide
-  prefers typed tools, shell strings stay the no-server fallback
-- werkstatt-engine extract excludes build-input-set.test.ts (reads the
-  werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
-  the 'recurrences' wording the addressed-match routing test pins</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
   <item>RFC-1616: keep foreign-dirt attribution and lockfile/remote anchors honest under the judged evidence channel (RFC-1616)</item>
-  <history>ADR-0129, ADR-0130, RFC-0000, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1590</history>
+  <item>RFC-1616: surface evidence refusals through claims and consult paths honestly (RFC-1616 follow-up)</item>
+  <history>ADR-0129, ADR-0130, RFC-0000, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1590, RFC-1591</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1035,40 +1008,17 @@ export async function runIntegratePreflight(
   // still shows it. Reversed, a released claim would vanish first and the
   // same skew would refuse honestly-foreign dirt as unattributed
   // (RFC-1616: proven consults widen the read-skew window).
-  let unprovenSince: number | null = null;
-  for (;;) {
+  const consultPrimary = async (): Promise<{
+    claims: OpClaim[];
+    primaryDirty: DirtyStatus;
+    verdict: DirtVerdict | null;
+  }> => {
+    // The claims snapshot precedes the (slower, evidence-bound) status
+    // consult — see the unprovenSince comment below for the skew this
+    // ordering closes.
     const claims = await liveClaims(opts.primary, io);
-    let primaryDirty: DirtyStatus;
-    try {
-      primaryDirty = await deps.runStatusTracked(opts.primary, io);
-    } catch (e) {
-      // Any evidence refusal — mid-window flux or an enumeration that
-      // could not prove a stable surface — is the same class this wait
-      // exists for: the surface was in motion, so it is neither provably
-      // clean nor attributable. Poll again while the foreign budget
-      // holds, but only while the surface periodically re-proves: a repo
-      // that stays unprovable past the flux cap is structurally broken,
-      // not merely churning, and still throws (RFC-1616 R25 follow-up).
-      const msg = e instanceof Error ? e.message : String(e);
-      unprovenSince ??= Date.now();
-      const retryUntil = Math.min(foreignDeadline, unprovenSince + 30_000);
-      if (msg.includes(EVIDENCE_REFUSED_PREFIX) && Date.now() < retryUntil) {
-        opts.onProgress?.(
-          `primary surface unprovable mid-read — waiting up to ${Math.ceil((retryUntil - Date.now()) / 1000)}s`,
-        );
-        await new Promise((r) =>
-          setTimeout(r, Math.min(30_000, Math.max(0, retryUntil - Date.now()))),
-        );
-        continue;
-      }
-      throw e;
-    }
-    unprovenSince = null;
-    if (primaryDirty.entries.length === 0) {
-      primaryClean = true;
-      foreignDirt = [];
-      break;
-    }
+    const primaryDirty = await deps.runStatusTracked(opts.primary, io);
+    if (primaryDirty.entries.length === 0) return { claims, primaryDirty, verdict: null };
     try {
       commonForDirt ??= await commonGitDir(io, opts.primary);
       foreignDirt = await computeForeignDirt(
@@ -1087,6 +1037,52 @@ export async function runIntegratePreflight(
       claims,
       (ids) => resolveImporterReferents(opts.primary, io, ids),
     );
+    return { claims, primaryDirty, verdict };
+  };
+  let unprovenSince: number | null = null;
+  for (;;) {
+    let consult: {
+      claims: OpClaim[];
+      primaryDirty: DirtyStatus;
+      verdict: DirtVerdict | null;
+    };
+    try {
+      consult = await consultPrimary();
+    } catch (e) {
+      // Any evidence refusal — mid-window flux or an enumeration that
+      // could not prove a stable surface — is the same class this wait
+      // exists for: the surface was in motion, so it is neither provably
+      // clean nor attributable. The whole consult region rides it (status,
+      // foreign-dirt attribution, importer-referent resolution via
+      // worktreeList) because each judged read can refuse independently.
+      // Poll again while the foreign budget holds, but only while the
+      // surface periodically re-proves: a repo that stays unprovable past
+      // the flux cap is structurally broken, not merely churning, and
+      // still throws (RFC-1616 R25 follow-up).
+      const msg = e instanceof Error ? e.message : String(e);
+      unprovenSince ??= Date.now();
+      const retryUntil = Math.min(foreignDeadline, unprovenSince + 30_000);
+      if (msg.includes(EVIDENCE_REFUSED_PREFIX) && Date.now() < retryUntil) {
+        opts.onProgress?.(
+          `primary surface unprovable mid-read — waiting up to ${Math.ceil((retryUntil - Date.now()) / 1000)}s`,
+        );
+        await new Promise((r) =>
+          setTimeout(r, Math.min(30_000, Math.max(0, retryUntil - Date.now()))),
+        );
+        continue;
+      }
+      throw e;
+    }
+    unprovenSince = null;
+    const { primaryDirty } = consult;
+    if (primaryDirty.entries.length === 0) {
+      primaryClean = true;
+      foreignDirt = [];
+      break;
+    }
+    // entries > 0 reached the classifyDirt consult, so verdict is assigned —
+    // anything short of that threw into the flux ride-out above.
+    const verdict = consult.verdict!;
     tolerated.push(...verdict.tolerated);
     const foreignOnly =
       verdict.unattributed.length === 0 &&
