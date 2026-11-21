@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1125: initial npm-token probe — checkNpmToken + readNpmrcTokenStatus, wired into scaffold-project (pre-install fail-fast) and doctor (post-install re-verify).</item>
+  <item>RFC-1125: absorb transient spawn/registry blips in scaffold external calls (RFC-1125 follow-up)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -130,7 +131,14 @@ export async function checkNpmToken(
   const env = deps.env ?? process.env;
   const fetchVersion = deps.fetchVersion ?? defaultFetchVersion;
   const { registry, tokenPresent } = readNpmrcTokenStatus(workspaceRoot, env);
-  const canFetch = fetchVersion(workspaceRoot);
+  // One deferred retry — a transient spawn/registry blip (spawn EAGAIN under
+  // parallel fd pressure, a dropped DNS answer) is not an unreachable
+  // registry; a real outage still refuses on the second probe.
+  let canFetch = fetchVersion(workspaceRoot);
+  if (!canFetch && deps.fetchVersion === undefined) {
+    await new Promise((r) => setTimeout(r, 500));
+    canFetch = fetchVersion(workspaceRoot);
+  }
   return {
     registry,
     tokenPresent,

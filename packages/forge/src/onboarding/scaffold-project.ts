@@ -7,7 +7,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0392: initial forge.scaffold handler.</item>
   <item>RFC-0542: populate nextSteps in forge.scaffold result.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -29,6 +28,8 @@ slice cap (KNOWN_TRUNCATED_SCANS is shrink-only), record-tree exclusions
 extended, two real stale claims corrected, profile templates ship empty
 markers hydrated at scaffold write time. RFC amended to implemented
 grammar/result/exclusions; command moved to commands.added.</item>
+  <item>RFC-1125: absorb transient spawn/registry blips in scaffold external calls (RFC-1125 follow-up)</item>
+  <history>RFC-0392</history>
 </CHANGE_SUMMARY>
 */
 
@@ -66,10 +67,20 @@ export async function runScaffoldProject(
     timeoutMs: number,
   ): Promise<{ ok: boolean; stdout: string; stderr: string }> => {
     const parts = cmd.split(/\s+/).filter(Boolean);
-    const res = await fio
-      .exec(parts[0]!, parts.slice(1), { cwd, timeoutMs })
-      .catch((err: Error) => ({ exitCode: null, stdout: "", stderr: String(err) }));
-    return { ok: res.exitCode === 0, stdout: res.stdout, stderr: res.stderr };
+    const deadline = Date.now() + timeoutMs;
+    // A thrown spawn (EAGAIN/EMFILE under parallel-suite fd pressure) is not
+    // a failed command — retry while the caller's own budget holds. A real
+    // non-zero exit returns immediately.
+    for (;;) {
+      const res = await fio
+        .exec(parts[0]!, parts.slice(1), { cwd, timeoutMs: Math.max(1000, deadline - Date.now()) })
+        .catch((err: Error) => ({ exitCode: null, stdout: "", stderr: String(err) }));
+      if (res.exitCode === 0) return { ok: true, stdout: res.stdout, stderr: res.stderr };
+      if (res.exitCode !== null || Date.now() + 500 >= deadline) {
+        return { ok: false, stdout: res.stdout, stderr: res.stderr };
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
   };
   const profileId = input.flags["profile"] as string | undefined;
   const projectName = input.flags["name"] as string | undefined;
