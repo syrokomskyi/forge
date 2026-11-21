@@ -14,10 +14,6 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
-
-flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
-  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <item>RFC-1591: typed agent tool surface generated from the command manifest
 
 command.tools.generate projects docs/command-manifest.generated.yaml plus
@@ -49,7 +45,8 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
-  <history>ADR-0129, ADR-0130, RFC-0000, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
+  <item>RFC-1616: keep foreign-dirt attribution and lockfile/remote anchors honest under the judged evidence channel (RFC-1616)</item>
+  <history>ADR-0129, ADR-0130, RFC-0000, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1590</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1031,30 +1028,42 @@ export async function runIntegratePreflight(
   // refusal data; never itself a refusal input (FLOW-INT-03 owns that).
   let foreignDirt: ForeignDirtEntry[] = [];
   let commonForDirt: string | null = null;
+  // The claims snapshot precedes the (slower, evidence-bound) status
+  // consult: a claim released mid-poll then still reads live, so its dirt
+  // classifies as foreign-in-flight and the loop waits instead of the
+  // path falling out of attribution while the consult's stale snapshot
+  // still shows it. Reversed, a released claim would vanish first and the
+  // same skew would refuse honestly-foreign dirt as unattributed
+  // (RFC-1616: proven consults widen the read-skew window).
+  let unprovenSince: number | null = null;
   for (;;) {
+    const claims = await liveClaims(opts.primary, io);
     let primaryDirty: DirtyStatus;
     try {
       primaryDirty = await deps.runStatusTracked(opts.primary, io);
     } catch (e) {
-      // A refused mid-window read is the same flux this wait exists for —
-      // a foreign write inside the judged read proves the surface was in
-      // motion, so it is neither provably clean nor attributable. Poll
-      // again while the deadline holds; a refusal past it (or any
-      // structural refusal) still throws (RFC-1616 R25 follow-up).
+      // Any evidence refusal — mid-window flux or an enumeration that
+      // could not prove a stable surface — is the same class this wait
+      // exists for: the surface was in motion, so it is neither provably
+      // clean nor attributable. Poll again while the foreign budget
+      // holds, but only while the surface periodically re-proves: a repo
+      // that stays unprovable past the flux cap is structurally broken,
+      // not merely churning, and still throws (RFC-1616 R25 follow-up).
       const msg = e instanceof Error ? e.message : String(e);
-      if (
-        msg.includes(EVIDENCE_REFUSED_PREFIX) &&
-        msg.includes("during the judged read") &&
-        Date.now() < foreignDeadline
-      ) {
+      unprovenSince ??= Date.now();
+      const retryUntil = Math.min(foreignDeadline, unprovenSince + 30_000);
+      if (msg.includes(EVIDENCE_REFUSED_PREFIX) && Date.now() < retryUntil) {
         opts.onProgress?.(
-          `primary surface mutated mid-read — waiting up to ${Math.ceil((foreignDeadline - Date.now()) / 1000)}s`,
+          `primary surface unprovable mid-read — waiting up to ${Math.ceil((retryUntil - Date.now()) / 1000)}s`,
         );
-        await new Promise((r) => setTimeout(r, Math.min(30_000, foreignDeadline - Date.now())));
+        await new Promise((r) =>
+          setTimeout(r, Math.min(30_000, Math.max(0, retryUntil - Date.now()))),
+        );
         continue;
       }
       throw e;
     }
+    unprovenSince = null;
     if (primaryDirty.entries.length === 0) {
       primaryClean = true;
       foreignDirt = [];
@@ -1075,7 +1084,7 @@ export async function runIntegratePreflight(
       io,
       primaryDirty.entries,
       { runGit: deps.runGit },
-      await liveClaims(opts.primary, io),
+      claims,
       (ids) => resolveImporterReferents(opts.primary, io, ids),
     );
     tolerated.push(...verdict.tolerated);
