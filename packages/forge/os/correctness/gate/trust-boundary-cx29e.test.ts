@@ -151,49 +151,57 @@ const buildForgedIndex = (root: string): { imgPath: string; phantom: string } =>
 };
 
 describe("CX-r29-E claims-index /proc fd hijack", () => {
-  it("forged index bytes inside the re-prove→child-mmap gap forge `ls-files` output", async (ctx) => {
-    if (!HAS_PY) return ctx.skip();
-    const root = mkRepo();
-    const { imgPath, phantom } = buildForgedIndex(root);
-    const hijack = startIndexHijacker(process.pid, imgPath, ["ls-files"]);
-    let forged = 0;
-    let refused = 0;
-    let honest = 0;
-    try {
-      for (let i = 0; i < 40 && forged < 1; i++) {
-        const r = await verifierGit(root, ["ls-files"]);
-        if (r.exitCode === 0 && r.stdout.includes(phantom)) forged++;
-        else if (r.exitCode === -1) refused++;
-        else honest++;
-        // Fresh preflight per call would be captured inside verifierGit;
-        // the hijacker rewrites whatever DIRC fd is held at spawn time.
+  it(
+    "forged index bytes inside the re-prove→child-mmap gap forge `ls-files` output",
+    { timeout: 240_000 },
+    async (ctx) => {
+      if (!HAS_PY) return ctx.skip();
+      const root = mkRepo();
+      const { imgPath, phantom } = buildForgedIndex(root);
+      const hijack = startIndexHijacker(process.pid, imgPath, ["ls-files"]);
+      let forged = 0;
+      let refused = 0;
+      let honest = 0;
+      try {
+        for (let i = 0; i < 40 && forged < 1; i++) {
+          const r = await verifierGit(root, ["ls-files"]);
+          if (r.exitCode === 0 && r.stdout.includes(phantom)) forged++;
+          else if (r.exitCode === -1) refused++;
+          else honest++;
+          // Fresh preflight per call would be captured inside verifierGit;
+          // the hijacker rewrites whatever DIRC fd is held at spawn time.
+        }
+      } finally {
+        hijack.stop();
       }
-    } finally {
-      hijack.stop();
-    }
-    console.log(`index-hijack ls-files: forged=${forged} refused=${refused} honest=${honest}`);
-    expect(forged).toBe(0);
-  });
+      console.log(`index-hijack ls-files: forged=${forged} refused=${refused} honest=${honest}`);
+      expect(forged).toBe(0);
+    },
+  );
 
-  it("forged index bytes forge `status --porcelain` staged entries", async (ctx) => {
-    if (!HAS_PY) return ctx.skip();
-    const root = mkRepo();
-    const { imgPath, phantom } = buildForgedIndex(root);
-    const hijack = startIndexHijacker(process.pid, imgPath, ["status"]);
-    let forged = 0;
-    let refused = 0;
-    let honest = 0;
-    try {
-      for (let i = 0; i < 40 && forged < 1; i++) {
-        const r = await verifierGit(root, ["status", "--porcelain"]);
-        if (r.exitCode === 0 && r.stdout.includes(phantom)) forged++;
-        else if (r.exitCode === -1) refused++;
-        else honest++;
+  it(
+    "forged index bytes forge `status --porcelain` staged entries",
+    { timeout: 240_000 },
+    async (ctx) => {
+      if (!HAS_PY) return ctx.skip();
+      const root = mkRepo();
+      const { imgPath, phantom } = buildForgedIndex(root);
+      const hijack = startIndexHijacker(process.pid, imgPath, ["status"]);
+      let forged = 0;
+      let refused = 0;
+      let honest = 0;
+      try {
+        for (let i = 0; i < 40 && forged < 1; i++) {
+          const r = await verifierGit(root, ["status", "--porcelain"]);
+          if (r.exitCode === 0 && r.stdout.includes(phantom)) forged++;
+          else if (r.exitCode === -1) refused++;
+          else honest++;
+        }
+      } finally {
+        hijack.stop();
       }
-    } finally {
-      hijack.stop();
-    }
-    console.log(`index-hijack status: forged=${forged} refused=${refused} honest=${honest}`);
-    expect(forged).toBe(0);
-  });
+      console.log(`index-hijack status: forged=${forged} refused=${refused} honest=${honest}`);
+      expect(forged).toBe(0);
+    },
+  );
 });

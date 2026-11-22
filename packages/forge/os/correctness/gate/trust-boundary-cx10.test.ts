@@ -422,8 +422,12 @@ describe("RFC-1616 r10 — the claims-rebuild failure refuses, never falls back 
       // (`git ls-files --stage`) die with `index file corrupt`, the
       // rebuild fails, and the channels must FAIL CLOSED: refuse the
       // read (EVIDENCE-REFUSED / null) — never consult the ambient
-      // forged index.
-      writeFileSync(path.join(root, ".git", "index"), "garbage-not-an-index");
+      // forged index. CX-r37: the judged index is mode-barriered — the
+      // session must `chmod +w` first (a ctime-visible act), then its
+      // in-place write lands.
+      const idx = path.join(root, ".git", "index");
+      chmodSync(idx, 0o600);
+      writeFileSync(idx, "garbage-not-an-index");
       const ev = await gitEvidence(root, ["status", "--porcelain"]);
       expect(
         ev.exitCode !== 0 && ev.stderr.includes("EVIDENCE-REFUSED"),
@@ -497,8 +501,12 @@ describe("RFC-1616 r10 — prior-round controls re-verified", () => {
       const first = await gitEvidence(root, ["cat-file", "-p", S]);
       expect(first.exitCode).toBe(0);
       expect(first.stdout).toBe(REAL);
-      // Rewrite the .pack in place (idx untouched — the memo tuple matches).
+      // Rewrite the .pack in place (idx untouched — the memo tuple
+      // matches). CX-r37: judged objects are mode-barriered — the swap
+      // needs a `chmod +w` first, exactly the ctime-visible act a real
+      // same-UID rewrite must perform now.
       const forged = buildSinglePack(S, 3, Buffer.from(FORGED));
+      chmodSync(packPath, 0o600);
       writeFileSync(packPath, forged.pack);
       // Premise: git itself refuses the swapped pair on a raw read.
       const raw = gitInSoft(root, ["cat-file", "-p", S]);
