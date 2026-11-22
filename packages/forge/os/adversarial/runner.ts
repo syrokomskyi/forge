@@ -16,13 +16,6 @@ leaves only a tmp dir.</purpose>
   <item>{base} in the invoke template binds the pre-attack HEAD — the same base the integrate step passes.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: external verification trust boundary
-
-policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
-with a 12-scenario catalog replayed through the real gate in a scratch
-clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
-forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
-scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
@@ -56,6 +49,7 @@ evidence channel — this commit closes all root causes.
 
 The independent r8 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -65,11 +59,10 @@ import {
   chmodSync,
   existsSync as existsSyncForBin,
   mkdtempSync,
-  mkdirSync,
   realpathSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -166,15 +159,15 @@ interface ContourOpts {
  */
 async function seedContour(scratch: string, c: ContourOpts): Promise<void> {
   const g = (args: string[]) => git(scratch, args);
-  const write = (rel: string, body: string) => {
+  const write = async (rel: string, body: string) => {
     const dest = insideRoot(scratch, rel);
     if (dest === null) throw new Error(`contour path escapes scratch: ${rel}`);
-    mkdirSync(path.dirname(dest), { recursive: true });
-    writeFileSync(dest, interpolate(body));
+    await mkdir(path.dirname(dest), { recursive: true });
+    await writeFile(dest, interpolate(body));
   };
   const yamlList = (xs: string[] | undefined, dflt: string[]) =>
     `[${(xs ?? dflt).map((x) => JSON.stringify(x)).join(", ")}]`;
-  write(
+  await write(
     "forge.yaml",
     `schema: forge/config@1
 project:
@@ -198,24 +191,24 @@ agentTools:
   deny: ${yamlList(c.agentToolsDeny, ["deploy"])}
 `,
   );
-  write(
+  await write(
     "docs/requirements.xml",
     '<requirements>\n  <meta><document-id>requirements</document-id></meta>\n  <requirement id="REQ-01">demo</requirement>\n</requirements>\n',
   );
-  write(
+  await write(
     "apps/api/wrangler.jsonc",
     '{ "d1_databases": [{ "binding": "DB", "database_name": "main", "database_id": "x" }] }\n',
   );
-  write(
+  await write(
     "apps/api/migrations/0001_init.sql",
     "CREATE TABLE candidates (id TEXT PRIMARY KEY, state TEXT NOT NULL);\n",
   );
-  write(
+  await write(
     "apps/api/src/dispatch.ts",
     `export function dispatch(): void {\n  // ${MARK}[INV-dispatch-01]: dispatch moves an approved candidate to queued exactly once\n  //   (checked-by: test:${ORACLE_PATH})\n}\n`,
   );
-  write(ORACLE_PATH, L1_ORACLE);
-  write(
+  await write(ORACLE_PATH, L1_ORACLE);
+  await write(
     "docs/correctness.yaml",
     `schema: forge/correctness-manifest@1
 entries:
@@ -231,7 +224,7 @@ ${c.manifestExtra ?? ""}support: []
 exemptions: []
 `,
   );
-  for (const [rel, body] of Object.entries(c.extraFiles ?? {})) write(rel, body);
+  for (const [rel, body] of Object.entries(c.extraFiles ?? {})) await write(rel, body);
   await g(["add", "-A"]);
   await g(["commit", "-qm", c.message ?? "seed the adopted contour"]);
   // the oracle review record, committed the way the verifier workflow does —
@@ -242,7 +235,7 @@ exemptions: []
     .update(readFileSync(path.join(scratch, ORACLE_PATH), "utf8"))
     .digest("hex");
   const rel = "docs/correctness/reviews/2026-11-16-base.yaml";
-  write(
+  await write(
     rel,
     `schema: forge/oracle-review@1
 reviewedAt: 2026-11-16T10:00:00Z
@@ -340,9 +333,9 @@ async function runDowngradeHarness(scratch: string, base: string): Promise<strin
   const { ambientIo } = await import("../../src/utils/io.ts");
   const primary = path.join(scratch, ".adv-primary");
   const binDir = path.join(primary, "node_modules", ".bin");
-  mkdirSync(binDir, { recursive: true });
+  await mkdir(binDir, { recursive: true });
   const bin = path.join(binDir, "forge");
-  writeFileSync(bin, `#!/bin/sh\necho "Unknown command: correctness.gate" >&2\nexit 1\n`);
+  await writeFile(bin, `#!/bin/sh\necho "Unknown command: correctness.gate" >&2\nexit 1\n`);
   chmodSync(bin, 0o755);
   const result = await runCorrectnessStep(ambientIo, {
     primary,
@@ -449,8 +442,8 @@ export async function runScenario(
         for (const [rel, content] of Object.entries(step.files ?? {})) {
           const dest = insideRoot(scratch, rel);
           if (dest === null) throw new Error(`setup path escapes scratch: ${rel}`);
-          mkdirSync(path.dirname(dest), { recursive: true });
-          writeFileSync(dest, interpolate(content));
+          await mkdir(path.dirname(dest), { recursive: true });
+          await writeFile(dest, interpolate(content));
         }
       }
       await g(["add", "-A"]);
@@ -469,8 +462,8 @@ export async function runScenario(
           ok: false,
         };
       }
-      mkdirSync(path.dirname(dest), { recursive: true });
-      writeFileSync(dest, interpolate(content));
+      await mkdir(path.dirname(dest), { recursive: true });
+      await writeFile(dest, interpolate(content));
     }
     await g(["add", "-A"]);
     await g(["commit", "-qm", scenario.attack.commitMessage]);

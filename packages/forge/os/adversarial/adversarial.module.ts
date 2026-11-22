@@ -18,6 +18,7 @@ clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: declare VITEST env input on adversarial.run</item>
+  <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
 </CHANGE_SUMMARY>
 */
 
@@ -114,7 +115,8 @@ export function createForgeAdversarialModule(): ForgeModule {
         name: "adversarial.run",
         coverage: "operator" as const,
         coverageNote: "trust-boundary demonstration (RFC-1616)",
-        mutatesState: true,
+        mutatesState: false,
+        execOnReadOnly: true,
         description:
           "Replay the packaged adversarial scenario catalog in a scratch clone " +
           "of this repository — each scenario seeds the repo, applies an attack " +
@@ -129,6 +131,9 @@ export function createForgeAdversarialModule(): ForgeModule {
         envInputs: [
           { name: "FORGE_ADVERSARIAL_BIN", required: false },
           { name: "VITEST", required: false },
+          { name: "COMSPEC", required: false },
+          { name: "PATHEXT", required: false },
+          { name: "PATH", required: false },
         ],
         flags: {
           list: { kind: "boolean", description: "List catalog scenarios without running." },

@@ -9,8 +9,6 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
-  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1592: retire 3 unprobeable rules (F-0288 recurrence) unblocking this worktree's RFC-1592 ratchet</item>
   <item>RFC-1616: external verification trust boundary
 
@@ -21,7 +19,8 @@ forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1626: make gate-isolation sweeps durable and refuse foreign uncommitted work</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589, RFC-1600</history>
+  <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589, RFC-1597, RFC-1599, RFC-1600</history>
 </CHANGE_SUMMARY>
 */
 
@@ -254,6 +253,11 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
             description: "Report the would-be branch/worktree without mutating.",
           },
         },
+        envInputs: [
+          { name: "COMSPEC", required: false },
+          { name: "PATHEXT", required: false },
+          { name: "PATH", required: false },
+        ],
         execute: runFlowOpen,
       },
       {
@@ -580,6 +584,11 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
             description: "Evaluate the fix's preconditions without mutating.",
           },
         },
+        envInputs: [
+          { name: "COMSPEC", required: false },
+          { name: "PATHEXT", required: false },
+          { name: "PATH", required: false },
+        ],
         execute: runFlowFix,
       },
       {
@@ -680,6 +689,11 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
             description: "Report the discard plan without mutating.",
           },
         },
+        envInputs: [
+          { name: "COMSPEC", required: false },
+          { name: "PATHEXT", required: false },
+          { name: "PATH", required: false },
+        ],
         execute: runFlowDiscard,
       },
       {
@@ -772,6 +786,11 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
             description: "Evaluate the unhold plan without mutating.",
           },
         },
+        envInputs: [
+          { name: "COMSPEC", required: false },
+          { name: "PATHEXT", required: false },
+          { name: "PATH", required: false },
+        ],
         execute: runFlowUnhold,
       },
       {
@@ -850,6 +869,11 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
               "opts out with push.requireVerifierReview: false (RFC-1616).",
           },
         },
+        envInputs: [
+          { name: "COMSPEC", required: false },
+          { name: "PATHEXT", required: false },
+          { name: "PATH", required: false },
+        ],
         execute: runFlowPush,
       },
       {
