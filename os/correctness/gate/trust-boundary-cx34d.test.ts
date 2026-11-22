@@ -130,6 +130,7 @@ const startHijacker = (
     "    except: return None\n" +
     "    for n in names:\n" +
     "        try:\n" +
+    "            if not os.path.isfile('/proc/%s/fd/%s'%(vpid,n)): continue\n" +
     "            os.chmod('/proc/%s/fd/%s'%(vpid,n),0o600)\n" +
     "            f=os.open('/proc/%s/fd/%s'%(vpid,n), os.O_RDWR)\n" +
     "            if os.fstat(f).st_ino==ino: return (f,n)\n" +
