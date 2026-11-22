@@ -17,23 +17,14 @@ substituted object, a redirected repository, or a shim binary's output
   <item>GIT_NO_REPLACE_OBJECTS is set AFTER the strip — refs/replace rewrites trees, messages, and listing output while the real objects still ship on push, so every committed read must see raw objects (CX-46..49).</item>
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
+  <item>Judged children resolve paths through arm-opened root fds (`/proc/self/fd/N`), capture children resolve by name — deliberately different channels. fd-binding a path-emitting preflight resolve (`--git-path`, `--absolute-git-dir`) feeds child-local fd literals back into the fingerprint; name-binding a judged spawn lets a mid-window root rename exchange steer GIT_WORK_TREE/GIT_OBJECT_DIRECTORY onto a foreign inode (CX-r38-W2). Names are captured at preflight and re-proven under the armed window; verdicts bind inodes, never names.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: gate held evidence fds behind fchmod 0400 + post-spawn re-verify (RFC-1616 r34 follow-up)
-
-mmap(MAP_SHARED) stores ride no inotify signal and do not reliably
-bump i_ctime (read-first installs writable PTEs — stores are silent on
-every fs). Prevention: fchmod 0400 at every held-image mint so the
-proc-fd O_RDWR open is EACCES; the owner's chmodat reopen bumps ctime
-into the pinned ctimeNs and fires IN_ATTRIB on the armed watch. Adds
-EvidenceIndex.ctimeNs, a mode+ctime half to every spawn re-proof, and
-a post-spawn fsync+size+bytes+ctimeNs re-verify on the general
-verifierGit channel (CX-r34-E); prior /proc-fd write probes now
-prelude with the chmodat that is itself the detected event.</item>
   <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <item>RFC-1616: scope the judged metadir set to the own worktree (RFC-1616 R35 follow-up)</item>
   <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
   <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
+  <item>RFC-1616: port r38-verify probes to trust-boundary-cx38</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
