@@ -13,12 +13,12 @@ dispatch's product side is limited to opening the task branch and writing
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
   <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
   <item>RFC-1533: surface pending flow branches in flow.open and the pre-user-prompt nudge</item>
   <item>RFC-1541: version-set@2 contracts with validator and pin-drift scenario checks</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
-  <history>RFC-1508, RFC-1509, RFC-1510</history>
+  <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
+  <history>RFC-1508, RFC-1509, RFC-1510, RFC-1511</history>
 </CHANGE_SUMMARY>
 */
 
@@ -257,6 +257,11 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           task: { kind: "string", required: true, description: "Task id T-NNNN (must be ready)" },
           "dry-run": { kind: "boolean", description: "Plan only — open no branch, write nothing" },
         },
+        envInputs: [
+          { name: "COMSPEC", required: false },
+          { name: "PATHEXT", required: false },
+          { name: "PATH", required: false },
+        ],
         execute: runSystemTaskDispatch,
       },
       {
@@ -489,6 +494,11 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
             description: "Validate only — create no worktree, write nothing",
           },
         },
+        envInputs: [
+          { name: "COMSPEC", required: false },
+          { name: "PATHEXT", required: false },
+          { name: "PATH", required: false },
+        ],
         execute: runSystemVersionSetRecord,
       },
     ],
