@@ -19,7 +19,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: pin ctimeNs + fsync-settle fd snapshots against mmap stores (RFC-1616 r34)</item>
   <item>RFC-1616: gate held evidence fds behind fchmod 0400 + post-spawn re-verify (RFC-1616 r34 follow-up)
 
 mmap(MAP_SHARED) stores ride no inotify signal and do not reliably
@@ -34,6 +33,7 @@ prelude with the chmodat that is itself the detected event.</item>
   <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <item>RFC-1616: scope the judged metadir set to the own worktree (RFC-1616 R35 follow-up)</item>
   <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
+  <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -580,6 +580,109 @@ export interface EvidencePreflight {
    * records a failed mint; `undefined` means not yet attempted.
    */
   overlay?: EvidenceGitdirOverlay | null;
+  /**
+   * Capture-instant worktree baseline (CX-r38-W1): every claims-index
+   * tracked path's lstat plus every worktree directory's member set,
+   * snapped inside the same preflight that minted the claims index.
+   * The arm compares this against arm-instant state — a flip or hide
+   * landing between capture and arm reads as drift exactly like the
+   * `.git` fingerprint's, instead of being adopted as the pin
+   * baseline. `undefined` means the surface was not capturable
+   * (bare repo or no claims index) — worktree-consulting argv then
+   * refuses via `worktreeArmPlan` returning null.
+   */
+  worktreeSurface?: WorktreeSurface;
+}
+
+/**
+ * The capture-instant worktree baseline a worktree-consulting spawn is
+ * judged against (CX-r38-W1). Mirrors the fingerprint's role for `.git`:
+ * the arm's pins/watches prove the surface did not drift between this
+ * capture and the consult; anything that did is a refusal, not a
+ * re-baseline.
+ */
+export interface WorktreeSurface {
+  /**
+   * Claims-index path → capture-instant lstat (`null` = absent at
+   * capture). ctime is kernel-owned — a write+restore cannot replay it,
+   * so a content flip inside the window always reads as drift.
+   */
+  readonly files: ReadonlyMap<string, { ino: number; ctimeMs: number } | null>;
+  /**
+   * Directory → capture-instant member-name set (`null` = unreadable at
+   * capture), for every directory under the worktree. The untracked/
+   * ignored enumeration a `status`-class consult runs cannot hide or
+   * invent a dirent between capture and arm without drifting a member
+   * set (CX-r38-W1 untracked-hide).
+   */
+  readonly dirs: ReadonlyMap<string, ReadonlySet<string> | null>;
+  /**
+   * `false` = the dir walk hit `EVIDENCE_WT_DIR_BOUND` — the captured
+   * inventory is incomplete, so an untracked-covering consult cannot
+   * prove its enumeration surface and must refuse.
+   */
+  readonly dirsComplete: boolean;
+}
+
+/**
+ * Bound on directories the worktree-surface walk may hold — coverage is
+ * never truncated silently, the flag above turns an overflow into a
+ * refusal instead.
+ */
+const EVIDENCE_WT_DIR_BOUND = 32768;
+
+/**
+ * Capture the worktree baseline a consult is judged against
+ * (CX-r38-W1). Runs inside `evidenceRepoPreflight` so the baseline is
+ * the CAPTURE-instant surface — the same guarantee the `.git`
+ * fingerprint gives metadata. Tracked files pin by lstat+ctime (the
+ * kernel-unrestorable tuple; symlink targets are never followed), and
+ * every worktree directory records its member set so a dirent created,
+ * hidden, or renamed between capture and arm compares as drift.
+ */
+export function captureWorktreeSurface(
+  workTree: string,
+  names: readonly string[],
+): WorktreeSurface {
+  const files = new Map<string, { ino: number; ctimeMs: number } | null>();
+  for (const rel of names) {
+    const abs = path.join(workTree, rel);
+    let st = null;
+    try {
+      const lst = lstatSync(abs);
+      st = { ino: lst.ino, ctimeMs: lst.ctimeMs };
+    } catch {
+      /* absent at capture — a create before the arm reads as drift */
+    }
+    files.set(abs, st);
+  }
+  const dirs = new Map<string, ReadonlySet<string> | null>();
+  let dirsComplete = true;
+  const stack = [workTree];
+  while (stack.length > 0) {
+    const d = stack.pop()!;
+    if (dirs.has(d)) continue;
+    if (dirs.size >= EVIDENCE_WT_DIR_BOUND) {
+      dirsComplete = false;
+      break;
+    }
+    let ents;
+    try {
+      ents = readdirSync(d, { withFileTypes: true });
+    } catch {
+      ents = null;
+    }
+    dirs.set(
+      d,
+      ents === null ? null : new Set(ents.map((e) => e.name)),
+    );
+    for (const e of ents ?? []) {
+      if (e.isDirectory() && !(d === workTree && e.name === ".git")) {
+        stack.push(path.join(d, e.name));
+      }
+    }
+  }
+  return { files, dirs, dirsComplete };
 }
 
 /**
@@ -626,6 +729,17 @@ export interface EvidenceFingerprint {
   commonDir: string | null;
   /** `--show-toplevel` at capture — null for bare or unresolved repos. */
   workTree: string | null;
+  /**
+   * Capture-instant stat of every path-valued resolution root the
+   * armed window holds an fd to (CX-r38-W2): worktree root, gitDir,
+   * commonDir, objectsDir, and the index's containing dir. The held
+   * fd's `fstat` must match the captured tuple — a root renamed and
+   * substituted between capture and arm opens the FORGED inode, which
+   * the compare reads as drift. A `null` entry means the root existed
+   * in the anchors but could not be statted — the held fd then has no
+   * proven baseline and the arm fails closed.
+   */
+  rootStats?: ReadonlyMap<string, { ino: number; ctimeMs: number } | null>;
   /** Indirection files a redirect rewrite touches first — gitfile target, commondir. */
   indirection: readonly { path: string; bytes: Buffer | null }[];
   /** The `.git/config` file the judged dump derived from — resolved path + bytes. */
@@ -947,6 +1061,17 @@ export function evidenceSpawnState(
 ): {
   env: Record<string, string>;
   indexFd?: number;
+  /**
+   * Absolute roots the child must resolve INODE-bound (CX-r38-W2): every
+   * path-valued env pin below a bound root is rewritten to
+   * `/proc/self/fd/<slot>`-relative inside `spawnCaptured`, so a worktree-
+   * root rename exchange cannot redirect `GIT_WORK_TREE`/`GIT_DIR`/
+   * `GIT_OBJECT_DIRECTORY`/`GIT_INDEX_FILE` resolution onto a foreign
+   * tree — the env value follows the pinned inode, not the (swap-prone)
+   * name. Longest-first ordering; env values under no root get their own
+   * fd directly.
+   */
+  bindRoots: string[];
   unproven: boolean;
   refUnproven: boolean;
 } {
@@ -1052,7 +1177,29 @@ export function evidenceSpawnState(
     if (heldPathProven(idx)) env["GIT_INDEX_FILE"] = idx.path;
     else unproven = true;
   }
-  return { env, indexFd, unproven, refUnproven };
+  // CX-r38-W2 bind roots: every env path pin gets resolved through an
+  // inode-bound fd inside `spawnCaptured`. The fingerprint's anchors
+  // cover the live anchors (real gitdir/common/worktree/objects +
+  // real-index parent for anchored `withIndex=false` writes); the
+  // overlay dir and the held-claims parent join when minted. Sorted
+  // longest-first so a metadir nested inside the common dir binds to
+  // ITS fd before the common prefix can claim it.
+  const fp = preflight?.fingerprint;
+  const bindRoots: string[] = [];
+  if (fp !== undefined) {
+    for (const r of [fp.workTree, fp.commonDir, fp.gitDir, fp.objectsDir]) {
+      if (r !== null) bindRoots.push(r);
+    }
+    if (fp.indexPath !== null) bindRoots.push(path.dirname(fp.indexPath));
+  }
+  const ov = preflight?.overlay;
+  if (ov !== undefined && ov !== null) {
+    bindRoots.push(ov.gitDir);
+    if (ov.commonDir !== undefined) bindRoots.push(ov.commonDir);
+  }
+  if (idx?.path !== undefined) bindRoots.push(path.dirname(idx.path));
+  bindRoots.sort((a, b) => b.length - a.length);
+  return { env, indexFd, bindRoots, unproven, refUnproven };
 }
 
 /**
@@ -1843,8 +1990,15 @@ export function substituteOverlayPaths(
   overlay: { gitDir: string; commonDir?: string },
   fp: EvidenceFingerprint,
   args?: readonly string[],
+  fdEnv?: Record<string, string>,
 ): string {
   let out = stdout;
+  // CX-r38-W2: env pins now reach the child as `/proc/self/fd/N` —
+  // `--local-env-vars` and friends print them verbatim, so map each
+  // literal back to the canonical path it bound.
+  for (const [fdPath, canonical] of Object.entries(fdEnv ?? {})) {
+    out = out.split(fdPath).join(canonical);
+  }
   // `worktree list` prints each worktree's path — the MAIN entry derives
   // from commondir (commondir minus a `/.git` suffix, the commondir
   // itself otherwise), never the gitdir token the generic rewrite below
@@ -4605,6 +4759,15 @@ export async function captureEvidenceSurface(
 interface EvidenceWindowWatch {
   /** Event paths recorded so far (watched-dir-absolute). */
   readonly events: string[];
+  /**
+   * Dir fds opened at ARM time for every resolution root the spawn's
+   * env pins consult (CX-r38-W2). `spawnCaptured` hands each to its
+   * child at a stdio slot and rewrites the pin to `/proc/self/fd/N` —
+   * the value then binds the ARMED inode, so a worktree-root rename
+   * exchange cannot redirect resolution onto a foreign tree and the
+   * parent's per-root fd survives name churn until `settle` closes it.
+   */
+  readonly heldRoots: ReadonlyMap<string, number>;
   /** Drain queued events, close every watcher, return the event paths. */
   settle(): Promise<string[]>;
 }
@@ -4795,12 +4958,190 @@ export function anchoredMutationIgnorable(
   };
 }
 
+/**
+ * The tracked-worktree surface a judged consult may read (CX-r38-W1):
+ * tracked file inodes to pin+barrier+audit, and the containing dirs to
+ * watch — name-filtered to the basenames the claims index says live
+ * there (every path component level, so an interior-dir rename fires
+ * on the parent's filtered watch too).
+ */
+export interface WorktreeArmPlan {
+  files: readonly string[];
+  dirNameSets: ReadonlyMap<string, ReadonlySet<string>>;
+  /**
+   * Unfiltered dir watches — the untracked-set consult surface
+   * (`status`/`ls-files -o`/`add`): every dir the capture-instant
+   * inventory holds, so a transient hide/rename fires a dirent event
+   * on its containing dir (CX-r38-W1).
+   */
+  dirs?: readonly string[];
+  /**
+   * `true` = the files get the write-barrier treatment (anchored
+   * `add`: it hashes content only, so the 0400 mode bump does not
+   * leak into its judged output). Read consults (`status`/`diff`)
+   * pin+watch WITHOUT the chmod — `core.fileMode` would read the
+   * barrier's mode flip as fabricated dirt on an honest tree.
+   */
+  barrier?: boolean;
+  /**
+   * The capture-instant baseline the arm compares against — the
+   * preflight-minted worktree surface. Without it the pin's baseline
+   * is arm-instant state, and a flip landing between capture and arm
+   * is silently adopted as baseline (the forged window CX-r38-W1).
+   */
+  baseline: WorktreeSurface;
+}
+
+/**
+ * Which worktree surface a judged argv consults (CX-r38-W1):
+ * - `tracked`: file stat+bytes of the claims-index tracked set
+ *   (`diff`, worktree-`grep`, `describe --dirty`, `ls-files` stat forms).
+ * - `tracked+untracked`: that PLUS the untracked/ignored dirent
+ *   enumeration (`status`, `ls-files -o`, `add`) — every dir git's
+ *   untracked walk can descend joins the unfiltered dir-watch set via
+ *   the plan's own in-process readdir walk (CX-r38-W1).
+ * - `none`: no worktree-content channel (`rev-parse`, `log`,
+ *   `cat-file`, `for-each-ref`, …). `check-ignore` is scoped by its
+ *   caller through `enumerateTrackedRuleSources` + `extraWatchPaths`.
+ */
+export type WorktreeConsultScope = "none" | "tracked" | "tracked+untracked";
+
+const LS_FILES_WT_STAT_FLAGS: ReadonlySet<string> = new Set([
+  "-m",
+  "--modified",
+  "-d",
+  "--deleted",
+  "--debug",
+  "--eol",
+  "--error-unmatch",
+]);
+
+export function worktreeConsultScope(args: readonly string[]): WorktreeConsultScope {
+  const op = args[0] ?? "";
+  if (op === "status") {
+    // `--untracked-files=no`/`-uno` skip the dirent enumeration — the
+    // untracked-set coverage is then not consulted at all.
+    let untracked = true;
+    for (let i = 1; i < args.length; i++) {
+      const a = args[i]!;
+      const v = a.startsWith("--untracked-files=")
+        ? a.slice("--untracked-files=".length)
+        : a === "--untracked-files" || a === "-u"
+          ? args[++i] ?? ""
+          : a.startsWith("-u") && a.length > 2
+            ? a.slice(2)
+            : null;
+      if (v !== null) untracked = v !== "no";
+    }
+    return untracked ? "tracked+untracked" : "tracked";
+  }
+  if (op === "diff") return "tracked";
+  if (op === "describe") return isIndexConsultingRead(args) ? "tracked" : "none";
+  if (op === "grep") return isIndexConsultingRead(args) ? "tracked" : "none";
+  if (op === "ls-files") {
+    let untracked = false;
+    let stat = false;
+    for (const a of args.slice(1)) {
+      if (a === "-o" || a === "--others") untracked = true;
+      else if (LS_FILES_WT_STAT_FLAGS.has(a)) stat = true;
+    }
+    return untracked ? "tracked+untracked" : stat ? "tracked" : "none";
+  }
+  // `add`'s own consult is an untracked+tracked dirent walk under the
+  // judged pathspec — a transient hide keeps foreign content out of
+  // the staged set, and `add -n` reports the would-add list as its
+  // judged output, so the untracked surface must be armed too.
+  if (op === "add") return "tracked+untracked";
+  return "none";
+}
+
+/**
+ * Build the pin+barrier+watch plan for a worktree-content consult from
+ * the held claims index — the only tracking basis the op cannot have
+ * written (CX-r38-W1). `null` = the tracked set is unverifiable (no
+ * claims basis, or no worktree) and the caller must fail closed.
+ */
+export function worktreeArmPlan(
+  preflight: EvidencePreflight,
+  coverUntrackedDirs = false,
+  barrier = false,
+): WorktreeArmPlan | null {
+  const wt = preflight.fingerprint?.workTree;
+  const names = preflight.index?.names;
+  const baseline = preflight.worktreeSurface;
+  if (wt === null || wt === undefined || names === undefined) return null;
+  // No captured baseline → the arm's pins would adopt arm-instant
+  // state, re-opening the pre-arm flip window (CX-r38-W1). A bare
+  // repo or unproven index lands here — the consult fails closed.
+  if (baseline === undefined) return null;
+  if (coverUntrackedDirs && !baseline.dirsComplete) return null;
+  const files = new Set<string>();
+  const dirNameSets = new Map<string, Set<string>>();
+  for (const rel of names) {
+    files.add(path.join(wt, rel));
+    let dir = wt;
+    for (const part of rel.split("/")) {
+      let set = dirNameSets.get(dir);
+      if (set === undefined) {
+        set = new Set();
+        dirNameSets.set(dir, set);
+      }
+      set.add(part);
+      dir = path.join(dir, part);
+    }
+    // The file's own dir has no further name to filter on below it —
+    // the leaf basename already sits in its parent's set.
+  }
+  // The watch set is the CAPTURED dir inventory — a dir the capture
+  // never saw has already drifted its parent's member set, and the
+  // arm's baseline compare refuses on that drift (CX-r38-W1). Left
+  // `undefined` for tracked-only scopes — the untracked enumeration
+  // is not consulted there, so honest dirent churn must not refuse.
+  const dirs = coverUntrackedDirs ? [...baseline.dirs.keys()] : undefined;
+  return { files: [...files], dirNameSets, dirs, barrier, baseline };
+}
+
+/**
+ * Resolve a consult's worktree arm inputs in one place — both judged
+ * channels (`verifierGitSpawn`, `gitEvidence`) carry the same CX-r38-W1
+ * contract: `tracked*` scopes fold the claims-derived plan into the arm;
+ * `check-ignore` folds its tracked rule sources into `extraWatchPaths`;
+ * everything else adds nothing. `null` = the required surface is
+ * unverifiable and the consult must refuse.
+ */
+export function resolveWorktreeArm(
+  args: readonly string[],
+  preflight: EvidencePreflight,
+  extraWatchPaths: readonly string[] | undefined,
+): {
+  scope: WorktreeConsultScope;
+  wtPlan: WorktreeArmPlan | null;
+  extraWatch: readonly string[] | undefined;
+} | null {
+  const scope = worktreeConsultScope(args);
+  if (scope === "tracked" || scope === "tracked+untracked") {
+    const wtPlan = worktreeArmPlan(preflight, scope === "tracked+untracked");
+    return wtPlan === null ? null : { scope, wtPlan, extraWatch: extraWatchPaths };
+  }
+  if (args[0] === "check-ignore") {
+    const rules = enumerateTrackedRuleSources(preflight);
+    if (rules === null) return null;
+    return {
+      scope,
+      wtPlan: null,
+      extraWatch: rules.size === 0 ? extraWatchPaths : [...(extraWatchPaths ?? []), ...rules],
+    };
+  }
+  return { scope, wtPlan: null, extraWatch: extraWatchPaths };
+}
+
 export function armEvidenceWindowWatch(
   repoRoot: string,
   preflight: EvidencePreflight,
   ignore?: (absPath: string) => boolean,
   extraFiles?: readonly string[],
   pinObjects?: boolean,
+  wtArm?: WorktreeArmPlan | null,
 ): EvidenceWindowWatch | null {
   const fp = preflight.fingerprint;
   if (fp === undefined) return null;
@@ -4921,9 +5262,29 @@ export function armEvidenceWindowWatch(
   // user content never stays read-only.
   const extraRestores: { p: string; mode: number }[] = [];
   const extraInos = new Map<string, { abs: string; ctimeNs: bigint }>();
-  for (const f of extraFiles ?? []) {
-    if (ignore?.(f) === true) continue;
+  const barrierSeen = new Set<string>();
+  // Worktree-entry pins use lstat semantics — git's own worktree reads
+  // never follow a tracked symlink, so pinning the target's stat would
+  // refuse on churn the consult cannot see (and misread the link's own
+  // inode as drift). Settle re-stats these with lstatSync.
+  const wtPins = new Map<string, { ino: number; ctimeMs: number }>();
+  const wtPin = (abs: string, st: { ino: number; ctimeMs: number }) => {
+    if (wtPins.has(abs)) return;
+    wtPins.set(abs, { ino: st.ino, ctimeMs: st.ctimeMs });
+    if (wtPins.size > EVIDENCE_PIN_BOUND) failed = true;
+  };
+  const barrierFile = (f: string) => {
+    if (barrierSeen.has(f) || ignore?.(f) === true) return;
+    barrierSeen.add(f);
     try {
+      // A non-regular tracked entry (symlink, gitlink dir) keeps only
+      // its lstat pin — chmod follows symlinks and would flip a
+      // foreign target's mode, and a dir's own ctime churn is honest.
+      const lst = lstatSync(f);
+      if (!lst.isFile()) {
+        wtPin(f, lst);
+        return;
+      }
       const st = statSync(f, { bigint: true });
       if (st.isFile()) {
         let dev = st.dev;
@@ -4951,7 +5312,105 @@ export function armEvidenceWindowWatch(
       /* the stat pin below records the same absence */
     }
     pinFile(f);
+  };
+  // CX-r38-W1: the tracked worktree surface a `status`/`diff`/`grep`
+  // consult reads joins the pin+watch surface — against the CAPTURED
+  // baseline, so a flip landing between capture and arm is drift, not
+  // a re-baseline. This compare runs BEFORE the extra-files barrier:
+  // a claims-tracked rule source sits in both sets, and the barrier's
+  // own 0400 chmod bumps ctime — comparing first keeps the barrier's
+  // mode flip from reading as drift on itself. Read consults pin ONLY
+  // — the write barrier's 0400 chmod would itself flip `core.fileMode`
+  // and read as fabricated dirt on an honest tree; a mid-window flip
+  // still bumps the kernel-managed ctime the pin re-stats at settle.
+  // Anchored `add` takes the barrier (content hashing is mode-blind),
+  // and a claims-tracked caller source does too — for those,
+  // `barrierFile` owns the pin (a second wtPin at the capture ctime
+  // would read the barrier's own mode bump as settle-time drift).
+  // Every pin-only file joins the /proc write-map audit — a MAP_SHARED
+  // channel opened before the arm is the silent-write class the ctime
+  // pin cannot see on tmpfs.
+  const extraSet = new Set(extraFiles ?? []);
+  for (const f of wtArm?.files ?? []) {
+    if (failed) break;
+    // Anchored mutation consults attest ARM-instant state — the op
+    // stages the bytes present when it runs, so the write barrier's
+    // own post-chmod pin is the baseline; a captured-stat compare
+    // would refuse the caller's own legitimate post-judgment write
+    // (CX-r38-W1: reads attest the captured instant, mutations
+    // attest the armed instant).
+    if (wtArm?.barrier === true) {
+      barrierFile(f);
+      continue;
+    }
+    const cap = wtArm?.baseline.files.get(f);
+    let cur = null;
+    try {
+      const lst = lstatSync(f);
+      cur = { ino: lst.ino, ctimeMs: lst.ctimeMs };
+    } catch {
+      /* absent now */
+    }
+    if (cap === undefined || cap === null || cur === null) {
+      // Absent at BOTH instants is consistent (honest delete); any
+      // asymmetry is drift — or the path is outside the captured set,
+      // which the plan's own names-derived list makes impossible
+      // unless the baseline is incomplete.
+      if (!(cap === null && cur === null)) failed = true;
+      continue;
+    }
+    if (cap.ino !== cur.ino || cap.ctimeMs !== cur.ctimeMs) {
+      failed = true;
+      break;
+    }
+    if (extraSet.has(f)) {
+      barrierFile(f);
+      continue;
+    }
+    wtPin(f, cap);
+    try {
+      const stb = lstatSync(f, { bigint: true });
+      if (stb.isFile()) {
+        extraInos.set(`${stb.dev}:${stb.ino}`, { abs: f, ctimeNs: stb.ctimeNs });
+      }
+    } catch {
+      /* raced away — the pin compare reads it as drift */
+    }
   }
+  // Untracked-set baseline: every directory the capture inventoried
+  // must still expose the same member set — a dirent created, hidden,
+  // or renamed between capture and arm is the untracked-hide class
+  // (CX-r38-W1) and reads as drift. A dir unreadable at capture that
+  // became readable is drift the same way. Mutation consults skip
+  // this compare — they attest the arm-instant enumeration like the
+  // file pins above.
+  if (!failed && wtArm?.dirs !== undefined && wtArm?.barrier !== true) {
+    for (const [d, capSet] of wtArm.baseline.dirs) {
+      let curSet = null;
+      try {
+        curSet = new Set(readdirSync(d));
+      } catch {
+        /* unreadable now */
+      }
+      if (capSet === null || curSet === null) {
+        if (capSet !== curSet) {
+          failed = true;
+          break;
+        }
+        continue;
+      }
+      if (curSet.size !== capSet.size || ![...capSet].every((n) => curSet.has(n))) {
+        failed = true;
+        break;
+      }
+    }
+  }
+  // Caller-pinned sources that were NOT claims-tracked (the wt loop
+  // skipped them) take the write barrier here — a claims-tracked
+  // source already went through `barrierFile` inside the compare loop
+  // (`extraSet` membership there) or holds a clean wt pin, and
+  // `barrierSeen` dedupes the chmod either way.
+  for (const f of extraFiles ?? []) barrierFile(f);
   if (extraInos.size > 0) {
     const scan = auditWriteChannels(extraInos);
     if (scan.armed.length > 0) {
@@ -4967,14 +5426,18 @@ export function armEvidenceWindowWatch(
     if (ignore?.(abs) === true) return;
     events.push(abs);
   };
-  const arm = (target: string, nameFilter?: string, isFile = false) => {
+  const arm = (target: string, nameFilter?: string | ReadonlySet<string>, isFile = false) => {
     if (failed) return;
     try {
       watchers.push(
         fsWatch(target, { persistent: false }, (_t, filename) => {
           if (filename === null) return;
           const name = String(filename);
-          if (nameFilter !== undefined && name !== nameFilter) return;
+          if (nameFilter !== undefined) {
+            if (typeof nameFilter === "string" ? name !== nameFilter : !nameFilter.has(name)) {
+              return;
+            }
+          }
           const abs = isFile
             ? target
             : nameFilter !== undefined && path.isAbsolute(name)
@@ -5010,10 +5473,81 @@ export function armEvidenceWindowWatch(
   // verdict: a transient mid-window rewrite reports the tracked path
   // while serving forged rules, so the inode must read as an event too.
   for (const f of extraFiles ?? []) arm(f, undefined, true);
+  // CX-r38-W1: the tracked-worktree surface is watched through
+  // DIRECTORY-level name filters — one fs.watch per containing dir
+  // keyed on the tracked basenames inside it (a per-file watch per
+  // tracked name would burn one fd per file on real trees). The name
+  // set carries every level of each tracked path, so a mid-window
+  // interior-dir rename fires on the parent's watch too.
+  for (const [d, names] of wtArm?.dirNameSets ?? []) arm(d, names);
+  for (const d of wtArm?.dirs ?? []) arm(d);
+  // CX-r38-W2: every resolution root the spawn's env pins consult is
+  // held open at arm time (the armed-inode fd `spawnCaptured` hands to
+  // its child) AND its PARENT dirent gets a name-filtered watch — a
+  // rename exchange of the root fires a deterministic dirent event
+  // instead of silently following the inode. The opened fd is verified
+  // against the fingerprint's captured stat — a swap landing between
+  // capture and this open binds the forged inode, which the compare
+  // reads as drift. An unopenable root — or one without a captured
+  // baseline — is an unverifiable resolution basis: fail closed.
+  const heldRoots = new Map<string, number>();
+  if (process.platform !== "win32") {
+    const roots = new Set<string>();
+    for (const r of [
+      fp.workTree,
+      fp.gitDir,
+      fp.commonDir,
+      fp.objectsDir,
+      fp.indexPath === null ? null : path.dirname(fp.indexPath),
+      preflight.overlay?.gitDir,
+      preflight.overlay?.commonDir,
+      // Path-form claims index (no O_TMPFILE): `bindRoots` includes its
+      // parent, and a spawn-time open of the verifier private dir by
+      // NAME would bind a rename-substituted foreign dir — the held fd
+      // + parent watch close that the same way the live roots do.
+      preflight.index?.path === undefined
+        ? null
+        : path.dirname(preflight.index.path),
+    ]) {
+      if (r !== null && r !== undefined) roots.add(r);
+    }
+    const rootNameWatches = new Set<string>();
+    for (const r of roots) {
+      const parent = path.dirname(r);
+      const watchKey = `${parent} ${path.basename(r)}`;
+      if (!rootNameWatches.has(watchKey)) {
+        rootNameWatches.add(watchKey);
+        arm(parent, path.basename(r));
+      }
+      if (heldRoots.has(r)) continue;
+      try {
+        const fd = openSync(r, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY);
+        const cap = fp.rootStats?.get(r);
+        if (cap !== undefined) {
+          const st = fstatSync(fd);
+          if (cap === null || st.ino !== cap.ino || st.ctimeMs !== cap.ctimeMs) {
+            closeSync(fd);
+            failed = true;
+            continue;
+          }
+        }
+        heldRoots.set(r, fd);
+      } catch {
+        failed = true;
+      }
+    }
+  }
   if (failed) {
     for (const w of watchers) {
       try {
         w.close();
+      } catch {
+        /* gone */
+      }
+    }
+    for (const fd of heldRoots.values()) {
+      try {
+        closeSync(fd);
       } catch {
         /* gone */
       }
@@ -5029,6 +5563,7 @@ export function armEvidenceWindowWatch(
   }
   return {
     events,
+    heldRoots,
     settle: async () => {
       // Events during the child's lifetime are already in the kernel
       // queue at `close` — the libuv read lands them on the next loop
@@ -5042,6 +5577,13 @@ export function armEvidenceWindowWatch(
           /* gone */
         }
       }
+      for (const fd of heldRoots.values()) {
+        try {
+          closeSync(fd);
+        } catch {
+          /* gone */
+        }
+      }
       // Stat pins (CX-r23-A): an `mmap(MAP_SHARED)` store, a
       // `/proc/<pid>/fd` write, or any other dirent-invisible rewrite
       // leaves no inotify event but still bumps the inode's ctime —
@@ -5051,6 +5593,19 @@ export function armEvidenceWindowWatch(
       for (const [abs, pin] of pins) {
         try {
           const st = statSync(abs);
+          if (st.ino !== pin.ino || st.ctimeMs !== pin.ctimeMs) {
+            events.push(abs);
+          }
+        } catch {
+          events.push(abs);
+        }
+      }
+      // Worktree-entry pins mirror the same check under lstat
+      // semantics — a tracked symlink's pin is its own inode, never a
+      // followed target (CX-r38-W1).
+      for (const [abs, pin] of wtPins) {
+        try {
+          const st = lstatSync(abs);
           if (st.ino !== pin.ino || st.ctimeMs !== pin.ctimeMs) {
             events.push(abs);
           }
@@ -5494,6 +6049,41 @@ export async function evidenceRepoPreflight(
   preflight.indexUnproven = prepared.failure;
   preflight.configUnproven = configUnproven;
   preflight.fingerprint = fingerprint;
+  // CX-r38-W2 baseline: every path-valued resolution root the armed
+  // window holds an fd to gets its inode+ctime captured at PREFLIGHT
+  // time — the arm's held-fd open verifies the opened inode against
+  // this tuple, so a rename-substituted root landing between capture
+  // and arm reads as drift instead of binding the forged inode.
+  const rootStats = new Map<string, { ino: number; ctimeMs: number } | null>();
+  for (const r of [
+    fingerprint.workTree,
+    fingerprint.gitDir,
+    fingerprint.commonDir,
+    fingerprint.objectsDir,
+    fingerprint.indexPath === null ? null : path.dirname(fingerprint.indexPath),
+  ]) {
+    if (r === null || r === undefined || rootStats.has(r)) continue;
+    let st = null;
+    try {
+      const s = statSync(r);
+      st = { ino: s.ino, ctimeMs: s.ctimeMs };
+    } catch {
+      /* unstatable — no proven baseline, the arm fails closed */
+    }
+    rootStats.set(r, st);
+  }
+  fingerprint.rootStats = rootStats;
+  // CX-r38-W1 baseline: the worktree surface the consult will read is
+  // captured at PREFLIGHT time — the arm's pins then compare against
+  // the capture-instant state, so a flip/hide landing between capture
+  // and arm reads as drift (the `.git` fingerprint's own semantics)
+  // instead of being silently adopted as the pin baseline.
+  if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
+    preflight.worktreeSurface = captureWorktreeSurface(
+      fingerprint.workTree,
+      preflight.index.names,
+    );
+  }
   return preflight;
 }
 
@@ -5626,6 +6216,98 @@ export async function verifierSpawn(
  * maxBuffer kill to exitCode -1, stdout/stderr captured as Buffers,
  * optional `input` written to stdin and closed.
  */
+/**
+ * Path-valued env pins that get inode-bound for the child (CX-r38-W2):
+ * a rename exchange of a root directory moves the ARMED inode aside
+ * while the name resolves a foreign tree — a name-bound
+ * `GIT_WORK_TREE`/`GIT_OBJECT_DIRECTORY`/`GIT_DIR` env would consult
+ * attacker bytes. Rewriting each pin to `/proc/self/fd/<slot>`
+ * (-relative) makes the child follow the pinned inode; the stdio slot
+ * carries the opened dir/file fd. Files and dirs bind identically —
+ * `open()` through the proc-fd symlink re-opens the inode under the
+ * CHILD's own access bits (an O_RDONLY dir fd still permits
+ * `<fd>/index.lock` writes inside, gated by file modes as usual).
+ */
+const FD_BOUND_ENV_KEYS: ReadonlySet<string> = new Set([
+  "GIT_DIR",
+  "GIT_COMMON_DIR",
+  "GIT_WORK_TREE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_INDEX_FILE",
+]);
+
+function bindEnvPathFds(
+  env: NodeJS.ProcessEnv,
+  roots: readonly string[] | undefined,
+  heldRoots: ReadonlyMap<string, number> | undefined,
+): {
+  /** Per-slot inherit descriptors — `owned:false` fds belong to the arm. */
+  slots: { fd: number; owned: boolean }[];
+  fdEnv: Record<string, string>;
+} {
+  const slots: { fd: number; owned: boolean }[] = [];
+  const fdEnv: Record<string, string> = {};
+  // Binding applies ONLY to judged consults — callers pass the spawn
+  // state's bindRoots. `roots === undefined` means a capture/preflight
+  // child (`execEvidenceGit`): binding there would feed `/proc/self/fd/N`
+  // literals back through path-emitting resolves (`--git-path`) and
+  // poison the fingerprint — its resolves are name-bound by design and
+  // re-proven under the armed watch instead. POSIX-only: on Windows
+  // every path keeps its name form and the watch+reprove stays the
+  // W2 cover.
+  if (roots === undefined || process.platform === "win32") {
+    return { slots, fdEnv };
+  }
+  const sorted = [...new Set(roots.map((r) => path.resolve(r)))].sort(
+    (a, b) => b.length - a.length,
+  );
+  // Root → slot index. An arm-held fd binds the inode the ARM opened;
+  // a root the arm did not hold falls back to a fresh name-open (the
+  // same residual the name-bound pins had — held coverage is what the
+  // arm's root set guarantees).
+  const rootSlots = new Map<string, number>();
+  const fdOfRoot = (root: string): number | undefined => {
+    let slot = rootSlots.get(root);
+    if (slot !== undefined) return slots[slot]!.fd;
+    const held = heldRoots?.get(root);
+    if (held !== undefined) {
+      slot = slots.length;
+      slots.push({ fd: held, owned: false });
+      rootSlots.set(root, slot);
+      return held;
+    }
+    try {
+      const fd = openSync(root, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY);
+      slot = slots.length;
+      slots.push({ fd, owned: true });
+      rootSlots.set(root, slot);
+      return fd;
+    } catch {
+      /* unbindable root — the name stays as-is */
+    }
+    return undefined;
+  };
+  for (const key of FD_BOUND_ENV_KEYS) {
+    const v = env[key];
+    if (
+      typeof v !== "string" ||
+      !v.startsWith("/") ||
+      v.startsWith("/dev/fd/") ||
+      v.startsWith("/proc/self/fd/")
+    ) {
+      continue;
+    }
+    const root = sorted.find((r) => v === r || v.startsWith(`${r}${path.sep}`));
+    if (root === undefined) continue;
+    const fd = fdOfRoot(root);
+    if (fd === undefined) continue;
+    const fdPath = `/proc/self/fd/${4 + rootSlots.get(root)!}${v.slice(root.length)}`;
+    fdEnv[fdPath] = v;
+    env[key] = fdPath;
+  }
+  return { slots, fdEnv };
+}
+
 export function spawnCaptured(
   bin: string,
   args: readonly string[],
@@ -5635,25 +6317,71 @@ export function spawnCaptured(
     timeoutMs: number;
     maxBuffer: number;
     indexFd?: number;
+    /** Inode-bind roots for path-valued env pins (CX-r38-W2). */
+    boundRoots?: readonly string[];
+    /**
+     * Arm-held root dir fds (CX-r38-W2): when set, env pins under a
+     * held root bind through ITS fd — opened while the armed window
+     * guaranteed the honest tree's dirent, so a post-arm rename
+     * exchange cannot steer the bind onto a foreign inode.
+     */
+    heldRoots?: ReadonlyMap<string, number>;
     input?: string | Buffer;
   },
-): Promise<{ exitCode: number; stdout: Buffer; stderr: Buffer }> {
+): Promise<{
+  exitCode: number;
+  stdout: Buffer;
+  stderr: Buffer;
+  /** `/proc/self/fd/N` literal → the canonical path it bound (CX-r38-W2). */
+  fdEnv?: Record<string, string>;
+}> {
+  const bound = bindEnvPathFds(opts.env, opts.boundRoots, opts.heldRoots);
+  // `-C <dir>` argv tokens and the spawn `cwd` stay NAME-bound on
+  // purpose: path-emitting consults (`rev-parse --git-path`,
+  // `--absolute-git-dir`) print values derived from `-C`, so an
+  // fd-bound token would poison the fingerprint with `/proc/self/fd/N`
+  // literals that resolve only inside that child. The fd binding rides
+  // the env pins instead — `GIT_DIR`/`GIT_WORK_TREE`/
+  // `GIT_OBJECT_DIRECTORY`/`GIT_INDEX_FILE` override `-C`/cwd
+  // discovery for every consultable resolution, and the preflight's
+  // `-C`-driven resolves are re-proven under the armed watch (CX-143).
   return new Promise((resolve) => {
     let child;
     try {
       child = spawn(bin, args as string[], {
         cwd: opts.cwd,
         env: opts.env,
-        stdio: opts.indexFd !== undefined ? ["pipe", "pipe", "pipe", opts.indexFd] : "pipe",
+        stdio: [
+          "pipe",
+          "pipe",
+          "pipe",
+          opts.indexFd ?? "ignore",
+          ...bound.slots.map((s) => s.fd),
+        ],
       });
     } catch (e) {
-      resolve({ exitCode: -1, stdout: Buffer.alloc(0), stderr: Buffer.from(String(e)) });
+      resolve({
+        exitCode: -1,
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.from(String(e)),
+        fdEnv: bound.fdEnv,
+      });
       return;
     } finally {
-      // The child inherited its own dup of the held fd at fork — the
-      // parent's per-spawn copy is dead weight after spawn() returns
-      // (and on a spawn error it never reached a child at all).
+      // The child inherited its own dup of each slot fd at fork — the
+      // parent's per-spawn copies are dead weight after spawn()
+      // returns (and on a spawn error they never reached a child).
+      // Arm-held fds are NOT owned here — the window closes them at
+      // settle.
       closeSpawnFds({ indexFd: opts.indexFd });
+      for (const s of bound.slots) {
+        if (!s.owned) continue;
+        try {
+          closeSync(s.fd);
+        } catch {
+          /* already closed */
+        }
+      }
     }
     const out: Buffer[] = [];
     const err: Buffer[] = [];
@@ -5663,7 +6391,12 @@ export function spawnCaptured(
       if (done) return;
       done = true;
       clearTimeout(timer);
-      resolve({ exitCode: code, stdout: Buffer.concat(out), stderr: Buffer.concat(err) });
+      resolve({
+        exitCode: code,
+        stdout: Buffer.concat(out),
+        stderr: Buffer.concat(err),
+        fdEnv: bound.fdEnv,
+      });
     };
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
@@ -5714,7 +6447,9 @@ export function spawnCaptured(
  * arm or untracked-in-claims can never be attested; `null` marks the
  * domain unverifiable (claims index refused) and the op fails closed.
  */
-function enumerateTrackedRuleSources(preflight: EvidencePreflight): Set<string> | null {
+export function enumerateTrackedRuleSources(
+  preflight: EvidencePreflight,
+): Set<string> | null {
   const wt = preflight.fingerprint?.workTree;
   if (wt === null || wt === undefined) return new Set();
   // The pre-op claims index is the only tracking basis the op cannot
@@ -5785,6 +6520,7 @@ async function verifyAnchoredMutationCoverage(
   preflight: EvidencePreflight,
   extraWatchPaths: readonly string[] | undefined,
   ruleSources: ReadonlySet<string> | undefined,
+  heldRoots?: ReadonlyMap<string, number>,
 ): Promise<string | null> {
   const wt = preflight.fingerprint?.workTree;
   if (wt === null || wt === undefined) return null; // bare — the op cannot have staged
@@ -5820,13 +6556,14 @@ async function verifyAnchoredMutationCoverage(
   // the coverage query must use the same extent (`:/`).
   let coverageSpec = spec.length === 0 ? [":/"] : spec;
   const pinned = new Set((extraWatchPaths ?? []).map((p) => path.resolve(p)));
+  const covState = evidenceSpawnState(preflight, false, true);
   const env = {
     ...verifierGitEnv(),
     ...evidencePinEnv(args, preflight),
     // spawnState LAST — the overlay's GIT_DIR/GIT_COMMON_DIR must win
     // over pinEnv's real-dir anchors or coverage children would
     // resolve live refs mid-window (CX-r35-A).
-    ...evidenceSpawnState(preflight, false, true).env,
+    ...covState.env,
   };
   // Snapshot the post-op REAL index once — every live-index coverage
   // child then reads THE SAME frozen bytes instead of three torn
@@ -5945,6 +6682,8 @@ async function verifyAnchoredMutationCoverage(
         timeoutMs: 60_000,
         maxBuffer: 64 * 1024 * 1024,
         indexFd: childFd,
+        boundRoots: covState.bindRoots,
+        heldRoots,
         input: opts?.input,
       });
     }
@@ -5953,6 +6692,8 @@ async function verifyAnchoredMutationCoverage(
       env: { ...env, GIT_INDEX_FILE: liveIndex.path },
       timeoutMs: 60_000,
       maxBuffer: 64 * 1024 * 1024,
+      boundRoots: covState.bindRoots,
+      heldRoots,
       input: opts?.input,
     });
   };
@@ -5975,6 +6716,8 @@ async function verifyAnchoredMutationCoverage(
       timeoutMs: 60_000,
       maxBuffer: 64 * 1024 * 1024,
       indexFd: cs.indexFd,
+      boundRoots: cs.bindRoots,
+      heldRoots,
     });
   };
   const finish = (out: string | null): string | null => {
@@ -6392,6 +7135,7 @@ async function verifierGitSpawn(
     // launders foreign rules through the staged-set verdict (CX-r29-B).
     // A failed enumeration means the rule domain itself is unverifiable.
     let anchoredExtraWatch = opts?.extraWatchPaths;
+    let anchoredWtPlan: WorktreeArmPlan | null = null;
     if (args[0] === "add") {
       const enumerated = enumerateTrackedRuleSources(preflight);
       if (enumerated === null) {
@@ -6404,6 +7148,18 @@ async function verifierGitSpawn(
       ruleSources = enumerated;
       if (enumerated.size > 0) {
         anchoredExtraWatch = [...(anchoredExtraWatch ?? []), ...enumerated];
+      }
+      // CX-r38-W1: `add` hashes worktree BYTES into the staged set —
+      // a mid-window flip→restore of a tracked file writes foreign
+      // content into the judged index. The tracked surface joins the
+      // pin+barrier+watch plan exactly like the read consults.
+      anchoredWtPlan = worktreeArmPlan(preflight, true, true);
+      if (anchoredWtPlan === null) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: worktree surface unverifiable — refusing the mutation`,
+        };
       }
     }
     // The window watch covers the mutation's lifetime too — events on
@@ -6423,6 +7179,7 @@ async function verifierGitSpawn(
       // OIDs from worktree bytes, never consults existing objects, and
       // its write-side utime freshen would misread as drift (CX-r24-A).
       args[0] !== "add",
+      anchoredWtPlan,
     );
     if (windowWatch === null) {
       return {
@@ -6470,8 +7227,33 @@ async function verifierGitSpawn(
     // and draining AFTER `close` closes the arm→use gap: any surface
     // event inside the armed window refuses the verdict outright.
     if (preflight !== null && effectiveIndexEnv) {
+      // CX-r38-W1: the consult's worktree-CONTENT surface joins the
+      // armed window — `.git` watches never covered tracked/untracked
+      // worktree inodes, so a mid-window flip→restore of judged bytes
+      // was the remaining unjudged-write channel (D2 covered only the
+      // ignore-rule sources). `check-ignore` consults only those rule
+      // sources — extraWatchPaths carries them as before.
+      // The plan derives from the CURRENT preflight's held claims
+      // index — a drift re-preflight re-binds a new index, so the arm
+      // inputs recompute per attempt or the watch could pin a stale
+      // tracking basis.
       for (let armAttempt = 0; preflight !== null; armAttempt++) {
-        windowWatch = armEvidenceWindowWatch(cwd, preflight, undefined, opts?.extraWatchPaths);
+        const wtArm = resolveWorktreeArm(args, preflight, opts?.extraWatchPaths);
+        if (wtArm === null) {
+          return {
+            exitCode: -1,
+            stdout: "",
+            stderr: `${EVIDENCE_REFUSED_PREFIX}: worktree surface unverifiable — refusing the consult: git ${args.join(" ")}`,
+          };
+        }
+        windowWatch = armEvidenceWindowWatch(
+          cwd,
+          preflight,
+          undefined,
+          wtArm.extraWatch,
+          undefined,
+          wtArm.wtPlan,
+        );
         // An unarmable surface (watch limit, vanished dir) cannot be
         // proven for the child's lifetime — refuse, never partial.
         if (windowWatch === null) {
@@ -6591,6 +7373,8 @@ async function verifierGitSpawn(
       timeoutMs: opts?.timeoutMs ?? 60_000,
       maxBuffer: opts?.maxBuffer ?? 64 * 1024 * 1024,
       indexFd: spawnState.indexFd,
+      boundRoots: spawnState.bindRoots,
+      heldRoots: windowWatch?.heldRoots,
       input: opts?.input,
     });
     // Post-spawn re-verify of the held claims fd (CX-r34-E): the
@@ -6697,6 +7481,7 @@ async function verifierGitSpawn(
         preflight,
         opts?.extraWatchPaths,
         ruleSources,
+        windowWatch?.heldRoots,
       );
       if (coverage !== null) {
         return {
@@ -6785,7 +7570,13 @@ async function verifierGitSpawn(
     }
     let stdout = r.stdout.toString();
     if (overlayRefs && reportsRepoGeometry(args) && preflight?.overlay != null) {
-      stdout = substituteOverlayPaths(stdout, preflight.overlay, preflight.fingerprint!, args);
+      stdout = substituteOverlayPaths(
+        stdout,
+        preflight.overlay,
+        preflight.fingerprint!,
+        args,
+        r.fdEnv,
+      );
     }
     return { exitCode: r.exitCode, stdout, stderr: r.stderr.toString() };
   } finally {
@@ -6958,7 +7749,20 @@ export async function unprovenIgnoredPaths(
       // source absent from the claims index can never be attested.
       const armedSrc = enumerateTrackedRuleSources(preflight);
       if (armedSrc === null) return null;
-      let windowWatch = armEvidenceWindowWatch(root, preflight, undefined, [...armedSrc]);
+      // CX-r38-W1: the inner `diff --name-only HEAD` consult reads
+      // worktree bytes — the tracked surface joins the window's
+      // pin+barrier+watch plan or a mid-window flip→restore attests
+      // foreign rule bytes as committed-clean.
+      const wtPlan = worktreeArmPlan(preflight);
+      if (wtPlan === null) return null;
+      let windowWatch = armEvidenceWindowWatch(
+        root,
+        preflight,
+        undefined,
+        [...armedSrc],
+        undefined,
+        wtPlan,
+      );
       if (windowWatch === null) return null;
       try {
         // A write between the preflight capture and the arm lands in no
@@ -6977,6 +7781,8 @@ export async function unprovenIgnoredPaths(
             timeoutMs: 60_000,
             maxBuffer: 64 * 1024 * 1024,
             indexFd: cs.indexFd,
+            boundRoots: cs.bindRoots,
+            heldRoots: windowWatch?.heldRoots,
             input,
           });
         };

@@ -13,11 +13,11 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <item>RFC-1616: surface evidence refusals through claims and consult paths honestly (RFC-1616 follow-up)</item>
   <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
+  <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -26,7 +26,7 @@ import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 import { createHash } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import {
   resolveGitBin,
   verifierGitEnv,
@@ -41,6 +41,7 @@ import {
   prepareEvidenceIndex,
   spawnCaptured,
   captureEvidenceSurface,
+  captureWorktreeSurface,
   reproveEvidenceSurface,
   armEvidenceWindowWatch,
   geometryLocalAnswer,
@@ -49,6 +50,7 @@ import {
   resolutionEnv,
   sessionIgnoreRulePaths,
   unprovenIgnoredPaths,
+  resolveWorktreeArm,
   type EvidenceFingerprint,
   type EvidencePreflight,
   EVIDENCE_REFUSED_PREFIX,
@@ -192,8 +194,28 @@ async function gitEvidenceAttempt(
   // index via `/proc/<pid>/fd/3`) into a deterministic refusal.
   let windowWatch: ReturnType<typeof armEvidenceWindowWatch> = null;
   if (preflight !== null) {
+    // CX-r38-W1: worktree-content consults fold the claims-derived
+    // tracked surface (and `check-ignore`'s rule sources) into the
+    // armed window — `.git` watches never covered worktree inodes. The
+    // plan recompute rides the arm loop so a drift re-preflight binds
+    // the FRESH held index, never a stale basis.
     for (let armAttempt = 0; preflight !== null; armAttempt++) {
-      windowWatch = armEvidenceWindowWatch(repoRoot, preflight, undefined, opts?.extraWatchPaths);
+      const wtArm = resolveWorktreeArm(args, preflight, opts?.extraWatchPaths);
+      if (wtArm === null) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: worktree surface unverifiable — refusing the consult: git ${args.join(" ")}`,
+        };
+      }
+      windowWatch = armEvidenceWindowWatch(
+        repoRoot,
+        preflight,
+        undefined,
+        wtArm.extraWatch,
+        undefined,
+        wtArm.wtPlan,
+      );
       if (windowWatch === null) {
         preflight = null;
         break;
@@ -298,6 +320,8 @@ async function gitEvidenceAttempt(
       timeoutMs: opts?.timeoutMs ?? 60_000,
       maxBuffer: 64 * 1024 * 1024,
       indexFd: spawnState.indexFd,
+      boundRoots: spawnState.bindRoots,
+      heldRoots: windowWatch?.heldRoots,
     });
     // Any `.git` event inside the armed window means the child may
     // have read an unjudged surface — refuse the verdict regardless of
@@ -341,7 +365,13 @@ async function gitEvidenceAttempt(
     }
     let stdout = r.stdout.toString();
     if (overlayRefs && reportsRepoGeometry(args) && preflight?.overlay != null) {
-      stdout = substituteOverlayPaths(stdout, preflight.overlay, preflight.fingerprint!, args);
+      stdout = substituteOverlayPaths(
+        stdout,
+        preflight.overlay,
+        preflight.fingerprint!,
+        args,
+        r.fdEnv,
+      );
     }
     return { exitCode: r.exitCode, stdout, stderr: r.stderr.toString() };
   } finally {
@@ -474,6 +504,41 @@ export async function evidencePreflight(
   preflight.indexUnproven = prepared.failure;
   preflight.configUnproven = configUnproven;
   preflight.fingerprint = fingerprint;
+  // CX-r38-W2 baseline: every path-valued resolution root the armed
+  // window holds an fd to gets its inode+ctime captured at PREFLIGHT
+  // time — the arm's held-fd open verifies the opened inode against
+  // this tuple, so a rename-substituted root landing between capture
+  // and arm reads as drift instead of binding the forged inode.
+  const rootStats = new Map<string, { ino: number; ctimeMs: number } | null>();
+  for (const r of [
+    fingerprint.workTree,
+    fingerprint.gitDir,
+    fingerprint.commonDir,
+    fingerprint.objectsDir,
+    fingerprint.indexPath === null ? null : dirname(fingerprint.indexPath),
+  ]) {
+    if (r === null || r === undefined || rootStats.has(r)) continue;
+    let st = null;
+    try {
+      const s = statSync(r);
+      st = { ino: s.ino, ctimeMs: s.ctimeMs };
+    } catch {
+      /* unstatable — no proven baseline, the arm fails closed */
+    }
+    rootStats.set(r, st);
+  }
+  fingerprint.rootStats = rootStats;
+  // CX-r38-W1 baseline: the worktree surface the consult will read is
+  // captured at PREFLIGHT time — the arm's pins then compare against
+  // the capture-instant state, so a flip/hide landing between capture
+  // and arm reads as drift (the `.git` fingerprint's own semantics)
+  // instead of being silently adopted as the pin baseline.
+  if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
+    preflight.worktreeSurface = captureWorktreeSurface(
+      fingerprint.workTree,
+      preflight.index.names,
+    );
+  }
   return preflight;
 }
 
