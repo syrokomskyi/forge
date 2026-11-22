@@ -52,7 +52,15 @@ Holds re-probed this round:
 */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, unlinkSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -88,9 +96,13 @@ const plantInfoExclude = (root: string) => {
 };
 
 /** Corrupt `.git/index` → claims rebuild fails → indexUnproven: status/
- *  diff/ls-files refuse while rev-list/log/show/merge-base still answer. */
+ *  diff/ls-files refuse while rev-list/log/show/merge-base still answer.
+ *  CX-r37: the judged index is mode-barriered — `chmod +w` (ctime-visible)
+ *  first, then the in-place write lands. */
 const corruptIndex = (root: string) => {
-  writeFileSync(path.join(root, ".git", "index"), Buffer.from("not-an-index"));
+  const idx = path.join(root, ".git", "index");
+  chmodSync(idx, 0o600);
+  writeFileSync(idx, Buffer.from("not-an-index"));
 };
 
 /** io stub for collectDigest (ambient reads only — journal/registry absent). */

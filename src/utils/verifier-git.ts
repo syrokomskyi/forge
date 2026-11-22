@@ -19,19 +19,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: watch liveIndex fd via /proc/self/fd; enumerate rule sources in-process
-
-CX-r33-B: the fd-form liveIndex re-proof left a re-proof→spawn gap —
-a pwrite inside a frozen coverage child, restored before finish()'s
-readback, fed a forged index to ls-files -s (forged=30/30 on
-O_TMPFILE builds). The fd now arms a dedicated fsWatch on
-/proc/self/fd/<fd> — write fires change at write time, restore can't
-erase it; unwatchable fd-form refuses.
-
-CX-r33-D: enumerateTrackedRuleSources ran the only unarmed claims-fd
-spawn — the same gap forged trackedSet. prepareEvidenceIndex now
-retains parsed claim names on EvidenceIndex.names and the *.gitignore
-filter runs in-process; the spawn is deleted.</item>
   <item>RFC-1616: pin ctimeNs + fsync-settle fd snapshots against mmap stores (RFC-1616 r34)</item>
   <item>RFC-1616: gate held evidence fds behind fchmod 0400 + post-spawn re-verify (RFC-1616 r34 follow-up)
 
@@ -46,6 +33,7 @@ verifierGit channel (CX-r34-E); prior /proc-fd write probes now
 prelude with the chmodat that is itself the detected event.</item>
   <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <item>RFC-1616: scope the judged metadir set to the own worktree (RFC-1616 R35 follow-up)</item>
+  <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -747,6 +735,13 @@ export interface EvidenceFingerprint {
   /** The ambient `.git/index` the claims rebuild enumerated — resolved path + bytes. */
   indexPath: string | null;
   indexBytes: Buffer | null;
+  /**
+   * `.git/sharedindex.*` byte captures beside `indexBytes` — a split
+   * index's `link` extension makes the claims enumeration consult
+   * these too, so the held enumeration dir mints them alongside the
+   * index copy (CX-r36-E). Keyed by absolute path.
+   */
+  sharedIndexBytes: ReadonlyMap<string, Buffer | null>;
   /**
    * Bytes of every overlay-consultable `.git` file at capture (CX-r35-A)
    * — root/nested/refs/wtRefs/worktrees members ≤64KiB, ≤4MiB total.
@@ -1651,7 +1646,11 @@ export function isEvidenceGitQuery(args: readonly string[]): boolean {
   // `%(notes)` expands the session-planted notes ref. Both families
   // cannot be pinned by name (the branch/ref names are positional), so
   // the atoms are refused outright — fail closed, never a shaped answer.
-  if (args.some((a) => /%\((?:upstream|push|track|notes)/i.test(a))) return false;
+  // `%(worktreepath)` prints the commondir-derived worktree path — under
+  // the overlay that embeds a mint path the substitution layer can only
+  // map to the GITDIR, not the worktree, and the atom can sit anywhere
+  // in a format line so line-level rewriting cannot correct it (CX-r37).
+  if (args.some((a) => /%\((?:upstream|push|track|notes|worktreepath)/i.test(a))) return false;
   // `%N` expands session-planted notes in `log`/`show` format strings —
   // the `%(notes)` atom check misses the placeholder form, and the
   // displayRef pins then curate the answer to "" (CX-154). `%n` is a
@@ -1720,6 +1719,180 @@ export function reportsRepoGeometry(args: readonly string[]): boolean {
   if (args[0] === "worktree") return true;
   if (args[0] !== "rev-parse") return false;
   return args.slice(1).some((a) => GEOMETRY_FLAGS.has(a.split("=")[0]!));
+}
+
+/**
+ * `rev-parse` geometry flags whose answers are pure functions of the
+ * judged anchors — answered in-process so no live gitdir consult
+ * exists to forge (CX-r36-B). `--is-inside-git-dir` can ONLY be
+ * answered this way: under the overlay `GIT_DIR` the child compares
+ * cwd to the MINT path, which no env pin can correct. The rest stay
+ * for the same reason — the fingerprint IS the judged truth a live
+ * spawn would consult.
+ */
+const GEOMETRY_LOCAL_FLAGS: ReadonlySet<string> = new Set([
+  "--is-inside-git-dir",
+  "--is-inside-work-tree",
+  "--is-bare-repository",
+  "--is-shallow-repository",
+  "--show-object-format",
+  "--show-toplevel",
+  "--show-prefix",
+  "--show-cdup",
+  "--git-dir",
+  "--absolute-git-dir",
+  "--git-common-dir",
+]);
+
+/**
+ * Answers a pure-geometry `rev-parse` from the fingerprint — `null`
+ * when the argv is not all-local flags (mixed flag+rev forms still
+ * spawn through the overlay + path substitution below). The spawn
+ * channel pins `GIT_DIR`/`GIT_WORK_TREE` absolutely, so `--git-dir` &
+ * friends print absolute answers under the channel's own contract.
+ */
+export function geometryLocalAnswer(
+  args: readonly string[],
+  preflight: EvidencePreflight | null,
+  cwd: string,
+): VerifierGitResult | null {
+  if (args[0] !== "rev-parse" || args.length < 2) return null;
+  const flags = args.slice(1);
+  if (!flags.every((a) => GEOMETRY_LOCAL_FLAGS.has(a))) return null;
+  const fp = preflight?.fingerprint;
+  if (fp === undefined || fp.gitDir === null) return null;
+  const inside = (dir: string | null): boolean => {
+    if (dir === null) return false;
+    let c: string;
+    let d: string;
+    try {
+      c = realpathSync(cwd);
+    } catch {
+      c = path.resolve(cwd);
+    }
+    try {
+      d = realpathSync(dir);
+    } catch {
+      d = dir;
+    }
+    return c === d || c.startsWith(d + path.sep);
+  };
+  const noWorkTree = (): VerifierGitResult => ({
+    exitCode: 128,
+    stdout: "",
+    stderr: "fatal: this operation must be run in a work tree\n",
+  });
+  const lines: string[] = [];
+  for (const f of flags) {
+    if (f === "--git-dir" || f === "--absolute-git-dir") {
+      lines.push(fp.gitDir);
+    } else if (f === "--git-common-dir") {
+      lines.push(fp.commonDir ?? fp.gitDir);
+    } else if (f === "--show-toplevel") {
+      if (fp.workTree === null) return noWorkTree();
+      lines.push(fp.workTree);
+    } else if (f === "--show-prefix" || f === "--show-cdup") {
+      if (fp.workTree === null) return noWorkTree();
+      let c: string;
+      let w: string;
+      try {
+        c = realpathSync(cwd);
+      } catch {
+        c = path.resolve(cwd);
+      }
+      try {
+        w = realpathSync(fp.workTree);
+      } catch {
+        w = fp.workTree;
+      }
+      const rel = path.relative(w, c);
+      if (rel === "" || rel.startsWith("..")) {
+        lines.push("");
+      } else {
+        const segs = rel.split(path.sep);
+        lines.push(
+          f === "--show-prefix" ? `${segs.join("/")}/` : `${segs.map(() => "..").join("/")}/`,
+        );
+      }
+    } else if (f === "--is-inside-git-dir") {
+      lines.push(inside(fp.gitDir) ? "true" : "false");
+    } else if (f === "--is-inside-work-tree") {
+      lines.push(fp.workTree !== null && inside(fp.workTree) ? "true" : "false");
+    } else if (f === "--is-bare-repository") {
+      lines.push(fp.topology === "selfdir" ? "true" : "false");
+    } else if (f === "--is-shallow-repository") {
+      // `.git/shallow` presence refuses upstream in the judge, so a
+      // judged repo is never shallow.
+      lines.push("false");
+    } else if (f === "--show-object-format") {
+      lines.push(preflight?.objectFormat ?? "sha1");
+    }
+  }
+  return { exitCode: 0, stdout: `${lines.join("\n")}\n`, stderr: "" };
+}
+
+/**
+ * Geometry spawn output under the overlay `GIT_DIR` can embed mint
+ * paths — `--git-dir`/`--git-common-dir`/`--git-path`/`--local-env-vars`
+ * print env values verbatim (verified). The child resolved every REF
+ * through minted bytes; only path-shaped ANSWER tokens need the real
+ * anchors substituted back (CX-r36-B).
+ */
+export function substituteOverlayPaths(
+  stdout: string,
+  overlay: { gitDir: string; commonDir?: string },
+  fp: EvidenceFingerprint,
+  args?: readonly string[],
+): string {
+  let out = stdout;
+  // `worktree list` prints each worktree's path — the MAIN entry derives
+  // from commondir (commondir minus a `/.git` suffix, the commondir
+  // itself otherwise), never the gitdir token the generic rewrite below
+  // would substitute (CX-r37: `worktree <ov-main>` became `worktree
+  // <repo>/.git`, `primaryWorktree` resolved the GITDIR as the primary
+  // checkout, and a status consult there answered ` D` for every claim —
+  // FLOW-CUT-07). Linked entries print real paths already: the minted
+  // sibling metadirs carry their `gitdir` files' original bytes. The
+  // worktree-line map runs before the generic rewrites so a `worktree
+  // <ov-common>` line is not first rewritten to `worktree <real-common>`.
+  if (args?.[0] === "worktree") {
+    const realCommon = fp.commonDir ?? fp.gitDir;
+    const mainAnswer =
+      realCommon !== null && realCommon.endsWith("/.git")
+        ? realCommon.slice(0, -"/.git".length)
+        : realCommon;
+    if (mainAnswer !== null) {
+      out = out.split(`worktree ${overlay.gitDir}`).join(`worktree ${mainAnswer}`);
+      if (overlay.commonDir !== undefined) {
+        out = out.split(`worktree ${overlay.commonDir}`).join(`worktree ${mainAnswer}`);
+      }
+    }
+  }
+  if (overlay.commonDir !== undefined && fp.commonDir !== null) {
+    out = out.split(overlay.commonDir).join(fp.commonDir);
+  }
+  if (fp.gitDir !== null) out = out.split(overlay.gitDir).join(fp.gitDir);
+  return out;
+}
+
+/**
+ * `cat-file <type> <oid>` serves raw object bytes — the one consult
+ * whose OUTPUT is content-verifiable end to end: the served bytes
+ * re-hash to the requested name or the read was forged (CX-r36 belt —
+ * catches the residual between the write barrier's arm time and the
+ * consult itself).
+ */
+const CAT_FILE_SERVE_TYPES: ReadonlySet<string> = new Set(["blob", "commit", "tag", "tree"]);
+export function catFileObjectRequest(
+  args: readonly string[],
+): { type: string; oid: string } | null {
+  if (args[0] !== "cat-file" || !CAT_FILE_SERVE_TYPES.has(args[1] ?? "")) return null;
+  const oid = args[2];
+  return typeof oid === "string" && /^[0-9a-f]{40}$/.test(oid)
+    ? { type: args[1]!, oid }
+    : typeof oid === "string" && /^[0-9a-f]{64}$/.test(oid)
+      ? { type: args[1]!, oid }
+      : null;
 }
 
 /**
@@ -1849,12 +2022,14 @@ function statKeyMatches(memo: VerifiedStat | undefined, st: VerifiedStat): boole
 
 /**
  * Verified loose-object files — keyed by absolute path with the stat
- * triple a rewrite cannot preserve. Loose objects are write-once for
- * git, so a matching (ino, ctimeMs, size) tuple means the file's hash
- * check still stands; a session rewriting the file in place (`chmod`,
- * new bytes — CX-104's shadow path) bumps ctime and forces a re-hash,
- * and a same-stat rewrite is impossible because ctime is not settable
- * (CX-114).
+ * triple. The tuple alone was never a proof: a read-first
+ * `mmap(MAP_SHARED)` store flips bytes while ino/ctime/size all stay
+ * put (CX-r36-A). It is sound NOW because the capture strips the
+ * owner write bit BEFORE this scan runs and audits procfs for
+ * pre-held writable descriptions — after that, a byte change must
+ * `chmodat`, which bumps ctime and invalidates the key, forcing the
+ * re-hash. A session rewriting through `chmod`+new bytes (CX-104's
+ * shadow path) reads the same way.
  */
 const verifiedLooseFiles = new Map<string, VerifiedStat>();
 const LOOSE_FANOUT_RE = /^[0-9a-f]{2}$/;
@@ -2191,7 +2366,7 @@ function mintEvidenceGitdirOverlay(fp: EvidenceFingerprint): EvidenceGitdirOverl
     src: string,
     dst: string,
     commonTarget: string,
-    level: "gitdir" | "worktrees" | "data",
+    level: "gitdir" | "worktrees" | "metadir" | "data",
   ): boolean => {
     let entries: Dirent[];
     try {
@@ -2204,9 +2379,22 @@ function mintEvidenceGitdirOverlay(fp: EvidenceFingerprint): EvidenceGitdirOverl
       const dp = path.join(dst, e.name);
       if (e.isDirectory()) {
         if (OVERLAY_SKIP_DIRS.has(e.name)) continue;
-        if (level === "worktrees" && e.name !== ownWtId) continue;
+        // A foreign metadir's consultable set is flat — {HEAD, gitdir,
+        // commondir, locked} and nothing deeper (CX-r28/r29-D:
+        // `worktrees/<id>/rebase-merge/rewritten/evil` dwims as a ref).
+        // Its subdirs never mint, or a planted pseudo-ref answers.
+        if (level === "metadir") continue;
+        // Sibling metadir dirs pass — `worktree list` consults their
+        // head-level members (CX-r36-B1). `level` narrows to "metadir"
+        // so only the consultable set mints; deeper members stay out.
         const childLevel =
-          e.name === "worktrees" ? "worktrees" : level === "worktrees" ? "gitdir" : "data";
+          e.name === "worktrees"
+            ? "worktrees"
+            : level === "worktrees"
+              ? e.name === ownWtId
+                ? "gitdir"
+                : "metadir"
+              : "data";
         try {
           chmodSync(dp, 0o700);
         } catch {
@@ -2215,7 +2403,11 @@ function mintEvidenceGitdirOverlay(fp: EvidenceFingerprint): EvidenceGitdirOverl
         dirs.push(dp);
         if (!fillTree(sp, dp, commonTarget, childLevel)) return false;
       } else if (e.isFile()) {
-        if ((level === "gitdir" && OVERLAY_SKIP_FILES.has(e.name)) || e.name.endsWith(".lock"))
+        if (
+          (level === "gitdir" && OVERLAY_SKIP_FILES.has(e.name)) ||
+          (level === "metadir" && !METADIR_CONSULT_FILES.has(e.name)) ||
+          e.name.endsWith(".lock")
+        )
           continue;
         let sz: number;
         try {
@@ -2267,7 +2459,7 @@ function mintEvidenceGitdirOverlay(fp: EvidenceFingerprint): EvidenceGitdirOverl
     src: string,
     dst: string,
     commonTarget: string,
-    level: "gitdir" | "worktrees" | "data",
+    level: "gitdir" | "worktrees" | "metadir" | "data",
   ): boolean => {
     try {
       cpSync(src, dst, {
@@ -2277,11 +2469,10 @@ function mintEvidenceGitdirOverlay(fp: EvidenceFingerprint): EvidenceGitdirOverl
         filter: (s) => {
           if (s === src) return true;
           if (!lstatSync(s).isDirectory()) return false;
-          const bn = path.basename(s);
-          return (
-            !OVERLAY_SKIP_DIRS.has(bn) &&
-            (path.dirname(s) !== path.join(src, "worktrees") || bn === ownWtId)
-          );
+          // Every `worktrees/<id>` metadir dir passes — the walk below
+          // narrows foreign metadirs to the consultable member set
+          // (CX-r36-B1), so the skeleton must exist for the mint.
+          return !OVERLAY_SKIP_DIRS.has(path.basename(s));
         },
       });
       chmodSync(dst, 0o700);
@@ -2561,18 +2752,110 @@ export function heldEvidenceFile(bytes: Buffer, stem: string): EvidenceIndex | n
 
 export async function prepareEvidenceIndex(
   repoRoot: string,
-  internalEnv?: Record<string, string>,
+  internalEnv: Record<string, string> | undefined,
+  liveIndex: {
+    path: string | null;
+    bytes: Buffer | null;
+    shared: ReadonlyMap<string, Buffer | null>;
+  },
 ): Promise<EvidenceIndexPreparation> {
+  // CX-r36-E: the claims enumeration consults the CAPTURED index image
+  // from a verifier-held dir, never the live `.git/index` — the
+  // capture→enumeration window the armed watch could not cover
+  // disappears outright. `GIT_INDEX_FILE` points the `ls-files`
+  // child at a 0400-held copy (a mid-spawn flip needs `chmodat`,
+  // which moves ctimeNs and is re-verified below); sharedindex
+  // members mint alongside so a split-index `link` extension
+  // resolves inside the held dir, never back into live bytes.
+  const mintClaimsDir = ():
+    | { dir: string; pins: { p: string; bytes: Buffer; ctimeNs: bigint }[] }
+    | { failure: string } => {
+    const base = evidencePrivateTmpdir();
+    if (base === null) return { failure: "held claims dir unmintable" };
+    let dir: string;
+    try {
+      dir = mkdtempSync(path.join(base, "ci-"));
+      chmodSync(dir, 0o700);
+    } catch {
+      return { failure: "held claims dir unmintable" };
+    }
+    const minted: [string, Buffer][] = [[path.join(dir, "index"), liveIndex.bytes!]];
+    for (const [abs, b] of liveIndex.shared) {
+      if (b !== null) minted.push([path.join(dir, path.basename(abs)), b]);
+    }
+    const pins: { p: string; bytes: Buffer; ctimeNs: bigint }[] = [];
+    for (const [p, b] of minted) {
+      if (!mintHeldPath(p, b)) {
+        removeEvidenceScratchTree(dir);
+        return { failure: "held claims index mint failed" };
+      }
+      try {
+        pins.push({ p, bytes: b, ctimeNs: statSync(p, { bigint: true }).ctimeNs });
+      } catch {
+        removeEvidenceScratchTree(dir);
+        return { failure: "held claims index mint failed" };
+      }
+    }
+    return { dir, pins };
+  };
+  let heldIndexPath: string | null = null;
+  let heldPins: { p: string; bytes: Buffer; ctimeNs: bigint }[] = [];
+  let heldDir: string | null = null;
+  if (liveIndex.bytes === null) {
+    // A genuinely absent index means an empty claims set — mint the
+    // empty image directly; no live surface exists to consult.
+    if (liveIndex.path !== null && existsSync(liveIndex.path)) {
+      return {
+        failure:
+          ".git/index exists but could not be captured — claims enumeration would read unjudged bytes",
+      };
+    }
+    const index = heldEvidenceFile(serializeIndexClaims([]), "index");
+    if (index !== null) index.names = [];
+    return index === null
+      ? { failure: ".git/index claims write failed (held file creation failed)" }
+      : { index };
+  }
+  const minted = mintClaimsDir();
+  if ("failure" in minted) return { failure: minted.failure };
+  heldDir = minted.dir;
+  heldPins = minted.pins;
+  heldIndexPath = path.join(heldDir, "index");
   // The claims listing spawns with the static pins via env: `ls-files`
   // consults `core.fsmonitor` even for a pure --stage dump — a session
   // program must not exec inside the enumeration (CX-115 class). The
   // static pins are unconditional (R13-D): the live config the spawn
   // reads cannot arm a lever the pin set does not name. Resolution pins
-  // anchor it to the same gitdir the fingerprint judged (CX-143).
+  // anchor it to the same gitdir the fingerprint judged (CX-143);
+  // `GIT_INDEX_FILE` lands with them so the held image wins over any
+  // extraEnv key.
   const claims = await execEvidenceGit(repoRoot, ["ls-files", "--stage", "-z"], {
     extraEnv: evidencePinEnv(["ls-files"]),
-    internalEnv,
+    internalEnv: { ...internalEnv, GIT_INDEX_FILE: heldIndexPath },
   });
+  // Held-image re-verify before the listing is trusted: a chmodat-gated
+  // flip→restore inside the spawn moves the change time (CX-r34-E's
+  // held-fd post-check, now on the claims side).
+  const heldOk = heldPins.every((pin) => {
+    try {
+      const st = statSync(pin.p, { bigint: true });
+      return (
+        st.ctimeNs === pin.ctimeNs &&
+        (st.mode & 0o222n) === 0n &&
+        readFileSync(pin.p).equals(pin.bytes)
+      );
+    } catch {
+      return false;
+    }
+  });
+  try {
+    removeEvidenceScratchTree(heldDir);
+  } catch {
+    /* scratch litter — best effort */
+  }
+  if (!heldOk) {
+    return { failure: "held claims index mutated mid-enumeration" };
+  }
   if (claims.exitCode !== 0) {
     return {
       failure: `.git/index claims enumeration failed (git ls-files --stage, exit ${claims.exitCode})`,
@@ -3562,6 +3845,169 @@ function discoverGitMetaHazards(repoRoot: string): string[] {
   return hazards;
 }
 
+/**
+ * R37 / CX-r36 — the write barrier stat pins cannot express. A
+ * read-first `mmap(MAP_SHARED)` store is invisible to every observed
+ * layer: no inotify event, no reliable i_ctime bump on tmpfs — the r36
+ * battery flipped loose objects, refs, metadir files, and the index
+ * mid-consult while `{ino,ctime,size}` + watches stayed clean. The
+ * only same-UID-proof bound is the mode bit itself: an
+ * owner-nonwritable file refuses every NEW writable description, so a
+ * mid-window flip must `chmodat` first — i_ctime moves (drift at
+ * settle/reprove) and IN_ATTRIB fires on the parent watch. chmod does
+ * NOT revoke an already-held description: an O_RDWR fd or a MAP_SHARED
+ * mapping installed while the file was writable keeps storing
+ * silently post-chmod (verified), so the barrier pairs with a procfs
+ * audit — every fd table and shared-writable mapping enumerable for
+ * this uid is scanned for the barriered inodes, and a hit means the
+ * file carried a prepared silent-flip channel: its bytes are
+ * unprovable.
+ *
+ * Applied to the surfaces a judged child reads LIVE: the object store
+ * (bound through `GIT_OBJECT_DIRECTORY` — it outsizes any mint bound),
+ * the real index, and `sharedindex.*` siblings. Overlay-bound surfaces
+ * (refs, config, HEAD, metadirs, packed-refs) need no barrier — the
+ * child reads minted copies. Without procfs (non-Linux) the fd/mapping
+ * half is skipped and the mode barrier alone stands — the residual is
+ * documented, never silently weaker than the observed layer it
+ * replaces.
+ */
+/** glibc makedev() — reconstructs the dev id `/proc/<pid>/maps` reports per field. */
+const makedev = (major: bigint, minor: bigint): bigint =>
+  (minor & 0xffn) |
+  ((major & 0xfffn) << 8n) |
+  ((minor & ~0xffn) << 12n) |
+  ((major & ~0xfffn) << 32n);
+
+interface WriteChannelScan {
+  /** `"dev:ino"` keys found armed — members of `targets` only. */
+  armed: Set<string>;
+  /** false when procfs was absent — the audit is skipped off-Linux. */
+  complete: boolean;
+}
+
+/**
+ * One host-wide scan for writable descriptions on `targets` — see the
+ * barrier comment above. `/proc/<pid>/fd` magic links stat to the open
+ * inode; `fdinfo`'s `flags` carries O_ACCMODE (same-uid readable).
+ * `/proc/<pid>/maps` regions carry `perms dev inode` — only `w`+`s`
+ * stores back to the file, and the mapping survives its fd's close, so
+ * the fd table alone proves nothing. Foreign-uid tables are
+ * fdinfo-opaque: their fd on a target inode is conservatively armed,
+ * which stays honest because an owner-writable file is the only kind
+ * a foreign uid could have opened writable anyway.
+ */
+function scanWriteChannels(targets: ReadonlySet<string>): WriteChannelScan {
+  const armed = new Set<string>();
+  let pids: string[];
+  try {
+    pids = readdirSync("/proc");
+  } catch {
+    return { armed, complete: false };
+  }
+  const uid = typeof process.getuid === "function" ? process.getuid() : -1;
+  for (const pid of pids) {
+    if (!/^\d+$/.test(pid)) continue;
+    let sameUid = true;
+    if (pid !== String(process.pid)) {
+      try {
+        sameUid = statSync(`/proc/${pid}`).uid === uid;
+      } catch {
+        continue;
+      }
+    }
+    let fds: string[];
+    try {
+      fds = readdirSync(`/proc/${pid}/fd`);
+    } catch {
+      fds = [];
+    }
+    for (const fd of fds) {
+      let st;
+      try {
+        st = statSync(`/proc/${pid}/fd/${fd}`, { bigint: true });
+      } catch {
+        continue;
+      }
+      const key = `${st.dev}:${st.ino}`;
+      if (!targets.has(key)) continue;
+      let writable = !sameUid;
+      if (sameUid) {
+        try {
+          const m = /^flags:\t([0-7]+)/m.exec(readFileSync(`/proc/${pid}/fdinfo/${fd}`, "utf8"));
+          if (m !== null) {
+            const flags = Number.parseInt(m[1]!, 8);
+            writable = (flags & 0o3) !== 0 && (flags & 0o10000000) === 0;
+          }
+        } catch {
+          /* fdinfo raced closed — keep the conservative answer */
+        }
+      }
+      if (writable) armed.add(key);
+    }
+    if (!sameUid) continue;
+    let maps: string;
+    try {
+      maps = readFileSync(`/proc/${pid}/maps`, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of maps.split("\n")) {
+      const m = /^[0-9a-f]+-[0-9a-f]+\s+(\S+)\s+[0-9a-f]+\s+([0-9a-f]+:[0-9a-f]+)\s+(\d+)/i.exec(
+        line,
+      );
+      if (m === null) continue;
+      const perms = m[1]!;
+      if (perms[1] !== "w" || perms[3] !== "s") continue;
+      const [maj, min] = m[2]!.split(":").map((h) => BigInt(`0x${h}`));
+      const key = `${makedev(maj!, min!)}:${m[3]}`;
+      if (targets.has(key)) armed.add(key);
+    }
+  }
+  return { armed, complete: true };
+}
+
+/**
+ * `dev:ino` → post-barrier `ctimeNs` at the last audit that proved the
+ * inode carried no writable description or shared-writable mapping.
+ * While a file's mode stays non-writable NO new channel can form —
+ * `open(O_RDWR|O_WRONLY)` fails EACCES, `mmap(MAP_SHARED, PROT_WRITE)`
+ * needs a write-capable description (an fd mapping can only mint what
+ * its fd allows), and an SCM_RIGHTS transfer has no source once every
+ * same-uid table is proven empty. The only reopen is an owner
+ * `chmodat`, which always bumps `i_ctime` — so a {dev,ino,ctimeNs}
+ * memo miss means "the inode may have been writable since its audit"
+ * and the sweep re-runs. Inodes that return to writable (armed extra
+ * files restored at settle) churn their ctime and re-audit naturally.
+ * Bounded: on overflow the map clears — worst case is one re-audit.
+ */
+const cleanChannelInos = new Map<string, bigint>();
+const CLEAN_CHANNEL_INO_CAP = 50_000;
+
+/**
+ * The sweep with the memo above — `targets` carries each inode's
+ * post-barrier `ctimeNs`. `complete:false` means procfs was absent
+ * (off-Linux): the audit is skipped, never a confident clean.
+ */
+function auditWriteChannels(targets: Map<string, { abs: string; ctimeNs: bigint }>): {
+  armed: string[];
+  complete: boolean;
+} {
+  const unproven = new Map<string, string>();
+  for (const [key, t] of targets) {
+    if (cleanChannelInos.get(key) === t.ctimeNs) continue;
+    unproven.set(key, t.abs);
+  }
+  if (unproven.size === 0) return { armed: [], complete: true };
+  const scan = scanWriteChannels(new Set(unproven.keys()));
+  if (!scan.complete) return { armed: [], complete: false };
+  if (scan.armed.size === 0) {
+    if (cleanChannelInos.size >= CLEAN_CHANNEL_INO_CAP) cleanChannelInos.clear();
+    for (const [key, t] of targets) cleanChannelInos.set(key, t.ctimeNs);
+  }
+  return { armed: [...scan.armed].map((k) => unproven.get(k) ?? k), complete: true };
+}
+
 export async function captureEvidenceSurface(
   repoRoot: string,
   runGit: EvidenceGitRunner,
@@ -3578,6 +4024,12 @@ export async function captureEvidenceSurface(
   /** Non-regular `.git` metadata that would block git's own startup
    * reads (CX-144) — the caller refuses without spawning. */
   hazards: string[];
+  /**
+   * Live-consulted files carrying a prepared silent write channel —
+   * a writable description or mapping the mode barrier cannot revoke
+   * (CX-r36). The caller refuses through shapeViolations.
+   */
+  writeChannels: string[];
   fingerprint: EvidenceFingerprint;
 }> {
   const dotGitAbs = path.join(repoRoot, ".git");
@@ -3601,6 +4053,7 @@ export async function captureEvidenceSurface(
       headBranch: null,
       anyFailed: true,
       hazards,
+      writeChannels: [],
       fingerprint: {
         dotGit,
         gitDir: null,
@@ -3629,6 +4082,7 @@ export async function captureEvidenceSurface(
         packedRefsBytes: null,
         indexPath: null,
         indexBytes: null,
+        sharedIndexBytes: new Map(),
         consultBytes: new Map(),
         topology: "unknown",
       },
@@ -3899,17 +4353,23 @@ export async function captureEvidenceSurface(
     }
   }
   const objectFilesMap = objectsAbs === null ? new Map() : enumerateTreeFiles(objectsAbs);
-  // Only the OWN metadir is evidence — sibling `worktrees/<other-id>`
-  // trees carry a concurrent session's rebase/index/reflog churn that
-  // no consult resolves through. Loose files directly inside
-  // `worktrees/` (no separator — plants, registry junk) stay pinned:
-  // `rev-parse worktrees/<name>` still dwims them.
+  // The OWN metadir's whole subtree is evidence; sibling
+  // `worktrees/<other-id>` subtrees narrow to exactly the members
+  // `worktree list` consults (CX-r36-B1 — strace-verified:
+  // `HEAD`/`gitdir`/`commondir`/`locked` at the metadir's own level).
+  // Everything deeper in a foreign metadir stays a concurrent
+  // session's churn surface no consult resolves through. Loose files
+  // directly inside `worktrees/` (no separator — plants, registry
+  // junk) stay pinned: `rev-parse worktrees/<name>` still dwims them.
   const worktreeFilesMap = (() => {
     if (worktreesDir === null) return new Map<string, EvidenceSurfaceFile>();
     const m = enumerateTreeFiles(worktreesDir);
     const ownId = worktreeMetadir === null ? null : `${path.basename(worktreeMetadir)}${path.sep}`;
     for (const k of m.keys()) {
-      if (k.includes(path.sep) && (ownId === null || !k.startsWith(ownId))) m.delete(k);
+      if (!k.includes(path.sep)) continue;
+      if (ownId !== null && k.startsWith(ownId)) continue;
+      const leaf = k.slice(k.indexOf(path.sep) + 1);
+      if (leaf.includes(path.sep) || !METADIR_CONSULT_FILES.has(leaf)) m.delete(k);
     }
     return m;
   })();
@@ -3969,6 +4429,99 @@ export async function captureEvidenceSurface(
   for (const [rel, st] of worktreeFilesMap) {
     if (worktreesDir !== null) pinConsult(path.join(worktreesDir, rel), st);
   }
+  // Split-index siblings: the claims enumeration's `link` extension
+  // reaches `<index-dir>/sharedindex.<sha>` — byte-captured like the
+  // index so the held enumeration dir can mint them (CX-r36-E).
+  const sharedIndexBytesMap = new Map<string, Buffer | null>();
+  for (const abs of rootFilesMap.keys()) {
+    if (/^sharedindex\./.test(path.basename(abs))) {
+      sharedIndexBytesMap.set(abs, safeReadBytes(abs));
+    }
+  }
+  // Write barrier + procfs audit (CX-r36/R37 — see scanWriteChannels):
+  // strip the owner write bit on every live-consulted file — the
+  // object store (children read it through GIT_OBJECT_DIRECTORY; the
+  // store outsizes any mint bound), the real index, `sharedindex.*` —
+  // then scan every enumerable fd table and shared-writable mapping
+  // for descriptions opened while the file was still writable. A hit
+  // is a prepared silent-flip channel: the file's bytes are
+  // unprovable, so the caller refuses via `writeChannels`. stat
+  // entries re-record the post-chmod ctime so the barrier itself
+  // never reads as surface drift.
+  const writeChannels: string[] = [];
+  const barrierTargets = new Map<string, { abs: string; ctimeNs: bigint }>();
+  const applyWriteBarrier = (
+    abs: string,
+    mapEntry?: { map: Map<string, EvidenceSurfaceFile>; key: string },
+  ) => {
+    let st;
+    try {
+      st = statSync(abs, { bigint: true });
+    } catch {
+      return;
+    }
+    if (!st.isFile()) return;
+    let dev = st.dev;
+    let ino = st.ino;
+    let ctimeNs = st.ctimeNs;
+    if ((st.mode & 0o222n) !== 0n) {
+      try {
+        chmodSync(abs, Number(st.mode & 0o7777n & ~0o222n));
+      } catch {
+        /* chmod raced the file away — drift elsewhere */
+      }
+      try {
+        // The fp map needs the float ctimeMs (ns-precision bigint ctimeMs
+        // truncates to whole ms and every pin compare would read as
+        // drift); the memo keys the bigint ctimeNs of the inode the
+        // barrier LANDED on — a mid-barrier rename would otherwise
+        // credit a stale key with the new inode's change time.
+        const st2f = statSync(abs);
+        const st2 = statSync(abs, { bigint: true });
+        dev = st2.dev;
+        ino = st2.ino;
+        ctimeNs = st2.ctimeNs;
+        if (mapEntry !== undefined) {
+          const cur = mapEntry.map.get(mapEntry.key);
+          if (cur !== undefined) {
+            mapEntry.map.set(mapEntry.key, { ...cur, ctimeMs: st2f.ctimeMs });
+          }
+        }
+      } catch {
+        /* vanished — the reprove reads it as drift */
+      }
+    }
+    barrierTargets.set(`${dev}:${ino}`, { abs, ctimeNs });
+  };
+  if (objectsAbs !== null) {
+    for (const [rel, st] of objectFilesMap) {
+      if (st.kind !== undefined || st.link !== undefined) continue;
+      applyWriteBarrier(path.join(objectsAbs, rel), { map: objectFilesMap, key: rel });
+    }
+  }
+  if (indexAbs !== null) {
+    // The index's rootFiles entry needs the post-chmod ctime too —
+    // otherwise the arm pins the pre-barrier change time and every
+    // settle reads the barrier itself as drift.
+    const cur = rootFilesMap.get(indexAbs);
+    applyWriteBarrier(
+      indexAbs,
+      cur === undefined ? undefined : { map: rootFilesMap, key: indexAbs },
+    );
+  }
+  for (const abs of sharedIndexBytesMap.keys()) {
+    const cur = rootFilesMap.get(abs);
+    applyWriteBarrier(abs, cur === undefined ? undefined : { map: rootFilesMap, key: abs });
+  }
+  if (barrierTargets.size > 0) {
+    const scan = auditWriteChannels(barrierTargets);
+    // `complete:false` — procfs absent (off-Linux): the audit is skipped,
+    // a documented platform gap, not a confident clean. The mode barrier
+    // still applies.
+    for (const abs of scan.armed) {
+      writeChannels.push(`armed write-channel: ${abs}`);
+    }
+  }
   const fingerprint: EvidenceFingerprint = {
     dotGit,
     gitDir,
@@ -3997,6 +4550,7 @@ export async function captureEvidenceSurface(
     packedRefsBytes: packedRefsAbs === null ? null : safeReadBytes(packedRefsAbs),
     indexPath: indexAbs,
     indexBytes: indexAbs === null ? null : safeReadBytes(indexAbs),
+    sharedIndexBytes: sharedIndexBytesMap,
     consultBytes,
     topology,
   };
@@ -4008,6 +4562,7 @@ export async function captureEvidenceSurface(
     headBranch,
     anyFailed,
     hazards: [...hazards, ...unverifiableNodes],
+    writeChannels,
     fingerprint,
   };
 }
@@ -4055,6 +4610,20 @@ interface EvidenceWindowWatch {
 }
 
 const EVIDENCE_WATCH_DIR_BOUND = 4096;
+
+/**
+ * The members `worktree list` consults inside each `<common>/worktrees/<id>`
+ * metadir (CX-r36-B1, strace-verified): HEAD for the branch field,
+ * gitdir for the worktree path, commondir for the common re-point,
+ * locked for the locked field. Deeper members (index, logs/, refs/,
+ * MERGE_*) stay foreign churn — no consult reaches them.
+ */
+const METADIR_CONSULT_FILES: ReadonlySet<string> = new Set([
+  "HEAD",
+  "gitdir",
+  "commondir",
+  "locked",
+]);
 
 function collectTreeDirs(root: string, out: string[], bound: number): boolean {
   const stack = [root];
@@ -4112,6 +4681,10 @@ function evidenceWindowDirs(repoRoot: string, fp: EvidenceFingerprint): string[]
   // parallel worktree activity into systematic mid-window refuses. The
   // `worktrees/` container itself stays watched (a foreign worktree
   // add/remove is honest registry drift); only per-sibling subtrees drop.
+  // Their consultable members ({HEAD,gitdir,commondir,locked} —
+  // CX-r36-B1) stay bound through the fingerprint's stat+byte pins and
+  // the overlay mint — a mid-window write to one still reads as settle
+  // drift, just not as a live inotify event.
   if (fp.worktreesDir !== null) {
     const wtRoot = `${fp.worktreesDir}${path.sep}`;
     const ownId = fp.worktreeMetadir === null ? null : path.basename(fp.worktreeMetadir);
@@ -4339,8 +4912,52 @@ export function armEvidenceWindowWatch(
           ctimeNs: fstatSync(claims.fd, { bigint: true }).ctimeNs,
         }
       : null;
+  // CX-r36-D2: a consulted worktree source keeps the silent-flip class
+  // the object store had — the stat pin only sees the write modes it
+  // can see. Each armed extra file loses its owner write bit for the
+  // window (a mid-window flip must `chmodat` → IN_ATTRIB on its own
+  // file watch + ctime drift), gets audited for descriptions opened
+  // while it was still writable, and its mode is restored at settle so
+  // user content never stays read-only.
+  const extraRestores: { p: string; mode: number }[] = [];
+  const extraInos = new Map<string, { abs: string; ctimeNs: bigint }>();
   for (const f of extraFiles ?? []) {
-    if (ignore?.(f) !== true) pinFile(f);
+    if (ignore?.(f) === true) continue;
+    try {
+      const st = statSync(f, { bigint: true });
+      if (st.isFile()) {
+        let dev = st.dev;
+        let ino = st.ino;
+        let ctimeNs = st.ctimeNs;
+        if ((st.mode & 0o222n) !== 0n) {
+          extraRestores.push({ p: f, mode: Number(st.mode & 0o7777n) });
+          chmodSync(f, Number(st.mode & 0o7777n & ~0o222n));
+          // The memo's inode key is the POST-barrier identity+ctime —
+          // settle restores +w (another ctime bump), so an extra file
+          // can never memo-hit across windows without first re-churning
+          // through a writable state that demands the re-audit.
+          try {
+            const st2 = statSync(f, { bigint: true });
+            dev = st2.dev;
+            ino = st2.ino;
+            ctimeNs = st2.ctimeNs;
+          } catch {
+            /* raced away */
+          }
+        }
+        extraInos.set(`${dev}:${ino}`, { abs: f, ctimeNs });
+      }
+    } catch {
+      /* the stat pin below records the same absence */
+    }
+    pinFile(f);
+  }
+  if (extraInos.size > 0) {
+    const scan = auditWriteChannels(extraInos);
+    if (scan.armed.length > 0) {
+      for (const abs of scan.armed) events.push(abs);
+      failed = true;
+    }
   }
   // Overlay files are verifier-owned (minted 0400 inside the private
   // dir) — the pin catches the owner-chmodat escape the same way it
@@ -4397,6 +5014,13 @@ export function armEvidenceWindowWatch(
     for (const w of watchers) {
       try {
         w.close();
+      } catch {
+        /* gone */
+      }
+    }
+    for (const r of extraRestores) {
+      try {
+        chmodSync(r.p, r.mode);
       } catch {
         /* gone */
       }
@@ -4465,6 +5089,17 @@ export function armEvidenceWindowWatch(
           if (!readFileSync(src.live).equals(src.bytes)) events.push(src.live);
         } catch {
           events.push(src.live);
+        }
+      }
+      // Restore the worktree-source write bits the arm stripped — the
+      // barrier's job ended with the window (CX-r36-D2). Restoring
+      // after the pin compare keeps the settle checks honest: a
+      // mid-window attacker chmod reads as drift first.
+      for (const r of extraRestores) {
+        try {
+          chmodSync(r.p, r.mode);
+        } catch {
+          /* gone */
         }
       }
       return events;
@@ -4553,14 +5188,17 @@ export function reproveEvidenceSurface(
     }
   }
   if (fp.worktreesDir !== null) {
-    // Same narrowing as the capture: only the own metadir's subtree
-    // (and loose container files) is judged — sibling metadir churn is
-    // a foreign session's writes, never drift in our surface.
+    // Same narrowing as the capture: the own metadir's subtree plus
+    // every sibling's consultable member set is judged — deeper
+    // foreign metadir churn stays a concurrent session's writes.
     const cur = enumerateTreeFiles(fp.worktreesDir);
     const ownId =
       fp.worktreeMetadir === null ? null : `${path.basename(fp.worktreeMetadir)}${path.sep}`;
     for (const k of cur.keys()) {
-      if (k.includes(path.sep) && (ownId === null || !k.startsWith(ownId))) cur.delete(k);
+      if (!k.includes(path.sep)) continue;
+      if (ownId !== null && k.startsWith(ownId)) continue;
+      const leaf = k.slice(k.indexOf(path.sep) + 1);
+      if (leaf.includes(path.sep) || !METADIR_CONSULT_FILES.has(leaf)) cur.delete(k);
     }
     if (cur.size !== fp.worktreeFiles.size) return false;
     for (const [rel, st] of fp.worktreeFiles) {
@@ -4766,11 +5404,8 @@ export async function evidenceRepoPreflight(
   // the previous capture's fingerprint on a drift re-preflight — its
   // resolution anchors pin this capture's resolves so a mid-flight
   // commondir/gitfile plant cannot steer re-resolution (CX-143).
-  const { objectsDir, shapePaths, headBranch, hazards, fingerprint } = await captureEvidenceSurface(
-    repoRoot,
-    execEvidenceGit,
-    prior,
-  );
+  const { objectsDir, shapePaths, headBranch, hazards, writeChannels, fingerprint } =
+    await captureEvidenceSurface(repoRoot, execEvidenceGit, prior);
   // Resolution pins for every internal subprocess — the judged surface
   // and the spawns it enumerates stay anchored to the captured gitdir.
   const internalEnv = resolutionEnv(fingerprint);
@@ -4823,6 +5458,10 @@ export async function evidenceRepoPreflight(
       : path.resolve(repoRoot, objectsDir);
     preflight.shapeViolations.push(...(await scanPackObjects(absObjects, internalEnv)));
   }
+  // Prepared silent write channels the capture's procfs audit found —
+  // the bytes they could serve are unprovable, so the consult refuses
+  // (CX-r36/R37).
+  preflight.shapeViolations.push(...writeChannels);
   // `.git/index` is session-writable — a forged stat tuple answers
   // status/diff clean on dirty bytes (CX-121). Rebuild the index's claims
   // into a verifier-owned zero-stat index the trusted spawns inherit as
@@ -4846,7 +5485,11 @@ export async function evidenceRepoPreflight(
       ? { failure: "non-regular .git metadata — claims enumeration would block" }
       : indexNonRegular
         ? { failure: ".git/index is a non-regular file — claims enumeration would block" }
-        : await prepareEvidenceIndex(repoRoot, internalEnv);
+        : await prepareEvidenceIndex(repoRoot, internalEnv, {
+            path: fingerprint.indexPath,
+            bytes: fingerprint.indexBytes,
+            shared: fingerprint.sharedIndexBytes,
+          });
   preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
   preflight.configUnproven = configUnproven;
@@ -5901,17 +6544,24 @@ async function verifierGitSpawn(
     // ops; non-index ops never consult it and proceed — but they still
     // carry `GIT_ATTR_SOURCE` because `log -p`/`show`/`diff` engage
     // attribute-gated drivers without touching the index (R13-D).
+    // Pure-geometry `rev-parse` consults answer in-process from the
+    // fingerprint (CX-r36-B): no live consult runs, so no live surface
+    // can be forged — and `--is-inside-git-dir` is ONLY answerable this
+    // way (an overlay child would compare cwd to the mint path).
+    if (opts?.anchored === undefined && reportsRepoGeometry(args)) {
+      const local = geometryLocalAnswer(args, preflight, cwd);
+      if (local !== null) return local;
+    }
     // Consults and anchored ops bind the ref namespace through the
     // verifier-owned overlay (CX-r35-A) — a mid-window live-ref
     // flip→restore can no longer shape their resolution. Scratch
     // mutations (non-index, unanchored writers like `commit`/`update-ref`
     // invocations the channel legitimately delegates) keep the live
     // gitdir: overlay `GIT_DIR` would land their ref writes nowhere.
-    // Geometry-reporting consults (`worktree list`, `rev-parse
-    // --git-dir`…) keep the live gitdir — their answers derive from the
-    // gitdir's own location, which an overlay cannot truthfully shadow.
-    const overlayRefs =
-      (effectiveIndexEnv || opts?.anchored !== undefined) && !reportsRepoGeometry(args);
+    // Geometry consults bind the same overlay now (CX-r36-B): the
+    // sibling-metadir members `worktree list` reads are minted too,
+    // and path-shaped answers get the overlay→real substitution below.
+    const overlayRefs = effectiveIndexEnv || opts?.anchored !== undefined;
     const spawnState = evidenceSpawnState(preflight, effectiveIndexEnv, overlayRefs);
     if (
       (spawnState.unproven && isIndexConsultingRead(args)) ||
@@ -6116,7 +6766,28 @@ async function verifierGitSpawn(
         };
       }
     }
-    return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+    // `cat-file <type> <oid>` serves raw object bytes — re-hash them
+    // to the requested name or the consult was forged (CX-r36 belt).
+    const cfReq = catFileObjectRequest(args);
+    if (cfReq !== null && r.exitCode === 0) {
+      const algo = preflight?.objectFormat === "sha256" ? "sha256" : "sha1";
+      const served = createHash(algo)
+        .update(`${cfReq.type} ${r.stdout.length}\0`)
+        .update(r.stdout)
+        .digest("hex");
+      if (served !== cfReq.oid) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: served object bytes do not hash to the requested name: git ${args.join(" ")}`,
+        };
+      }
+    }
+    let stdout = r.stdout.toString();
+    if (overlayRefs && reportsRepoGeometry(args) && preflight?.overlay != null) {
+      stdout = substituteOverlayPaths(stdout, preflight.overlay, preflight.fingerprint!, args);
+    }
+    return { exitCode: r.exitCode, stdout, stderr: r.stderr.toString() };
   } finally {
     // The per-call preflight owns its held fds — a cached or anchored
     // preflight outlives this spawn and stays open for its owner. The

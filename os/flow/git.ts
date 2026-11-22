@@ -13,17 +13,18 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: refuse mid-window mmap writes and refusal-to-benign collapse</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <item>RFC-1616: surface evidence refusals through claims and consult paths honestly (RFC-1616 follow-up)</item>
+  <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
 import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
+import { createHash } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import {
@@ -42,6 +43,9 @@ import {
   captureEvidenceSurface,
   reproveEvidenceSurface,
   armEvidenceWindowWatch,
+  geometryLocalAnswer,
+  substituteOverlayPaths,
+  catFileObjectRequest,
   resolutionEnv,
   sessionIgnoreRulePaths,
   unprovenIgnoredPaths,
@@ -232,6 +236,14 @@ async function gitEvidenceAttempt(
         stderr: `${EVIDENCE_REFUSED_PREFIX}: ${preflight.configUnproven}: git ${args.join(" ")}`,
       };
     }
+    // Pure-geometry `rev-parse` consults answer in-process from the
+    // fingerprint (CX-r36-B): no live consult runs, so no live surface
+    // can be forged — and `--is-inside-git-dir` is ONLY answerable
+    // this way (an overlay child would compare cwd to the mint path).
+    if (reportsRepoGeometry(args)) {
+      const local = geometryLocalAnswer(args, preflight, repoRoot);
+      if (local !== null) return local;
+    }
     // The verifier index is resolved per spawn — fd form carries no
     // path at all (CX-129); the path form re-proves its on-disk bytes
     // before the redirect is trusted. An unproven index (rebuild
@@ -241,10 +253,13 @@ async function gitEvidenceAttempt(
     // overlay (CX-r35-A) — the arm above already minted+pinned it, so a
     // mid-window live-ref flip→restore cannot shape resolution. An
     // overlay the arm failed to mint is `refUnproven` and refuses.
+    // Geometry consults bind the same overlay now (CX-r36-B): the
+    // sibling-metadir members `worktree list` reads are minted too,
+    // and path-shaped answers get the overlay→real substitution below.
     // Mutations the channel legitimately runs (`worktree add` and the
     // bounded scratch set) keep the live gitdir — overlay `GIT_DIR`
     // would land their admin writes inside the copy.
-    const overlayRefs = isEvidenceGitQuery(args) && !reportsRepoGeometry(args);
+    const overlayRefs = isEvidenceGitQuery(args);
     const spawnState = evidenceSpawnState(preflight, true, overlayRefs);
     if (
       (spawnState.unproven && isIndexConsultingRead(args)) ||
@@ -307,7 +322,28 @@ async function gitEvidenceAttempt(
         };
       }
     }
-    return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+    // `cat-file <type> <oid>` serves raw object bytes — re-hash them
+    // to the requested name or the consult was forged (CX-r36 belt).
+    const cfReq = catFileObjectRequest(args);
+    if (cfReq !== null && r.exitCode === 0) {
+      const algo = preflight?.objectFormat === "sha256" ? "sha256" : "sha1";
+      const served = createHash(algo)
+        .update(`${cfReq.type} ${r.stdout.length}\0`)
+        .update(r.stdout)
+        .digest("hex");
+      if (served !== cfReq.oid) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: served object bytes do not hash to the requested name: git ${args.join(" ")}`,
+        };
+      }
+    }
+    let stdout = r.stdout.toString();
+    if (overlayRefs && reportsRepoGeometry(args) && preflight?.overlay != null) {
+      stdout = substituteOverlayPaths(stdout, preflight.overlay, preflight.fingerprint!, args);
+    }
+    return { exitCode: r.exitCode, stdout, stderr: r.stderr.toString() };
   } finally {
     // The per-call preflight owns its held fds — cached preflights
     // (OriginGit) keep them for the instance's lifetime instead. The
@@ -343,7 +379,7 @@ export async function evidencePreflight(
   // dump/claims derive from. `prior` is the previous capture on a drift
   // re-preflight — its resolution anchors pin this capture's resolves
   // so a mid-flight commondir/gitfile plant cannot steer them (CX-143).
-  const { objectsDir, shapePaths, headBranch, hazards, anyFailed, fingerprint } =
+  const { objectsDir, shapePaths, headBranch, hazards, writeChannels, anyFailed, fingerprint } =
     await captureEvidenceSurface(repoRoot, gitEvidence, prior);
   if (anyFailed) {
     if (!existsSync(repoRoot)) return null;
@@ -403,6 +439,9 @@ export async function evidencePreflight(
     const absObjects = isAbsolute(objectsDir) ? objectsDir : resolve(repoRoot, objectsDir);
     preflight.shapeViolations.push(...(await scanPackObjects(absObjects, internalEnv)));
   }
+  // Prepared silent write channels the capture's procfs audit found —
+  // the bytes they could serve are unprovable (CX-r36/R37).
+  preflight.shapeViolations.push(...writeChannels);
   // `.git/index` is session-writable — a forged stat tuple answers
   // status/diff clean on dirty bytes (CX-121). Every index-consulting
   // spawn below resolves this verifier-owned zero-stat claims index as
@@ -426,7 +465,11 @@ export async function evidencePreflight(
       ? { failure: "non-regular .git metadata — claims enumeration would block" }
       : indexNonRegular
         ? { failure: ".git/index is a non-regular file — claims enumeration would block" }
-        : await prepareEvidenceIndex(repoRoot, internalEnv);
+        : await prepareEvidenceIndex(repoRoot, internalEnv, {
+            path: fingerprint.indexPath,
+            bytes: fingerprint.indexBytes,
+            shared: fingerprint.sharedIndexBytes,
+          });
   preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
   preflight.configUnproven = configUnproven;

@@ -34,7 +34,15 @@ Round-23 findings:
 */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -149,7 +157,7 @@ describe("CX-r23-A stat pins catch dirent-invisible writes", () => {
     const events = await watch!.settle();
     expect(events.length).toBeGreaterThan(0);
   });
-  it("an mmap rewrite of an extraWatchPaths rule source is an event", async (ctx) => {
+  it("an mmap rewrite of an extraWatchPaths rule source cannot land — the arm barrier", async (ctx) => {
     if (!HAS_PY) return ctx.skip();
     const root = mkRepo();
     writeFileSync(path.join(root, ".gitignore"), "secret.txt\n");
@@ -158,9 +166,38 @@ describe("CX-r23-A stat pins catch dirent-invisible writes", () => {
     const gi = path.join(root, ".gitignore");
     const pre = await evidenceRepoPreflight(root);
     const watch = armEvidenceWindowWatch(root, pre!, undefined, [gi]);
-    mmapWrite(gi, "*");
+    // CX-r37: the armed window strips the owner write bit on every
+    // consulted file, so the O_RDWR open a writable mapping needs
+    // fails EACCES — the mmap primitive is denied outright, and the
+    // window settles empty. A description held open BEFORE the arm
+    // (the chmod-surviving class) instead refuses the arm itself.
+    expect(watch).not.toBeNull();
+    const r = spawnSync(
+      "python3",
+      ["-c", "import os,sys\n" + "fd=os.open(sys.argv[1],os.O_RDWR)\n" + "os.close(fd)", gi],
+      { encoding: "utf8" },
+    );
+    expect(r.status).not.toBe(0);
     const events = await watch!.settle();
-    expect(events.some((e) => e.endsWith(".gitignore"))).toBe(true);
+    expect(events).toEqual([]);
+  });
+  it("a pre-held writable description on an extraWatchPaths file refuses the arm", async () => {
+    const root = mkRepo();
+    writeFileSync(path.join(root, ".gitignore"), "secret.txt\n");
+    git(root, ["add", ".gitignore"]);
+    git(root, ["commit", "-qm", "ci"]);
+    const gi = path.join(root, ".gitignore");
+    const pre = await evidenceRepoPreflight(root);
+    // An O_RDWR description opened before the arm survives the chmod
+    // barrier and defeats the pin model — the /proc fd audit must
+    // refuse the arm rather than arm a window it cannot defend.
+    const held = openSync(gi, "r+");
+    try {
+      const watch = armEvidenceWindowWatch(root, pre!, undefined, [gi]);
+      expect(watch).toBeNull();
+    } finally {
+      closeSync(held);
+    }
   });
   it("a quiet window still settles empty — pins are exact, not paranoid", async () => {
     const root = mkRepo();

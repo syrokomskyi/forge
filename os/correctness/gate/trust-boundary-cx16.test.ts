@@ -80,7 +80,15 @@ Holds re-probed this round:
 */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, unlinkSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -300,8 +308,12 @@ describe("CX-155 — classifyItem swallows diff refusals → items classify 'oth
     expect(healthyItem?.flags).toContain("contract");
     // Session plants a corrupt index → diff/status/ls-files refuse but
     // rev-list/log still answer → the honest log --name-only fallback
-    // derives the touched-file set and the flag stays.
-    writeFileSync(path.join(root, ".git", "index"), Buffer.from("not-an-index"));
+    // derives the touched-file set and the flag stays. CX-r37: the
+    // judged index is mode-barriered — the session must `chmod +w`
+    // (ctime-visible) before an in-place write lands.
+    const idx = path.join(root, ".git", "index");
+    chmodSync(idx, 0o600);
+    writeFileSync(idx, Buffer.from("not-an-index"));
     const narrowed = await collectDigest(root, stubIo, { fetch: false });
     const item = narrowed.items.find((i) => i.subjects.includes("feat: spec"));
     expect(item?.flags).toContain("contract");

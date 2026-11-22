@@ -419,7 +419,11 @@ describe("RFC-1616 r13 — pinned config bytes + bounded reprove loop", () => {
       let refused = 0;
       let honest = 0;
       try {
-        for (let i = 0; i < 300; i++) {
+        // CX-r37: each judged read now pays the write-barrier + procfs
+        // write-channel audit (~0.5s+/call under load) — 120 judged
+        // reads keeps the flipper-race battery meaningful inside the
+        // test budget.
+        for (let i = 0; i < 120; i++) {
           const r = await gitEvidence(root, ["diff", "HEAD", "--", "a.txt"]);
           if (r.stdout.includes("FORGED-DIFF-OUTPUT")) forged++;
           else if (r.exitCode !== 0 || r.stderr.includes("EVIDENCE-REFUSED")) refused++;
@@ -431,7 +435,7 @@ describe("RFC-1616 r13 — pinned config bytes + bounded reprove loop", () => {
       }
       void stop;
       console.log(
-        `CX-141 tally over 300 calls: forged=${forged} refused-or-failed=${refused} honest=${honest}`,
+        `CX-141 tally over 120 calls: forged=${forged} refused-or-failed=${refused} honest=${honest}`,
       );
       expect(
         forged,
