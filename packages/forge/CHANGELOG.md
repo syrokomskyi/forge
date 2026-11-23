@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.7.0] — 2026-11-23
+
+_Verification-hardening release: every governed git consult now runs through a judged evidence channel (RFC-1616), the declared policy surface is frozen and attested at integration (RFC-1615), the correctness contour ships its manifest, auditor, and gate — plus a typed agent tool surface generated from the command manifest._
+
+### Added
+
+- **External verification trust boundary (RFC-1616)** — `src/utils/verifier-git.ts`: governed git reads spawn inside an armed evidence window — a preflight fingerprint of the `.git` surface, inode+ctime pins, `fsWatch` coverage of the metadata dirs, a verifier-owned claims index held by fd, a minted gitdir overlay for ref consults, a `0400` write barrier on consulted worktree sources, and a `/proc` write-map audit. A consult that cannot be judged refuses (`EVIDENCE-REFUSED`) instead of answering on unverifiable state.
+- **`forge adversarial.run` + `os/adversarial/`** — catalog-driven adversarial probe runner; the trust boundary itself shipped through 40+ rounds of independent verifier probes and acceptance reports.
+- **Correctness contour** — `os/correctness/` (RFC-1578/1579/1580 + RFC-1615): `correctness.manifest.validate` (CORR-01..09), `correctness.audit` (four cross-artifact auditors with subject-keyed differential attribution), `correctness.gate` (spawned by `flow.integrate` from the primary install), the `policy-bundle` schema, and `policy.digest`.
+- **Typed agent tool surface (RFC-1591)** — `os/agent-tools/`: `command.tools.generate` renders a typed agent tool surface from the command manifest, and `forge-agent-tools` serves it.
+- **Append-only shared ledgers (RFC-1590)** — friction/queue/decision ledgers store one file per record: `friction.add`, `friction.migrate`, and `queue.decision`. Ledger writers assign ids rather than append, and every refusal names the violated rule (RFC-1601).
+- **Mission autonomy risk classes (RFC-1594)** — mission autonomy bound to declared risk classes; the `mission.ship.routine` delegation scope is activated.
+- **Site-workshop stack profile (RFC-1125)** — per-client workshops with token onboarding and platform update.
+- **`flow.swept.list` / `flow.swept.gc`** — inspect and collect primary dirt swept into session worktrees.
+
+### Changed
+
+- **The integration gate runs outside the integration lock** (RFC-1589); its manifests step is bound to post-rebase regen provenance (RFC-1619), and the ecosystem manifest renders once per integration snapshot (RFC-1622).
+- **`flow.cut` atomic preflight + line-aware resume** (RFC-1597) — one `--dry-run` pass names every post-discovery blocker and the predicted mode.
+- **`flow.open` sweeps primary dirt into the opened worktree**, and session writes bind to the owning checkout (RFC-1599); gate-isolation sweeps write a recoverable ref and refuse on foreign uncommitted work (RFC-1626).
+- **`flow.integrate` preflight refuses duplicate governance ids** (RFC-1600, FLOW-INT-19) — rule and friction ids now come from the shared reservation ledger.
+- **`mission.close` ends converged** — its terminal tail-sync runs `sternsystem.sync` after all bookkeeping commits (RFC-1603), and the artifact cache keys on the copied tree.
+- **Blocking check rules must be probed or retired** (RFC-1592 ratchet); the validator rules the friction registry pinned false-positive were corrected (RFC-1604).
+
+### Fixed
+
+- **40+ adversarial rounds closed trust-boundary counterexamples** — worktree consult coverage (`status`/`diff`/`ls-files`/`check-ignore`), silent-write channels, claims TOCTOU, mmap stores, ref/object pinning under anchored mutations, and the claims-index fd model.
+- **Agent-turn stall remediation** (RFC-1608) — session-db retention plus structured checkpoints.
+- **Deterministic flow and gate tests** (RFC-1606) — one shared primary-forge harness.
+- **Skill contract gaps** closed per session frictions (RFC-1605); `fo-system-dispatch` regained its `MODULE_CONTRACT`/`CHANGE_SUMMARY` blocks.
+- `outcomeBuildTimeoutMs` binding for sites exceeding the 15-minute probe build cap.
+- Scaffold no longer rewrites real `CODEOWNERS` ownership when unconfigured; `godot-game` targets `net8.0` and its `global.json` sdk floor resolves on sdk-8 hosts.
+- Subprocess env inputs declared; the `pull_request` CI trigger dropped.
+
 ## [9.6.3] — 2026-11-14
 
 _External-review hardening: secrets can no longer land in a target project before the operator approves them, the published tarball is smoke-gated, and docs claims now match what the code and workflows actually do._
