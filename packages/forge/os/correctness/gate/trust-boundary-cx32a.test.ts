@@ -141,15 +141,22 @@ const startHeadMover = (root: string, c2: string, opts: { fireOnChild?: number }
     "        except: av=[]\n" +
     "        if kw in av: return True\n" +
     "    return False\n" +
+    "def hasall(kws,ks):\n" +
+    "    for k in ks:\n" +
+    "        if k==me: continue\n" +
+    "        try: av=open('/proc/%s/cmdline'%k,'rb').read().split(b'\\0')\n" +
+    "        except: av=[]\n" +
+    "        if all(w in av for w in kws): return True\n" +
+    "    return False\n" +
     "while time.time()<end and not fired:\n" +
     "    ks=kids()\n" +
-    // `--stdin` belongs only to the PROVENANCE check-ignore inside
-    // the judged consult — preflight's ignored-dirs consult also
-    // spawns `check-ignore -z` children, which would satisfy a bare
-    // `check-ignore` trigger early and land the move inside the
-    // capture phase (the adopted-baseline class, not the consult
-    // window this test judges).
-    "    ci=has(b'check-ignore',ks) and has(b'--stdin',ks)\n" +
+    // `-v` belongs only to the PROVENANCE check-ignore inside the
+    // judged consult — preflight's ignored-dirs consult also spawns
+    // `check-ignore -z --stdin` children (same-child match required),
+    // which would satisfy a bare `check-ignore --stdin` trigger early
+    // and land the move inside the capture phase (the adopted-
+    // baseline class, not the consult window this test judges).
+    "    ci=hasall((b'check-ignore',b'-v',b'--stdin'),ks)\n" +
     "    if ci: ciSeen=True\n" +
     "    if ciSeen and not ci: ciGone=True\n" +
     "    if ciGone and not fired:\n" +
