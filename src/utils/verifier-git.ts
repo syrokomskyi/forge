@@ -18,11 +18,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
   <item>Judged children resolve paths through arm-opened root fds (`/proc/self/fd/N`), capture children resolve by name — deliberately different channels. fd-binding a path-emitting preflight resolve (`--git-path`, `--absolute-git-dir`) feeds child-local fd literals back into the fingerprint; name-binding a judged spawn lets a mid-window root rename exchange steer GIT_WORK_TREE/GIT_OBJECT_DIRECTORY onto a foreign inode (CX-r38-W2). Names are captured at preflight and re-proven under the armed window; verdicts bind inodes, never names.</item>
-  <item>The worktree arm must be TOTAL and the compare must run UNDER the watch: every worktree-consulting argv on every channel resolves its plan through `resolveWorktreeArm` (an argv the classifier misses must never arm `wtPlan=null` — CX-r39-A1/C1), dir watches arm before the member-set compare and settle re-reads the sets (a delete in the compare→arm or activation gap must be an event or drift — CX-r39-G1), and a claims dir with a populated `.git` refuses outright (an embedded gitdir is unjudgeable — CX-r39-S1). Coverage is pruned only where the CONSULT cannot reach: `.git`-holding repo boundaries always; `check-ignore`-verdict ignored dirs only when `consultDescendsIgnoredDirs` proves the argv never reads their interiors — `status`'s forced `--ignored` and `ls-files -o`'s stripped exclusions DO descend, so capture stays total and the arm subtracts per argv (CX-r41-F1).</item>
+  <item>The worktree arm must be TOTAL and the compare must run UNDER the watch: every worktree-consulting argv on every channel resolves its plan through `resolveWorktreeArm` (an argv the classifier misses must never arm `wtPlan=null` — CX-r39-A1/C1), dir watches arm before the member-set compare and settle re-reads the sets (a delete in the compare→arm or activation gap must be an event or drift — CX-r39-G1), and a claims dir with a populated `.git` refuses outright (an embedded gitdir is unjudgeable — CX-r39-S1). Coverage is pruned only where the CONSULT cannot reach: `.git`-holding repo boundaries always; `check-ignore`-verdict ignored dirs only when `consultDescendsIgnoredDirs` proves the argv never reads their interiors — `status`'s forced `--ignored` and `ls-files -o`'s stripped exclusions DO descend, so capture stays total and the arm subtracts per argv (CX-r41-F1). The per-argv verdict is evaluated on the SPAWNED argv — `evidenceSpawnArgs(args)` is what the child parses — and the classifier models Git's parse, not flag spellings: OPT_BOOL negations toggle last-wins (`--directory --no-directory` descends), required-arg options consume the next token whole (`-x --directory` hides the collapse token inside a value), and `-u`/`--untracked-files` are OPTARG whose space-form token is a pathspec, never the mode (CX-r42-F1).</item>
   <item>Scope classifiers admit-list, never enumerate-by-flag: `worktreeConsultScope` maps `ls-files` to `tracked+untracked` unless the argv is provably index-only — a worktree-walking flag the allowlist table doesn't name (`-k`/`--killed`, CX-r40-W3) inherits full coverage instead of silently arming `wtPlan=null`. The same principle guards internal consults that run BEFORE the refuse verdict exists: a preflight spawn that can touch the worktree (`check-ignore` stats dirs → `core.fsmonitor` exec, CX-r40-E1) merges `evidencePinEnv` even though it is not the judged child — consults downstream of `refusedKeys` are upstream-guarded and keep live config by design (CX-r33-C cite semantics).</item>
+  <item>Config pins carry key and value as SPLIT fields whenever the key can hold `=` — the flat `key=value` `-c` form (and any re-encode that splits it at the first `=`) cannot express `branch.<name>.*` for the legal refname character `=` — `branch.a=b.remote` would mangle to key `branch.a` and silently never pin (CX-r42-F3). `EvidencePreflight.envPins` rides `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, the only transport whose grammar holds the key verbatim.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: port r38-verify probes to trust-boundary-cx38</item>
   <item>RFC-1616: skip absent name-derived worktree dirs in r38 arm watches (RFC-1616)
 
 The r38 dirNameSets watch loop armed fs.watch on every claims-derived
@@ -35,6 +35,7 @@ ancestor's watch.</item>
   <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
   <item>RFC-1616: close r41 trust-boundary counterexamples — per-argv ignored-dir prune, file-valued argv strip/forbid, unconditional upstream pins</item>
+  <item>RFC-1616: close r42 trust-boundary counterexamples — classifier parses spawned argv (last-wins/OPTARG/valued-consumption), envPins carry =-bearing config keys</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -444,6 +445,19 @@ export function evidencePinEnv(
     if (eq !== -1) env[`GIT_CONFIG_VALUE_${n}`] = kv.slice(eq + 1);
     n++;
   }
+  // CX-r42-F3: envPins carry key and value SPLIT — a `=`-bearing key
+  // (`branch.a=b.*` is legal refname syntax) would mangle through the
+  // `-c` first-`=` decode above into a garbage key that never pins. The
+  // env transport has no such grammar, so these ride it verbatim. Held
+  // back on `config` reads for the same precedence-shadow reason as the
+  // `-c` set (`evidencePinArgs` returns `[]` there).
+  if (args[0] !== "config") {
+    for (const pin of preflight?.envPins ?? []) {
+      env[`GIT_CONFIG_KEY_${n}`] = pin.key;
+      env[`GIT_CONFIG_VALUE_${n}`] = pin.value;
+      n++;
+    }
+  }
   env["GIT_CONFIG_COUNT"] = String(n);
   return env;
 }
@@ -479,6 +493,17 @@ export function filterEvidenceExtraEnv(
 export interface EvidencePreflight {
   /** `-c key=value` pairs neutralizing session-set config keys the static pins miss. */
   configArgs: string[];
+  /**
+   * Config pins carried as SPLIT key/value pairs — for keys the flat
+   * `key=value` `-c` form cannot express (CX-r42-F3): `-c` grammar (and
+   * the `GIT_CONFIG_KEY_n` re-encode that used to consume it) splits at
+   * the first `=`, so a key containing `=` — `branch.<name>.*` for the
+   * legal refname character `=` — mangles to a garbage key and silently
+   * never pins. Env transport (`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`)
+   * carries the key verbatim; `evidencePinEnv` appends these after the
+   * `-c` pairs, withheld on `config` reads like every other pin.
+   */
+  envPins: ReadonlyArray<{ key: string; value: string }>;
   /**
    * `-c` pairs that must NOT sit on a `config` read — `core.hooksPath` is
    * repo truth the install/check surface judges drift through
@@ -3388,6 +3413,7 @@ export function judgeEvidenceRepoSurface(
   fingerprint?: EvidenceFingerprint,
 ): EvidencePreflight {
   const configArgs: string[] = [];
+  const envPins: { key: string; value: string }[] = [];
   const hookArgs: string[] = [];
   const refusedKeys: string[] = [];
   const shapeViolations: string[] = [];
@@ -3712,14 +3738,14 @@ export function judgeEvidenceRepoSurface(
     // name resolves upstream to nothing — resolution aborts on the remote
     // lookup before `merge` is even read — producing the same "no upstream"
     // output the empty pin intended, without the crash and without
-    // fabricating a "gone" tracking line.
-    configArgs.push(
-      "-c",
-      `branch.${headBranch}.remote=__evidence_dead__`,
-      "-c",
-      `branch.${headBranch}.merge=refs/heads/__evidence_dead__`,
-      "-c",
-      `branch.${headBranch}.pushremote=__evidence_dead__`,
+    // fabricating a "gone" tracking line. The pins ride `envPins` as split
+    // key/value (CX-r42-F3): `=` is a legal refname character, and the flat
+    // `key=value` `-c` form re-splits at the FIRST `=` — `branch.a=b.remote`
+    // would encode key `branch.a`, leaving the real upstream lever unpinned.
+    envPins.push(
+      { key: `branch.${headBranch}.remote`, value: "__evidence_dead__" },
+      { key: `branch.${headBranch}.merge`, value: "refs/heads/__evidence_dead__" },
+      { key: `branch.${headBranch}.pushremote`, value: "__evidence_dead__" },
     );
   }
   // `core.bare` is a DERIVED pin, not a blanket false (CX-162/CX-171):
@@ -3744,7 +3770,7 @@ export function judgeEvidenceRepoSurface(
   }
   const derivedBare = fingerprint?.topology === "selfdir";
   configArgs.push("-c", `core.bare=${derivedBare ? "true" : ""}`);
-  return { configArgs, hookArgs, refusedKeys, shapeViolations, warnedShape, objectFormat };
+  return { configArgs, envPins, hookArgs, refusedKeys, shapeViolations, warnedShape, objectFormat };
 }
 
 /**
@@ -5207,24 +5233,51 @@ const LS_FILES_INDEX_ONLY_PREFIXES: readonly string[] = [
   "--exclude-per-directory=",
 ];
 
+/**
+ * The `-u`/`--untracked-files` mode a `status` argv selects — both
+ * worktree classifiers must agree on it (CX-r42-F1). Git parses the
+ * option as OPTARG: only the ATTACHED forms carry a mode — `-u<mode>`
+ * (including inside clusters like `-suno`, where the mode is the
+ * cluster tail after `u`), `--untracked-files=<mode>`, and unambiguous
+ * abbreviations (`--u`/`--un`/`--untracked…` — the only status long
+ * option beginning `--u`). Bare `-u`/`--untracked-files` are plain
+ * flags that enable the default mode — the following token is a
+ * PATHSPEC, never the mode (verified Git 2.53: `status -u no` answers
+ * `?? no`, enumerating untracked paths matching pathspec `no`). Last
+ * `-u` form wins.
+ */
+function statusConsultsUntracked(args: readonly string[]): boolean {
+  let mode: string | null = null;
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "--") break;
+    if (a.startsWith("--")) {
+      const eq = a.indexOf("=");
+      const name = eq === -1 ? a : a.slice(0, eq);
+      if (name.length >= 3 && "--untracked-files".startsWith(name)) {
+        // Bare flag form enables the default mode — never mode "no"
+        // unless the attached value says so.
+        mode = eq === -1 ? "yes" : a.slice(eq + 1);
+      }
+      continue;
+    }
+    if (a.length > 1) {
+      // `u` is the only optarg-bearing short in status — inside a
+      // cluster its mode is the tail (`-suno` → "no"), a bare trailing
+      // `u` enables the default.
+      const j = a.indexOf("u");
+      if (j !== -1) mode = a.slice(j + 1) || "yes";
+    }
+  }
+  return mode !== "no";
+}
+
 export function worktreeConsultScope(args: readonly string[]): WorktreeConsultScope {
   const op = args[0] ?? "";
   if (op === "status") {
     // `--untracked-files=no`/`-uno` skip the dirent enumeration — the
     // untracked-set coverage is then not consulted at all.
-    let untracked = true;
-    for (let i = 1; i < args.length; i++) {
-      const a = args[i]!;
-      const v = a.startsWith("--untracked-files=")
-        ? a.slice("--untracked-files=".length)
-        : a === "--untracked-files" || a === "-u"
-          ? (args[++i] ?? "")
-          : a.startsWith("-u") && a.length > 2
-            ? a.slice(2)
-            : null;
-      if (v !== null) untracked = v !== "no";
-    }
-    return untracked ? "tracked+untracked" : "tracked";
+    return statusConsultsUntracked(args) ? "tracked+untracked" : "tracked";
   }
   if (op === "diff") return "tracked";
   if (op === "describe") return isIndexConsultingRead(args) ? "tracked" : "none";
@@ -5341,18 +5394,24 @@ export function worktreeArmPlan(
  * Whether the consult's spawned child reads the interiors of dirs git
  * reports ignored — the per-argv precondition for pruning them from
  * armed coverage (CX-r41-F1). The test is admit-listed to the proven
- * descent shapes, never "unlisted flag means safe":
+ * descent shapes, never "unlisted flag means safe", and it models
+ * GIT's argv parse — negation last-wins and required-arg value
+ * consumption — not flag spellings (CX-r42-F1). Callers evaluate it on
+ * `evidenceSpawnArgs(args)`, the argv the child actually runs:
  *
  * - `status` post-transform always carries `--ignored`, and `--ignored`
  *   opens every ignored dir and probes its `.gitignore` even when the
- *   output collapses to `!! dir/` (Git 2.53, strace-verified) — only
- *   `-u no` skips the untracked walk entirely.
+ *   output collapses to `!! dir/` (Git 2.53, strace-verified) — only an
+ *   ATTACHED `-u`/`--untracked-files` mode of `no` skips the untracked
+ *   walk; bare `-u` forms leave the following token a pathspec.
  * - `ls-files -o`/`--others` post-transform carries NO exclusion
  *   machinery, so the enumeration opens every ignored interior. The
  *   `--directory` collapse reports dir entries without reading them —
- *   unless `--no-empty-directory` forces the emptiness check. `-k`/
- *   `--killed` never opens an ignored dir (verified), and index-only
- *   forms never walk untracked dirs at all.
+ *   unless `--no-empty-directory` forces the emptiness check — and
+ *   OPT_BOOL negations toggle it last-wins (`--directory
+ *   --no-directory` descends, `--no-directory --directory` collapses).
+ *   `-k`/`--killed` never opens an ignored dir (verified), and
+ *   index-only forms never walk untracked dirs at all.
  * - `add`/`rm`-family consults prune ignored dirs from their walk
  *   unless `-f`/`--force` compels them (`git add -nf` reads interiors).
  * - `check-ignore` never descends — its per-dir verdict IS the prune
@@ -5361,37 +5420,63 @@ export function worktreeArmPlan(
  */
 export function consultDescendsIgnoredDirs(args: readonly string[]): boolean {
   const op = args[0] ?? "";
-  if (op === "status") {
-    let untracked = true;
+  if (op === "status") return statusConsultsUntracked(args);
+  if (op === "ls-files") {
+    // The argv model must follow GIT's parse, not flag spellings
+    // (CX-r42-F1): OPT_BOOL `--dir*`/`--no-di*` negations toggle the
+    // collapse last-wins (`--directory --no-directory` descends), and a
+    // required-arg option consumes the NEXT token whole — parse-options
+    // never re-reads it as a flag (`-x --directory` hides the collapse
+    // token inside an exclusion value). Callers evaluate this on the
+    // SPAWNED argv (`evidenceSpawnArgs`), where the exclusion strip has
+    // already removed every `-x`/`-X`/`--exclude*` token pair — the
+    // valued set here covers them anyway so a token surviving any
+    // transform still parses faithfully. `ls-files`' required-arg long
+    // options are the valued exclusion members plus `--with-tree`
+    // (`--abbrev` is OPTARG — attached only, verified Git 2.53).
+    const valuedLong = [
+      ...LS_FILES_EXCLUDE_MEMBERS.filter((m) => m.valued).map((m) => m.name),
+      "--with-tree",
+    ];
+    let others = false;
+    let collapse = false;
+    let noEmpty = false;
     for (let i = 1; i < args.length; i++) {
       const a = args[i]!;
       if (a === "--") break;
-      const v = a.startsWith("--untracked-files=")
-        ? a.slice("--untracked-files=".length)
-        : a === "--untracked-files" || a === "-u"
-          ? (args[++i] ?? "")
-          : a.startsWith("-u") && a.length > 2
-            ? a.slice(2)
-            : null;
-      if (v !== null) untracked = v !== "no";
+      if (a.startsWith("--")) {
+        const eq = a.indexOf("=");
+        const name = eq === -1 ? a : a.slice(0, eq);
+        if (eq === -1 && valuedLong.some((n) => n.startsWith(name))) {
+          i++; // the value rides the next token — never a flag
+          continue;
+        }
+        if (name.startsWith("--o")) others = true;
+        else if (name.startsWith("--no-o")) others = false;
+        // Each prefix is the SHORTEST unambiguous abbreviation of its
+        // option — `--no-em`/`--em`/`--di`/`--no-di` cover every longer
+        // abbreviation of --no-empty-directory/--empty-directory/
+        // --directory/--no-directory a token could carry (verified Git
+        // 2.53: `--no-emp` runs the emptiness probe, `--emp` negates it).
+        else if (name.startsWith("--no-em")) noEmpty = true;
+        else if (name.startsWith("--em")) noEmpty = false;
+        else if (name.startsWith("--no-di")) collapse = false;
+        else if (name.startsWith("--di")) collapse = true;
+        continue;
+      }
+      if (a.length > 1) {
+        const cluster = a.slice(1);
+        for (let j = 0; j < cluster.length; j++) {
+          const c = cluster[j]!;
+          if (LS_FILES_EXCLUDE_SHORT_VALUED.has(c)) {
+            if (j === cluster.length - 1) i++; // value rides the next token
+            break; // the cluster tail IS the value — no more flags
+          }
+          if (c === "o") others = true;
+        }
+      }
     }
-    return untracked;
-  }
-  if (op === "ls-files") {
-    let others = false;
-    let dirCollapse = false;
-    let noEmpty = false;
-    for (const a of args.slice(1)) {
-      if (a === "--") break;
-      if (!a.startsWith("-")) continue;
-      // `--o…` covers `--others` and every unambiguous abbreviation —
-      // an unknown long flag must bias toward coverage, not omission.
-      if (a.startsWith("--o")) others = true;
-      else if (a.startsWith("--no-empty")) noEmpty = true;
-      else if (a.startsWith("--dir")) dirCollapse = true;
-      else if (!a.startsWith("--") && a.includes("o")) others = true;
-    }
-    return others && !(dirCollapse && !noEmpty);
+    return others && !(collapse && !noEmpty);
   }
   if (op === "add" || op === "rm" || op === "mv" || op === "clean") {
     for (const a of args.slice(1)) {
@@ -5425,12 +5510,17 @@ export function resolveWorktreeArm(
   if (scope === "tracked" || scope === "tracked+untracked") {
     // CX-r41-F1: prune the ignored-dir set only when the consult argv
     // provably never reads those interiors (`status -uall`/`--ignored`
-    // and `ls-files -o` DO — for them the full set arms).
+    // and `ls-files -o` DO — for them the full set arms). The verdict is
+    // evaluated on the SPAWNED argv (CX-r42-F1): the judged argv is what
+    // the caller wrote, but the child runs `evidenceSpawnArgs` — the
+    // exclusion strip deletes valued flag+value pairs the classifier
+    // would otherwise miscount (`-x --directory` looks like a collapse
+    // flag in the judged argv while the child descends).
     const wtPlan = worktreeArmPlan(
       preflight,
       scope === "tracked+untracked",
       false,
-      !consultDescendsIgnoredDirs(args),
+      !consultDescendsIgnoredDirs(evidenceSpawnArgs(args)),
     );
     return wtPlan === null ? null : { scope, wtPlan, extraWatch: extraWatchPaths };
   }

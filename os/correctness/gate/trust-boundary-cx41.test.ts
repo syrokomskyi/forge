@@ -265,8 +265,14 @@ describe("CX-r41-F1: the ignored-dir arm subset follows consult descent", () => 
     expect(consultDescendsIgnoredDirs(["status", "--porcelain"])).toBe(true);
     expect(consultDescendsIgnoredDirs(["status", "--ignored=matching"])).toBe(true);
     expect(consultDescendsIgnoredDirs(["status", "-uno"])).toBe(false);
-    expect(consultDescendsIgnoredDirs(["status", "--untracked-files", "no"])).toBe(false);
     expect(consultDescendsIgnoredDirs(["status", "--untracked-files=no"])).toBe(false);
+    // CX-r42-F1: `-u`/`--untracked-files` are OPTARG — only attached
+    // forms carry a mode; the space-form token is a PATHSPEC (verified
+    // Git 2.53: `status -u no` enumerates untracked paths matching
+    // `no`), so the bare flag leaves the untracked walk ON.
+    expect(consultDescendsIgnoredDirs(["status", "--untracked-files", "no"])).toBe(true);
+    expect(consultDescendsIgnoredDirs(["status", "-u", "no"])).toBe(true);
+    expect(consultDescendsIgnoredDirs(["status", "-u"])).toBe(true);
     // `ls-files` descends on `-o`/`--others` (and abbreviations) unless
     // the `--directory` collapse holds without `--no-empty-directory`.
     expect(consultDescendsIgnoredDirs(["ls-files", "-o"])).toBe(true);
