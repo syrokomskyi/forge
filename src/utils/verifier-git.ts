@@ -21,21 +21,14 @@ substituted object, a redirected repository, or a shim binary's output
   <item>The worktree arm must be TOTAL and the compare must run UNDER the watch: every worktree-consulting argv on every channel resolves its plan through `resolveWorktreeArm` (an argv the classifier misses must never arm `wtPlan=null` — CX-r39-A1/C1), dir watches arm before the member-set compare and settle re-reads the sets (a delete in the compare→arm or activation gap must be an event or drift — CX-r39-G1), and a claims dir with a populated `.git` refuses outright (an embedded gitdir is unjudgeable — CX-r39-S1). Coverage is pruned only where the CONSULT cannot reach: `.git`-holding repo boundaries always; `check-ignore`-verdict ignored dirs only when `consultDescendsIgnoredDirs` proves the argv never reads their interiors — `status`'s forced `--ignored` and `ls-files -o`'s stripped exclusions DO descend, so capture stays total and the arm subtracts per argv (CX-r41-F1). The per-argv verdict is evaluated on the SPAWNED argv — `evidenceSpawnArgs(args)` is what the child parses — and the classifier models Git's parse, not flag spellings: OPT_BOOL negations toggle last-wins (`--directory --no-directory` descends), required-arg options consume the next token whole (`-x --directory` hides the collapse token inside a value), and `-u`/`--untracked-files` are OPTARG whose space-form token is a pathspec, never the mode (CX-r42-F1).</item>
   <item>Scope classifiers admit-list, never enumerate-by-flag: `worktreeConsultScope` maps `ls-files` to `tracked+untracked` unless the argv is provably index-only — a worktree-walking flag the allowlist table doesn't name (`-k`/`--killed`, CX-r40-W3) inherits full coverage instead of silently arming `wtPlan=null`. The same principle guards internal consults that run BEFORE the refuse verdict exists: a preflight spawn that can touch the worktree (`check-ignore` stats dirs → `core.fsmonitor` exec, CX-r40-E1) merges `evidencePinEnv` even though it is not the judged child — consults downstream of `refusedKeys` are upstream-guarded and keep live config by design (CX-r33-C cite semantics).</item>
   <item>Config pins carry key and value as SPLIT fields whenever the key can hold `=` — the flat `key=value` `-c` form (and any re-encode that splits it at the first `=`) cannot express `branch.<name>.*` for the legal refname character `=` — `branch.a=b.remote` would mangle to key `branch.a` and silently never pin (CX-r42-F3). `EvidencePreflight.envPins` rides `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, the only transport whose grammar holds the key verbatim.</item>
+  <item>Short-cluster argv models must walk EVERY optarg/required-arg short, not just the flag being hunted — the first valued short in a cluster eats the remainder as its value, so a hunted flag inside that tail is not a flag at all (`status -Muno` = `-M` "uno", no `-u` exists — CX-r43-F1). `indexOf` on a cluster is never a parse; status's optarg shorts are `-u` AND `-M`, ls-files's required-arg shorts are `-x`/`-X`, and any cluster char outside the modeled set must leave the walk armed, never narrow it.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: skip absent name-derived worktree dirs in r38 arm watches (RFC-1616)
-
-The r38 dirNameSets watch loop armed fs.watch on every claims-derived
-containing dir; a tracked-but-deleted directory (an honest dirty state
-git reports as 'D') ENOENT-refused every evidence consult — engine
-fixtures with missing index-named dirs saw EVIDENCE-REFUSED on git
-status. Skipping loses no coverage: the dir's basename sits in its
-parent's name set, so re-materialization fires on the nearest existing
-ancestor's watch.</item>
   <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
   <item>RFC-1616: close r41 trust-boundary counterexamples — per-argv ignored-dir prune, file-valued argv strip/forbid, unconditional upstream pins</item>
   <item>RFC-1616: close r42 trust-boundary counterexamples — classifier parses spawned argv (last-wins/OPTARG/valued-consumption), envPins carry =-bearing config keys</item>
+  <item>RFC-1616: status cluster walk treats -M as optarg — -Muno's tail is a similarity value, not a -u mode</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -5245,6 +5238,15 @@ const LS_FILES_INDEX_ONLY_PREFIXES: readonly string[] = [
  * PATHSPEC, never the mode (verified Git 2.53: `status -u no` answers
  * `?? no`, enumerating untracked paths matching pathspec `no`). Last
  * `-u` form wins.
+ *
+ * Short clusters need a real char walk (CX-r43-F1): `status` has TWO
+ * optarg shorts — `-u` and `-M` (`--find-renames[=<n>]`) — and the
+ * FIRST one reached eats the cluster remainder as its value, so a `u`
+ * inside `-M`'s similarity tail is not a flag (`-Muno` = `-M` "uno",
+ * untracked walk stays ON). Only a `u` reached as an actual flag sets
+ * the mode. Status's remaining shorts (`-v`/`-s`/`-b`/`-z`) are plain
+ * flags; an unknown short is a parse error in the child, which fails
+ * the consult honestly — never a narrower arm.
  */
 function statusConsultsUntracked(args: readonly string[]): boolean {
   let mode: string | null = null;
@@ -5262,11 +5264,17 @@ function statusConsultsUntracked(args: readonly string[]): boolean {
       continue;
     }
     if (a.length > 1) {
-      // `u` is the only optarg-bearing short in status — inside a
-      // cluster its mode is the tail (`-suno` → "no"), a bare trailing
-      // `u` enables the default.
-      const j = a.indexOf("u");
-      if (j !== -1) mode = a.slice(j + 1) || "yes";
+      const cluster = a.slice(1);
+      for (let j = 0; j < cluster.length; j++) {
+        const c = cluster[j]!;
+        if (c === "u") {
+          // `-u`'s optarg is the attached tail (`-suno` → "no"); a
+          // bare trailing `u` enables the default.
+          mode = cluster.slice(j + 1) || "yes";
+          break;
+        }
+        if (c === "M") break; // `-M`'s similarity value swallows the tail
+      }
     }
   }
   return mode !== "no";
