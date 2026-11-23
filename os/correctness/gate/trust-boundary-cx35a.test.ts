@@ -80,12 +80,15 @@ const startRefFlip = (refPath: string, cPrime: string, cOid: string, vpid: numbe
     "while time.time()<end and not restored:\n" +
     "    for k in kids():\n" +
     "        av=argv(k)\n" +
-    // `--stdin` belongs only to the judged consult's provenance
-    // check-ignore — preflight's ignored-dirs consult also spawns
-    // `check-ignore -z` children, which would flip pre-mint (the
-    // overlay adopts the live bytes — the adopted-baseline class,
-    // not the armed window this probe judges).
-    "        if b'check-ignore' in av and b'--stdin' in av and not flipped:\n" +
+    // `-v` is the discriminant: only the judged consult's provenance
+    // check-ignore carries it (`check-ignore -v -z --stdin`). The
+    // preflight's ignored-dirs consult spawns `check-ignore -z
+    // --stdin` children too (CX-r40-N1: Git ≥2.53 needs `--stdin`
+    // for `-z`), so matching on `--stdin` alone fires pre-mint — a
+    // flip before the fingerprint's capture is the adopted-baseline
+    // class (indistinguishable, faithfully answered per CX-r35-B),
+    // not the armed window this probe judges.
+    "        if b'check-ignore' in av and b'-v' in av and b'--stdin' in av and not flipped:\n" +
     "            m[:]=forged; flipped=True\n" +
     "            lg('flipped on check-ignore child=%s'%k)\n" +
     "        if flipped and b'diff' in av:\n" +
