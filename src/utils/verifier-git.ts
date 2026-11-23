@@ -19,9 +19,9 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
   <item>Judged children resolve paths through arm-opened root fds (`/proc/self/fd/N`), capture children resolve by name — deliberately different channels. fd-binding a path-emitting preflight resolve (`--git-path`, `--absolute-git-dir`) feeds child-local fd literals back into the fingerprint; name-binding a judged spawn lets a mid-window root rename exchange steer GIT_WORK_TREE/GIT_OBJECT_DIRECTORY onto a foreign inode (CX-r38-W2). Names are captured at preflight and re-proven under the armed window; verdicts bind inodes, never names.</item>
   <item>The worktree arm must be TOTAL and the compare must run UNDER the watch: every worktree-consulting argv on every channel resolves its plan through `resolveWorktreeArm` (an argv the classifier misses must never arm `wtPlan=null` — CX-r39-A1/C1), dir watches arm before the member-set compare and settle re-reads the sets (a delete in the compare→arm or activation gap must be an event or drift — CX-r39-G1), and a claims dir with a populated `.git` refuses outright (an embedded gitdir is unjudgeable — CX-r39-S1). Coverage is pruned only where git itself cannot consult: `check-ignore`-verdict ignored dirs and `.git`-holding repo boundaries.</item>
+  <item>Scope classifiers admit-list, never enumerate-by-flag: `worktreeConsultScope` maps `ls-files` to `tracked+untracked` unless the argv is provably index-only — a worktree-walking flag the allowlist table doesn't name (`-k`/`--killed`, CX-r40-W3) inherits full coverage instead of silently arming `wtPlan=null`. The same principle guards internal consults that run BEFORE the refuse verdict exists: a preflight spawn that can touch the worktree (`check-ignore` stats dirs → `core.fsmonitor` exec, CX-r40-E1) merges `evidencePinEnv` even though it is not the judged child — consults downstream of `refusedKeys` are upstream-guarded and keep live config by design (CX-r33-C cite semantics).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
   <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
   <item>RFC-1616: port r38-verify probes to trust-boundary-cx38</item>
   <item>RFC-1616: skip absent name-derived worktree dirs in r38 arm watches (RFC-1616)
@@ -34,6 +34,7 @@ status. Skipping loses no coverage: the dir's basename sits in its
 parent's name set, so re-materialization fires on the nearest existing
 ancestor's watch.</item>
   <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
+  <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -3663,13 +3664,19 @@ export function judgeEvidenceRepoSurface(
   // `branch -v`) is argv-refused instead. Config-unexpressible names
   // cannot be armed through config at all, so they need no pin.
   if (headBranch !== undefined && headBranch !== null && /^[\w][\w./-]*$/.test(headBranch)) {
+    // Empty `key=` pins SEGFAULT Git ≥2.53 on upstream resolution
+    // (`status`/`commit --dry-run`, CX-r40-N2). A never-configured remote
+    // name resolves upstream to nothing — resolution aborts on the remote
+    // lookup before `merge` is even read — producing the same "no upstream"
+    // output the empty pin intended, without the crash and without
+    // fabricating a "gone" tracking line.
     configArgs.push(
       "-c",
-      `branch.${headBranch}.remote=`,
+      `branch.${headBranch}.remote=__evidence_dead__`,
       "-c",
-      `branch.${headBranch}.merge=`,
+      `branch.${headBranch}.merge=refs/heads/__evidence_dead__`,
       "-c",
-      `branch.${headBranch}.pushremote=`,
+      `branch.${headBranch}.pushremote=__evidence_dead__`,
     );
   }
   // `core.bare` is a DERIVED pin, not a blanket false (CX-162/CX-171):
@@ -5111,6 +5118,52 @@ const LS_FILES_WT_STAT_FLAGS: ReadonlySet<string> = new Set([
   "--error-unmatch",
 ]);
 
+/**
+ * `ls-files` flags that never consult the worktree — index/stage data,
+ * pure output modifiers, and exclusion-source flags (stripped from the
+ * judged argv anyway). Anything NOT listed is treated as
+ * `tracked+untracked` (CX-r40-W3): `-k`/`--killed` enumerates dir-killing
+ * blockers, `-i`/`--ignored` reads untracked rule sources, `-t`/`-v` stat
+ * tracked entries, `--recurse-submodules`/`--directory`/`--no-empty-directory`
+ * enter or shape dirent walks, and an unrecognized flag must fail toward
+ * coverage, not scope-`"none"`.
+ */
+const LS_FILES_INDEX_ONLY_FLAGS: ReadonlySet<string> = new Set([
+  "-s",
+  "--stage",
+  "-c",
+  "--cached",
+  "-u",
+  "--unmerged",
+  "-g",
+  "--skip-worktree",
+  "--resolve-undo",
+  "-z",
+  "--abbrev",
+  "--full-name",
+  "--deduplicate",
+  "-q",
+  "--quiet",
+  "-f",
+  "--force",
+  "--sparse",
+  "--exclude-standard",
+  "--exclude",
+  "-x",
+  "-X",
+  "--exclude-from",
+  "--exclude-per-directory",
+]);
+
+/** Valued long-flag prefixes that stay index-only (`--with-tree=<rev>` consults objects, `--exclude-*=` is stripped, `--abbrev=<n>` is a modifier). */
+const LS_FILES_INDEX_ONLY_PREFIXES: readonly string[] = [
+  "--abbrev=",
+  "--with-tree=",
+  "--exclude=",
+  "--exclude-from=",
+  "--exclude-per-directory=",
+];
+
 export function worktreeConsultScope(args: readonly string[]): WorktreeConsultScope {
   const op = args[0] ?? "";
   if (op === "status") {
@@ -5137,8 +5190,14 @@ export function worktreeConsultScope(args: readonly string[]): WorktreeConsultSc
     let untracked = false;
     let stat = false;
     for (const a of args.slice(1)) {
+      if (a === "--" || !a.startsWith("-")) continue;
       if (a === "-o" || a === "--others") untracked = true;
       else if (LS_FILES_WT_STAT_FLAGS.has(a)) stat = true;
+      else if (
+        !LS_FILES_INDEX_ONLY_FLAGS.has(a) &&
+        !LS_FILES_INDEX_ONLY_PREFIXES.some((p) => a.startsWith(p))
+      )
+        untracked = true;
     }
     return untracked ? "tracked+untracked" : stat ? "tracked" : "none";
   }
@@ -6296,8 +6355,18 @@ export async function evidenceRepoPreflight(
     const ignored = new Set<string>();
     for (let i = 0; i < relDirs.length; i += 1500) {
       const chunk = relDirs.slice(i, i + 1500);
-      const r = await execEvidenceGit(wt, ["check-ignore", "-z", "--", ...chunk], {
+      const r = await execEvidenceGit(wt, ["check-ignore", "-z", "--stdin"], {
         internalEnv,
+        // `check-ignore` stats the worktree for dir arguments, which
+        // invokes `core.fsmonitor` — a session program must not exec
+        // inside the trusted preflight consult, so the static pins ride
+        // the env like the claims `ls-files` enumeration (CX-115 class).
+        extraEnv: evidencePinEnv(["check-ignore"]),
+        // Git ≥2.53 rejects `-z` on the argv form (`-z only makes sense
+        // with --stdin`) — the chunk must ride stdin NUL-separated or the
+        // consult always errors and the prune silently never engages
+        // (CX-r40-N1).
+        input: `${chunk.join("\0")}\0`,
       });
       if (r.exitCode !== 0 && r.exitCode !== 1) break;
       for (const abs of ignoredDirSetFromCheckIgnore(wt, r.stdout)) ignored.add(abs);
@@ -8021,6 +8090,13 @@ export async function unprovenIgnoredPaths(
           }
           return spawnCaptured(resolveGitBin(), argv, {
             cwd: root,
+            // Live config by design (CX-r33-C): `check-ignore -v` must
+            // cite the REAL rule source — a session `core.excludesFile`
+            // naming a foreign rules file cites it honestly into
+            // `unproven`. Exec levers can't ride this spawn: a session
+            // `core.fsmonitor`/`diff.external` is a refused key, and
+            // `preflight.refusedKeys` refuses the consult above before
+            // any child exists.
             env: { ...verifierGitEnv(), ...cs.env },
             timeoutMs: 60_000,
             maxBuffer: 64 * 1024 * 1024,

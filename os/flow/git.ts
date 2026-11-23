@@ -13,11 +13,11 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <item>RFC-1616: surface evidence refusals through claims and consult paths honestly (RFC-1616 follow-up)</item>
   <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
   <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
   <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
+  <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -32,6 +32,7 @@ import {
   verifierGitEnv,
   filterEvidenceExtraEnv,
   evidencePinEnv,
+  execEvidenceGit,
   evidenceSpawnState,
   evidenceSpawnArgs,
   closeEvidenceIndex,
@@ -553,9 +554,16 @@ export async function evidencePreflight(
     const ignored = new Set<string>();
     for (let i = 0; i < relDirs.length; i += 1500) {
       const chunk = relDirs.slice(i, i + 1500);
-      const r = await gitEvidence(wt, ["check-ignore", "-z", "--", ...chunk], {
-        preflight: false,
+      const r = await execEvidenceGit(wt, ["check-ignore", "-z", "--stdin"], {
         internalEnv,
+        // `check-ignore` stats the worktree for dir arguments — the
+        // static pins keep `core.fsmonitor` a session program cannot
+        // exec inside the trusted preflight consult (CX-115 class).
+        extraEnv: evidencePinEnv(["check-ignore"]),
+        // Git ≥2.53 rejects `-z` on the argv form — the chunk must ride
+        // stdin NUL-separated or the prune consult always errors and
+        // silently never engages (CX-r40-N1).
+        input: `${chunk.join("\0")}\0`,
       });
       if (r.exitCode !== 0 && r.exitCode !== 1) break;
       for (const abs of ignoredDirSetFromCheckIgnore(wt, r.stdout)) ignored.add(abs);
