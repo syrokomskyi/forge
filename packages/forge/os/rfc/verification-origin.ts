@@ -21,11 +21,11 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
+  <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -46,6 +46,7 @@ import {
   reportsRepoGeometry,
   reproveEvidenceSurface,
   resolveGitBin,
+  resolveWorktreeArm,
   spawnCaptured,
   verifierGitEnv,
   evidenceSpawnArgs,
@@ -227,7 +228,21 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       input?: string | Buffer;
     },
   ) => {
-    const watch = armEvidenceWindowWatch(workspaceRoot, pf);
+    // CX-r39-A1: the origin channel's reads are scope-`none` today
+    // (`show`/`cat-file`/`rev-parse`), but the same worktree-arm
+    // contract guards the window — a worktree-consulting argv arriving
+    // here must never run unjudged, so the resolver either folds the
+    // captured-baseline plan into the arm or refuses to null.
+    const wtArm = resolveWorktreeArm(argv, pf, undefined);
+    if (wtArm === null) return null;
+    const watch = armEvidenceWindowWatch(
+      workspaceRoot,
+      pf,
+      undefined,
+      wtArm.extraWatch,
+      undefined,
+      wtArm.wtPlan,
+    );
     if (watch === null) {
       // `spawnCaptured` owns the per-spawn fd close once it runs — an
       // arm failure never reaches it, so release the fd here.

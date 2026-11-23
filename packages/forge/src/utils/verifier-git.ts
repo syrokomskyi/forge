@@ -18,9 +18,9 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
   <item>Judged children resolve paths through arm-opened root fds (`/proc/self/fd/N`), capture children resolve by name — deliberately different channels. fd-binding a path-emitting preflight resolve (`--git-path`, `--absolute-git-dir`) feeds child-local fd literals back into the fingerprint; name-binding a judged spawn lets a mid-window root rename exchange steer GIT_WORK_TREE/GIT_OBJECT_DIRECTORY onto a foreign inode (CX-r38-W2). Names are captured at preflight and re-proven under the armed window; verdicts bind inodes, never names.</item>
+  <item>The worktree arm must be TOTAL and the compare must run UNDER the watch: every worktree-consulting argv on every channel resolves its plan through `resolveWorktreeArm` (an argv the classifier misses must never arm `wtPlan=null` — CX-r39-A1/C1), dir watches arm before the member-set compare and settle re-reads the sets (a delete in the compare→arm or activation gap must be an event or drift — CX-r39-G1), and a claims dir with a populated `.git` refuses outright (an embedded gitdir is unjudgeable — CX-r39-S1). Coverage is pruned only where git itself cannot consult: `check-ignore`-verdict ignored dirs and `.git`-holding repo boundaries.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: scope the judged metadir set to the own worktree (RFC-1616 R35 follow-up)</item>
   <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
   <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
   <item>RFC-1616: port r38-verify probes to trust-boundary-cx38</item>
@@ -33,6 +33,7 @@ fixtures with missing index-named dirs saw EVIDENCE-REFUSED on git
 status. Skipping loses no coverage: the dir's basename sits in its
 parent's name set, so re-materialization fires on the nearest existing
 ancestor's watch.</item>
+  <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -602,17 +603,44 @@ export interface EvidencePreflight {
  */
 export interface WorktreeSurface {
   /**
-   * Claims-index path → capture-instant lstat (`null` = absent at
-   * capture). ctime is kernel-owned — a write+restore cannot replay it,
-   * so a content flip inside the window always reads as drift.
+   * Consulted worktree-file path → capture-instant lstat (`null` =
+   * absent at capture). Carries three slot families: every claims-index
+   * path; `<dir>/.gitignore` for every inventoried directory (CX-r39-C1
+   * — an untracked rule source's bytes shape ignore verdicts exactly
+   * like a tracked one's, and a null-captured slot makes a plant drift
+   * instead of baseline); and `<gitlink>/.git` for every claimed name
+   * that materialized as a directory (CX-r39-S1 — populated means the
+   * consult reaches a nested gitdir the plan refuses outright, absent
+   * means a mid-window plant has a null baseline to drift against).
+   * ctime is kernel-owned — a write+restore cannot replay it, so a
+   * content flip inside the window always reads as drift.
    */
   readonly files: ReadonlyMap<string, { ino: number; ctimeMs: number } | null>;
   /**
+   * Claims-index names whose capture-instant lstat is a DIRECTORY —
+   * gitlinks (mode-160000 claims materialize as a submodule/embedded-
+   * repo checkout dir) and file→dir typechanges alike. Only these
+   * paths can host a consultable `<name>/.git`.
+   */
+  readonly claimedDirs: ReadonlySet<string>;
+  /**
    * Directory → capture-instant member-name set (`null` = unreadable at
-   * capture), for every directory under the worktree. The untracked/
-   * ignored enumeration a `status`-class consult runs cannot hide or
-   * invent a dirent between capture and arm without drifting a member
-   * set (CX-r38-W1 untracked-hide).
+   * capture), for every enumerable directory under the worktree. The
+   * untracked/ignored enumeration a `status`-class consult runs cannot
+   * hide or invent a dirent between capture and arm without drifting a
+   * member set (CX-r38-W1 untracked-hide). Two surfaces stay pruned at
+   * capture: directories git itself reports ignored (via
+   * `pruneIgnoredDirs` — `check-ignore`'s own per-dir verdict is the
+   * precise boundary) and non-root directories holding a `.git` node
+   * (a repository boundary — `status`/`add`/`ls-files` show one entry
+   * and never descend). For ignored dirs their interiors
+   * are never descended by the enumeration and their `.gitignore`
+   * sources are never consulted (verified — check-ignore does not read
+   * rule files under an ignored dir), so excluding them drops only
+   * churn surface, never consulted state. Consults that DO enumerate
+   * ignored interiors (`status --ignored=matching`) must not rely on
+   * this map; the plain `--ignored` transform emits member-level `!!`
+   * entries only.
    */
   readonly dirs: ReadonlyMap<string, ReadonlySet<string> | null>;
   /**
@@ -644,8 +672,8 @@ export function captureWorktreeSurface(
   names: readonly string[],
 ): WorktreeSurface {
   const files = new Map<string, { ino: number; ctimeMs: number } | null>();
-  for (const rel of names) {
-    const abs = path.join(workTree, rel);
+  const claimedDirs = new Set<string>();
+  const lstatSlot = (abs: string) => {
     let st = null;
     try {
       const lst = lstatSync(abs);
@@ -654,6 +682,27 @@ export function captureWorktreeSurface(
       /* absent at capture — a create before the arm reads as drift */
     }
     files.set(abs, st);
+  };
+  for (const rel of names) {
+    const abs = path.join(workTree, rel);
+    let isDir = false;
+    let st = null;
+    try {
+      const lst = lstatSync(abs);
+      st = { ino: lst.ino, ctimeMs: lst.ctimeMs };
+      isDir = lst.isDirectory();
+    } catch {
+      /* absent at capture — a create before the arm reads as drift */
+    }
+    files.set(abs, st);
+    if (isDir) {
+      claimedDirs.add(abs);
+      // CX-r39-S1: a claimed name materialized as a directory can host
+      // `<name>/.git` — an embedded repo's gitdir `status`/`diff`
+      // consults recursively. The slot joins the pinned surface so its
+      // populated/absent state is judged exactly like a file.
+      lstatSlot(path.join(abs, ".git"));
+    }
   }
   const dirs = new Map<string, ReadonlySet<string> | null>();
   let dirsComplete = true;
@@ -671,17 +720,62 @@ export function captureWorktreeSurface(
     } catch {
       ents = null;
     }
-    dirs.set(
-      d,
-      ents === null ? null : new Set(ents.map((e) => e.name)),
-    );
+    dirs.set(d, ents === null ? null : new Set(ents.map((e) => e.name)));
+    // CX-r39-C1: `.gitignore` bytes in every inventoried dir join the
+    // captured slot set — ignore-rule consults read untracked sources
+    // the same as tracked ones, and a dirent-invisible rewrite must
+    // still read as pin drift.
+    lstatSlot(path.join(d, ".gitignore"));
+    // CX-r39: a non-root dir holding `.git` is a repository boundary —
+    // `status`/`add`/`ls-files` show it as one entry and never descend,
+    // so its interior is unconsulted churn surface (same soundness as
+    // ignored dirs). The dir's own member set stays captured: removing
+    // `.git` reopens the boundary and must read as drift.
+    const repoBoundary = d !== workTree && (ents?.some((e) => e.name === ".git") ?? false);
     for (const e of ents ?? []) {
-      if (e.isDirectory() && !(d === workTree && e.name === ".git")) {
+      if (e.isDirectory() && !(d === workTree && e.name === ".git") && !repoBoundary) {
         stack.push(path.join(d, e.name));
       }
     }
   }
-  return { files, dirs, dirsComplete };
+  return { files, claimedDirs, dirs, dirsComplete };
+}
+
+/**
+ * Drop directories git itself reports ignored from a captured surface
+ * (CX-r39 reliability): `check-ignore`'s per-dir verdict is the precise
+ * "git never descends here" boundary — a collapsed `status --ignored`
+ * `!!` entry or `ls-files --directory` line also covers dirs that are
+ * merely fully-ignored-CONTAINING but still consulted for `.gitignore`,
+ * so only the check-ignore answer may prune. Interiors of ignored dirs
+ * are unenumerated by `status`/`add`/`ls-files` and their `.gitignore`
+ * sources unconsulted by `check-ignore` — dropping them removes churn
+ * surface (`.pnpm/`, build output) that refused honest consults without
+ * ever shaping a verdict. Claimed-name pins and `<gitlink>/.git` slots
+ * inside ignored dirs STAY — tracked entries consult regardless of
+ * ignore state.
+ */
+export function pruneIgnoredDirs(surface: WorktreeSurface, ignoredAbs: ReadonlySet<string>): void {
+  const dirs = surface.dirs as Map<string, ReadonlySet<string> | null>;
+  const files = surface.files as Map<string, { ino: number; ctimeMs: number } | null>;
+  for (const d of ignoredAbs) {
+    dirs.delete(d);
+    files.delete(path.join(d, ".gitignore"));
+  }
+}
+
+/**
+ * Parse `check-ignore -z` output into the absolute dir set it matched —
+ * a record echoes the input pathname verbatim (NUL-separated under
+ * `-z`). Failure to consult (exit other than 0/1) yields the EMPTY set:
+ * an unproven ignore boundary must keep full coverage, never widen it.
+ */
+export function ignoredDirSetFromCheckIgnore(workTree: string, stdout: string): Set<string> {
+  const out = new Set<string>();
+  for (const rec of stdout.split("\0")) {
+    if (rec.length > 0) out.add(path.resolve(workTree, rec));
+  }
+  return out;
 }
 
 /**
@@ -5000,8 +5094,10 @@ export interface WorktreeArmPlan {
  *   untracked walk can descend joins the unfiltered dir-watch set via
  *   the plan's own in-process readdir walk (CX-r38-W1).
  * - `none`: no worktree-content channel (`rev-parse`, `log`,
- *   `cat-file`, `for-each-ref`, …). `check-ignore` is scoped by its
- *   caller through `enumerateTrackedRuleSources` + `extraWatchPaths`.
+ *   `cat-file`, `for-each-ref`, …). `check-ignore` stays `none` here —
+ *   its coverage is not the claims-derived tracked set but the
+ *   ignore-rule surface, which `resolveWorktreeArm` resolves to the
+ *   full untracked plan plus the tracked rule sources (CX-r39-C1).
  */
 export type WorktreeConsultScope = "none" | "tracked" | "tracked+untracked";
 
@@ -5026,7 +5122,7 @@ export function worktreeConsultScope(args: readonly string[]): WorktreeConsultSc
       const v = a.startsWith("--untracked-files=")
         ? a.slice("--untracked-files=".length)
         : a === "--untracked-files" || a === "-u"
-          ? args[++i] ?? ""
+          ? (args[++i] ?? "")
           : a.startsWith("-u") && a.length > 2
             ? a.slice(2)
             : null;
@@ -5091,6 +5187,35 @@ export function worktreeArmPlan(
     // The file's own dir has no further name to filter on below it —
     // the leaf basename already sits in its parent's set.
   }
+  // CX-r39-S1: a claimed name materialized as a directory can host an
+  // embedded repo — `status`/`diff`/`add` consult `<name>/.git`'s
+  // HEAD/refs/index plus the nested worktree recursively, a surface far
+  // outside any pin+watch plan (interior byte flips carry no dirent
+  // event and no pin). A POPULATED `.git` slot at capture makes the
+  // worktree surface unverifiable outright — refuse. An absent slot
+  // still joins the pinned set plus a `.git`-filtered dir watch on the
+  // claimed dir, so a plant reads as drift (arm compare / settle
+  // recheck) or a dirent event (transient plant+restore).
+  for (const d of baseline.claimedDirs) {
+    const slot = path.join(d, ".git");
+    if (baseline.files.get(slot)) return null;
+    files.add(slot);
+    let set = dirNameSets.get(d);
+    if (set === undefined) {
+      set = new Set();
+      dirNameSets.set(d, set);
+    }
+    set.add(".git");
+  }
+  // CX-r39-C1: ignore-rule consults (and every untracked enumeration,
+  // which filters BY those rules) read `<dir>/.gitignore` bytes for any
+  // non-ignored dir — an untracked rule source flips the verdict
+  // exactly like a tracked one. The slots were captured per inventoried
+  // dir; pinning them turns a dirent-invisible byte rewrite into ctime
+  // drift while the dir watches see every plant/remove dirent op.
+  if (coverUntrackedDirs) {
+    for (const d of baseline.dirs.keys()) files.add(path.join(d, ".gitignore"));
+  }
   // The watch set is the CAPTURED dir inventory — a dir the capture
   // never saw has already drifted its parent's member set, and the
   // arm's baseline compare refuses on that drift (CX-r38-W1). Left
@@ -5125,9 +5250,16 @@ export function resolveWorktreeArm(
   if (args[0] === "check-ignore") {
     const rules = enumerateTrackedRuleSources(preflight);
     if (rules === null) return null;
+    // CX-r39-C1: `check-ignore` consults `<dir>/.gitignore` for every
+    // non-ignored ancestor of each queried path — an UNTRACKED rule
+    // source flips the verdict exactly like a tracked one, so the full
+    // untracked coverage (member sets, dir watches, `.gitignore` pins)
+    // joins the plan, not only the tracked rule sources.
+    const wtPlan = worktreeArmPlan(preflight, true);
+    if (wtPlan === null) return null;
     return {
       scope,
-      wtPlan: null,
+      wtPlan,
       extraWatch: rules.size === 0 ? extraWatchPaths : [...(extraWatchPaths ?? []), ...rules],
     };
   }
@@ -5312,6 +5444,51 @@ export function armEvidenceWindowWatch(
     }
     pinFile(f);
   };
+  const record = (abs: string) => {
+    if (ignore?.(abs) === true) return;
+    // A barriered file's OWN chmod fires IN_ATTRIB on its containing
+    // dir's watch — the mechanism condemning itself (CX-r39-C1: dir
+    // watches now arm before the barrier runs). The event adds nothing
+    // the pin doesn't already cover: an attacker's chmodat/rewrite/
+    // recreate on the same path drifts ino+ctime at settle regardless.
+    // Only pure-attrib ops are masked, and those never change content.
+    if (barrierSeen.has(abs)) return;
+    events.push(abs);
+  };
+  const arm = (target: string, nameFilter?: string | ReadonlySet<string>, isFile = false) => {
+    if (failed) return;
+    try {
+      watchers.push(
+        fsWatch(target, { persistent: false }, (_t, filename) => {
+          if (filename === null) return;
+          const name = String(filename);
+          if (nameFilter !== undefined) {
+            if (typeof nameFilter === "string" ? name !== nameFilter : !nameFilter.has(name)) {
+              return;
+            }
+          }
+          const abs = isFile
+            ? target
+            : nameFilter !== undefined && path.isAbsolute(name)
+              ? name
+              : path.join(target, name);
+          record(abs);
+        }),
+      );
+    } catch {
+      failed = true;
+    }
+  };
+  // CX-r39-G1: the untracked-covering dir watches arm BEFORE the
+  // baseline compares below — a dirent op landing between the member-set
+  // read and the watch registration used to slip both channels (the
+  // compare saw pre-drift state, the watch registered post-drift).
+  // Arming first closes that ordering hole: pre-arm drift is read by
+  // the compare, post-compare ops fire the registered watch, and the
+  // settle re-reads the member sets once more for the fsWatch→inotify
+  // activation gap. The watch's own ENOENT (dir gone since capture)
+  // refuses the same way the compare's null-side asymmetry would.
+  for (const d of wtArm?.dirs ?? []) arm(d);
   // CX-r38-W1: the tracked worktree surface a `status`/`diff`/`grep`
   // consult reads joins the pin+watch surface — against the CAPTURED
   // baseline, so a flip landing between capture and arm is drift, not
@@ -5421,34 +5598,6 @@ export function armEvidenceWindowWatch(
   // dir) — the pin catches the owner-chmodat escape the same way it
   // does on the live surface; never ignore-filtered.
   for (const f of preflight.overlay?.files ?? []) pinFile(f);
-  const record = (abs: string) => {
-    if (ignore?.(abs) === true) return;
-    events.push(abs);
-  };
-  const arm = (target: string, nameFilter?: string | ReadonlySet<string>, isFile = false) => {
-    if (failed) return;
-    try {
-      watchers.push(
-        fsWatch(target, { persistent: false }, (_t, filename) => {
-          if (filename === null) return;
-          const name = String(filename);
-          if (nameFilter !== undefined) {
-            if (typeof nameFilter === "string" ? name !== nameFilter : !nameFilter.has(name)) {
-              return;
-            }
-          }
-          const abs = isFile
-            ? target
-            : nameFilter !== undefined && path.isAbsolute(name)
-              ? name
-              : path.join(target, name);
-          record(abs);
-        }),
-      );
-    } catch {
-      failed = true;
-    }
-  };
   for (const d of dirs) arm(d);
   // Overlay dirs are same-UID-writable (private dir ≠ unwritable) — a
   // plant inside fires a dirent event; chmodat on an overlay file is
@@ -5495,7 +5644,6 @@ export function armEvidenceWindowWatch(
     }
     arm(d, names);
   }
-  for (const d of wtArm?.dirs ?? []) arm(d);
   // CX-r38-W2: every resolution root the spawn's env pins consult is
   // held open at arm time (the armed-inode fd `spawnCaptured` hands to
   // its child) AND its PARENT dirent gets a name-filtered watch — a
@@ -5520,9 +5668,7 @@ export function armEvidenceWindowWatch(
       // parent, and a spawn-time open of the verifier private dir by
       // NAME would bind a rename-substituted foreign dir — the held fd
       // + parent watch close that the same way the live roots do.
-      preflight.index?.path === undefined
-        ? null
-        : path.dirname(preflight.index.path),
+      preflight.index?.path === undefined ? null : path.dirname(preflight.index.path),
     ]) {
       if (r !== null && r !== undefined) roots.add(r);
     }
@@ -5626,6 +5772,43 @@ export function armEvidenceWindowWatch(
           }
         } catch {
           events.push(abs);
+        }
+      }
+      // CX-r39-G1: the fsWatch→inotify activation gap is the one
+      // channel the compare+watch pair cannot cover — a dirent op
+      // landing in it changes the member set while registering no
+      // event. Re-reading every captured member set at settle gives the
+      // untracked enumeration a non-inotify channel; a slot still
+      // absent at arm (`.git`/`.gitignore`/deleted tracked entry) is
+      // re-stat'd the same way, so a plant the armed watch outran reads
+      // as drift. Mutation consults attest arm-instant state — the
+      // compare skips them exactly like the arm's own baseline pass.
+      if (wtArm?.barrier !== true) {
+        for (const [d, capSet] of wtArm?.dirs !== undefined ? wtArm.baseline.dirs : []) {
+          let curSet = null;
+          try {
+            curSet = new Set(readdirSync(d));
+          } catch {
+            /* unreadable now */
+          }
+          if (capSet === null || curSet === null) {
+            if (capSet !== curSet) events.push(d);
+            continue;
+          }
+          if (curSet.size !== capSet.size || ![...capSet].every((n) => curSet.has(n))) {
+            events.push(d);
+          }
+        }
+        for (const f of wtArm?.files ?? []) {
+          if (wtPins.has(f) || pins.has(f)) continue;
+          // Absent at arm (no pin): still-absent is consistent — a
+          // present file is a create the armed watch outran.
+          try {
+            lstatSync(f);
+            events.push(f);
+          } catch {
+            /* still absent */
+          }
         }
       }
       if (claimsFdPin !== null) {
@@ -6094,10 +6277,33 @@ export async function evidenceRepoPreflight(
   // and arm reads as drift (the `.git` fingerprint's own semantics)
   // instead of being silently adopted as the pin baseline.
   if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
-    preflight.worktreeSurface = captureWorktreeSurface(
-      fingerprint.workTree,
-      preflight.index.names,
-    );
+    const wt = fingerprint.workTree;
+    const surface = captureWorktreeSurface(wt, preflight.index.names);
+    // CX-r39 reliability: directories git reports ignored are pruned
+    // from the member-set inventory — the enumeration never descends
+    // them and `check-ignore` never consults their `.gitignore`
+    // sources, so covering their interiors only refused honest churn
+    // (`.pnpm/`, build output). `check-ignore` per dir is the precise
+    // boundary — `status --ignored`/`ls-files --directory` collapse
+    // also cover unignored dirs whose CONTENTS are all ignored, where
+    // `.gitignore` still shapes verdicts. Every rule source that could
+    // flip a dir's ignored state is itself pinned/watched, so the
+    // boundary cannot move unobserved. A failed consult keeps the full
+    // inventory — unproven exclusion never narrows coverage.
+    const relDirs = [...surface.dirs.keys()]
+      .map((d) => path.relative(wt, d))
+      .filter((r) => r.length > 0);
+    const ignored = new Set<string>();
+    for (let i = 0; i < relDirs.length; i += 1500) {
+      const chunk = relDirs.slice(i, i + 1500);
+      const r = await execEvidenceGit(wt, ["check-ignore", "-z", "--", ...chunk], {
+        internalEnv,
+      });
+      if (r.exitCode !== 0 && r.exitCode !== 1) break;
+      for (const abs of ignoredDirSetFromCheckIgnore(wt, r.stdout)) ignored.add(abs);
+    }
+    pruneIgnoredDirs(surface, ignored);
+    preflight.worktreeSurface = surface;
   }
   return preflight;
 }
@@ -7176,6 +7382,25 @@ async function verifierGitSpawn(
           stderr: `${EVIDENCE_REFUSED_PREFIX}: worktree surface unverifiable — refusing the mutation`,
         };
       }
+    } else {
+      // CX-r39-A1: anchored READS consult the same worktree surface the
+      // per-call channel arms — `verifierGit(cwd, ["status"|"diff"], {preflight})`
+      // used to spawn with wtPlan=null, leaving tracked/untracked bytes
+      // unjudged inside the armed window. `resolveWorktreeArm` derives
+      // the same scope→plan contract here: tracked/untracked scopes get
+      // the captured-baseline plan, `check-ignore` the untracked
+      // coverage plus rule sources, `none` nothing. Null = the required
+      // surface is unverifiable — refuse.
+      const resolved = resolveWorktreeArm(args, preflight, anchoredExtraWatch);
+      if (resolved === null) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: `${EVIDENCE_REFUSED_PREFIX}: worktree surface unverifiable — refusing the consult: git ${args.join(" ")}`,
+        };
+      }
+      anchoredWtPlan = resolved.wtPlan;
+      anchoredExtraWatch = resolved.extraWatch;
     }
     // The window watch covers the mutation's lifetime too — events on
     // the op's OWN write surface (`index`, `objects/`, `refs/`, HEAD
@@ -7767,8 +7992,12 @@ export async function unprovenIgnoredPaths(
       // CX-r38-W1: the inner `diff --name-only HEAD` consult reads
       // worktree bytes — the tracked surface joins the window's
       // pin+barrier+watch plan or a mid-window flip→restore attests
-      // foreign rule bytes as committed-clean.
-      const wtPlan = worktreeArmPlan(preflight);
+      // foreign rule bytes as committed-clean. CX-r39-C1 widens that
+      // to the untracked surface: the inner `check-ignore -v` consult
+      // reads `<dir>/.gitignore` for every non-ignored dir, so an
+      // untracked rule source must pin+watch exactly like a tracked
+      // one or a mid-window plant launderers unproven provenance.
+      const wtPlan = worktreeArmPlan(preflight, true);
       if (wtPlan === null) return null;
       let windowWatch = armEvidenceWindowWatch(
         root,

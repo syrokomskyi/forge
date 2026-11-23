@@ -13,11 +13,11 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r27 trust-boundary counterexamples — ref:-ws parser parity, symlinked-dir window coverage, flow hazards refusal</item>
   <item>RFC-1616: route ref consults through a verifier-owned gitdir overlay and harden held-file mints (RFC-1616 r35 follow-up)</item>
   <item>RFC-1616: surface evidence refusals through claims and consult paths honestly (RFC-1616 follow-up)</item>
   <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
   <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
+  <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -26,7 +26,7 @@ import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 import { createHash } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import {
   resolveGitBin,
   verifierGitEnv,
@@ -42,6 +42,8 @@ import {
   spawnCaptured,
   captureEvidenceSurface,
   captureWorktreeSurface,
+  pruneIgnoredDirs,
+  ignoredDirSetFromCheckIgnore,
   reproveEvidenceSurface,
   armEvidenceWindowWatch,
   geometryLocalAnswer,
@@ -534,10 +536,32 @@ export async function evidencePreflight(
   // and arm reads as drift (the `.git` fingerprint's own semantics)
   // instead of being silently adopted as the pin baseline.
   if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
-    preflight.worktreeSurface = captureWorktreeSurface(
-      fingerprint.workTree,
-      preflight.index.names,
-    );
+    const wt = fingerprint.workTree;
+    const surface = captureWorktreeSurface(wt, preflight.index.names);
+    // CX-r39 reliability: directories git reports ignored are pruned
+    // from the member-set inventory — the enumeration never descends
+    // them and `check-ignore` never consults their `.gitignore`
+    // sources, so covering their interiors only refused honest churn
+    // (`.pnpm/`, build output). `check-ignore` per dir is the precise
+    // boundary — `status --ignored`/`ls-files --directory` collapse
+    // also cover unignored dirs whose CONTENTS are all ignored, where
+    // `.gitignore` still shapes verdicts. A failed consult keeps the
+    // full inventory — unproven exclusion never narrows coverage.
+    const relDirs = [...surface.dirs.keys()]
+      .map((d) => relative(wt, d))
+      .filter((r) => r.length > 0);
+    const ignored = new Set<string>();
+    for (let i = 0; i < relDirs.length; i += 1500) {
+      const chunk = relDirs.slice(i, i + 1500);
+      const r = await gitEvidence(wt, ["check-ignore", "-z", "--", ...chunk], {
+        preflight: false,
+        internalEnv,
+      });
+      if (r.exitCode !== 0 && r.exitCode !== 1) break;
+      for (const abs of ignoredDirSetFromCheckIgnore(wt, r.stdout)) ignored.add(abs);
+    }
+    pruneIgnoredDirs(surface, ignored);
+    preflight.worktreeSurface = surface;
   }
   return preflight;
 }

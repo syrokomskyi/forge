@@ -143,7 +143,13 @@ const startHeadMover = (root: string, c2: string, opts: { fireOnChild?: number }
     "    return False\n" +
     "while time.time()<end and not fired:\n" +
     "    ks=kids()\n" +
-    "    ci=has(b'check-ignore',ks)\n" +
+    // `--stdin` belongs only to the PROVENANCE check-ignore inside
+    // the judged consult — preflight's ignored-dirs consult also
+    // spawns `check-ignore -z` children, which would satisfy a bare
+    // `check-ignore` trigger early and land the move inside the
+    // capture phase (the adopted-baseline class, not the consult
+    // window this test judges).
+    "    ci=has(b'check-ignore',ks) and has(b'--stdin',ks)\n" +
     "    if ci: ciSeen=True\n" +
     "    if ciSeen and not ci: ciGone=True\n" +
     "    if ciGone and not fired:\n" +
