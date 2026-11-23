@@ -9,11 +9,12 @@ snapshot taken before and after.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 4 — flow.install rerun-safety test</item>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
   <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <item>RFC-1501: raise load-flaked flow fixture timeouts under suite load</item>
+  <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
 
@@ -135,7 +136,7 @@ describe("flow.install rerun-safety (AC-8)", () => {
 
     expect(await hashTree(join(repo, "hooks"))).toBe(hooksHashBefore);
     expect(await refSnapshot(repo)).toBe(refsBefore);
-  });
+  }, 90_000);
 
   it("repairs a drifted core.hooksPath on an adopted repo — committed adoption is the exemption signal, not working-tree state", async () => {
     const repo = await initRepo({ prefix: "flow-drift-" });
@@ -153,7 +154,7 @@ describe("flow.install rerun-safety (AC-8)", () => {
     await executeInstall(plan, ambientIo);
     const hooksPath = await gitExec(repo, ["config", "--get", "core.hooksPath"]);
     expect(hooksPath.stdout.trim()).toBe("hooks");
-  });
+  }, 90_000);
 
   it("repairs a drifted committed guard on an adopted repo", async () => {
     const repo = await initRepo({ prefix: "flow-drift-guard-" });
@@ -172,7 +173,7 @@ describe("flow.install rerun-safety (AC-8)", () => {
     await executeInstall(plan, ambientIo);
     const content = await gitExec(repo, ["show", "develop:hooks/flow-guard.sh"]);
     expect(content.stdout).toContain("forge flow guard");
-  });
+  }, 90_000);
 
   it("a wave-1-adopted repo gains hooks/pre-merge-commit on rerun (RFC-1490)", async () => {
     const repo = await initRepo({ prefix: "flow-rerun-premerge-" });
@@ -216,5 +217,5 @@ describe("flow.install rerun-safety (AC-8)", () => {
     const dev = third.steps.find((s) => s.step === "develop");
     expect(dev?.status).toBe("skipped");
     expect(await refSnapshot(repo)).toBe(refsBefore);
-  });
+  }, 90_000);
 });

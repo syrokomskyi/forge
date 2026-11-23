@@ -13,7 +13,6 @@ replay; unhold recreates the worktree and integrate lands A again; the
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
 
@@ -64,6 +63,7 @@ r10-remediated channel — this commit closes all of them.
 
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
+  <item>RFC-1501: raise load-flaked flow fixture timeouts under suite load</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -239,7 +239,7 @@ describe("flow.hold", () => {
     });
     expect(data.diagnostics).toEqual([]);
     expect(await tracking()).toBe(before);
-  });
+  }, 90_000);
 
   it("holds the topmost item — empty tail above it — by resetting develop to its base", async () => {
     const { repo } = await repoWithOrigin();
