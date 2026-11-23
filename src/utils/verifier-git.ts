@@ -18,11 +18,10 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
   <item>Multi-child evidence consults hold ONE armed window across all their children — per-child windows leave the inter-child gap uncovered, letting a same-UID write slide a consulted baseline (HEAD ref, rule source, index snapshot) between children while every window reports clean (CX-r32-A); a consult spanning a window either attests one stable instant or refuses.</item>
   <item>Judged children resolve paths through arm-opened root fds (`/proc/self/fd/N`), capture children resolve by name — deliberately different channels. fd-binding a path-emitting preflight resolve (`--git-path`, `--absolute-git-dir`) feeds child-local fd literals back into the fingerprint; name-binding a judged spawn lets a mid-window root rename exchange steer GIT_WORK_TREE/GIT_OBJECT_DIRECTORY onto a foreign inode (CX-r38-W2). Names are captured at preflight and re-proven under the armed window; verdicts bind inodes, never names.</item>
-  <item>The worktree arm must be TOTAL and the compare must run UNDER the watch: every worktree-consulting argv on every channel resolves its plan through `resolveWorktreeArm` (an argv the classifier misses must never arm `wtPlan=null` — CX-r39-A1/C1), dir watches arm before the member-set compare and settle re-reads the sets (a delete in the compare→arm or activation gap must be an event or drift — CX-r39-G1), and a claims dir with a populated `.git` refuses outright (an embedded gitdir is unjudgeable — CX-r39-S1). Coverage is pruned only where git itself cannot consult: `check-ignore`-verdict ignored dirs and `.git`-holding repo boundaries.</item>
+  <item>The worktree arm must be TOTAL and the compare must run UNDER the watch: every worktree-consulting argv on every channel resolves its plan through `resolveWorktreeArm` (an argv the classifier misses must never arm `wtPlan=null` — CX-r39-A1/C1), dir watches arm before the member-set compare and settle re-reads the sets (a delete in the compare→arm or activation gap must be an event or drift — CX-r39-G1), and a claims dir with a populated `.git` refuses outright (an embedded gitdir is unjudgeable — CX-r39-S1). Coverage is pruned only where the CONSULT cannot reach: `.git`-holding repo boundaries always; `check-ignore`-verdict ignored dirs only when `consultDescendsIgnoredDirs` proves the argv never reads their interiors — `status`'s forced `--ignored` and `ls-files -o`'s stripped exclusions DO descend, so capture stays total and the arm subtracts per argv (CX-r41-F1).</item>
   <item>Scope classifiers admit-list, never enumerate-by-flag: `worktreeConsultScope` maps `ls-files` to `tracked+untracked` unless the argv is provably index-only — a worktree-walking flag the allowlist table doesn't name (`-k`/`--killed`, CX-r40-W3) inherits full coverage instead of silently arming `wtPlan=null`. The same principle guards internal consults that run BEFORE the refuse verdict exists: a preflight spawn that can touch the worktree (`check-ignore` stats dirs → `core.fsmonitor` exec, CX-r40-E1) merges `evidencePinEnv` even though it is not the judged child — consults downstream of `refusedKeys` are upstream-guarded and keep live config by design (CX-r33-C cite semantics).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
   <item>RFC-1616: port r38-verify probes to trust-boundary-cx38</item>
   <item>RFC-1616: skip absent name-derived worktree dirs in r38 arm watches (RFC-1616)
 
@@ -35,6 +34,7 @@ parent's name set, so re-materialization fires on the nearest existing
 ancestor's watch.</item>
   <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
+  <item>RFC-1616: close r41 trust-boundary counterexamples — per-argv ignored-dir prune, file-valued argv strip/forbid, unconditional upstream pins</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -629,21 +629,28 @@ export interface WorktreeSurface {
    * capture), for every enumerable directory under the worktree. The
    * untracked/ignored enumeration a `status`-class consult runs cannot
    * hide or invent a dirent between capture and arm without drifting a
-   * member set (CX-r38-W1 untracked-hide). Two surfaces stay pruned at
-   * capture: directories git itself reports ignored (via
-   * `pruneIgnoredDirs` — `check-ignore`'s own per-dir verdict is the
-   * precise boundary) and non-root directories holding a `.git` node
-   * (a repository boundary — `status`/`add`/`ls-files` show one entry
-   * and never descend). For ignored dirs their interiors
-   * are never descended by the enumeration and their `.gitignore`
-   * sources are never consulted (verified — check-ignore does not read
-   * rule files under an ignored dir), so excluding them drops only
-   * churn surface, never consulted state. Consults that DO enumerate
-   * ignored interiors (`status --ignored=matching`) must not rely on
-   * this map; the plain `--ignored` transform emits member-level `!!`
-   * entries only.
+   * member set (CX-r38-W1 untracked-hide). The inventory is COMPLETE —
+   * every dir git reports ignored stays captured (`ignoredDirs` marks
+   * them) because which consults may drop them is a per-argv judgment
+   * (CX-r41-F1): `check-ignore`/`add` never descend ignored dirs, but
+   * `status` under the forced `--ignored` opens them and probes their
+   * `.gitignore` even in collapsed `!!` mode, and `ls-files -o` post-
+   * strip enumerates every ignored interior. The arm — not the capture
+   * — subtracts the ignored set, and only for consults proven never to
+   * consult it. Non-root directories holding a `.git` node are the one
+   * structural exception (a repository boundary — `status`/`add`/
+   * `ls-files` show one entry and never descend regardless of flags).
    */
   readonly dirs: ReadonlyMap<string, ReadonlySet<string> | null>;
+  /**
+   * Absolute dirs `check-ignore` verdict-ignored at capture (CX-r39
+   * reliability prune set, CX-r41-F1). `worktreeArmPlan` subtracts this
+   * set from the ARMED dir/.gitignore coverage when — and only when —
+   * `consultDescendsIgnoredDirs(args)` proves the consult never reads
+   * the interiors. EMPTY when the check-ignore consult fails — an
+   * unproven ignore boundary keeps full coverage, never widens it.
+   */
+  readonly ignoredDirs: ReadonlySet<string>;
   /**
    * `false` = the dir walk hit `EVIDENCE_WT_DIR_BOUND` — the captured
    * inventory is incomplete, so an untracked-covering consult cannot
@@ -739,30 +746,27 @@ export function captureWorktreeSurface(
       }
     }
   }
-  return { files, claimedDirs, dirs, dirsComplete };
+  return { files, claimedDirs, dirs, dirsComplete, ignoredDirs: new Set<string>() };
 }
 
 /**
- * Drop directories git itself reports ignored from a captured surface
- * (CX-r39 reliability): `check-ignore`'s per-dir verdict is the precise
- * "git never descends here" boundary — a collapsed `status --ignored`
- * `!!` entry or `ls-files --directory` line also covers dirs that are
- * merely fully-ignored-CONTAINING but still consulted for `.gitignore`,
- * so only the check-ignore answer may prune. Interiors of ignored dirs
- * are unenumerated by `status`/`add`/`ls-files` and their `.gitignore`
- * sources unconsulted by `check-ignore` — dropping them removes churn
- * surface (`.pnpm/`, build output) that refused honest consults without
- * ever shaping a verdict. Claimed-name pins and `<gitlink>/.git` slots
- * inside ignored dirs STAY — tracked entries consult regardless of
- * ignore state.
+ * Record the dirs git itself reports ignored on a captured surface
+ * (CX-r39 reliability, CX-r41-F1): `check-ignore`'s per-dir verdict is
+ * the precise "git never descends here" boundary — a collapsed
+ * `status --ignored` `!!` entry or `ls-files --directory` line also
+ * covers dirs that are merely fully-ignored-CONTAINING but still
+ * consulted for `.gitignore`, so only the check-ignore answer may mark
+ * the set. The set stays RECORDED, never subtracted at capture:
+ * whether a consult may drop the interiors is a per-argv judgment
+ * (`consultDescendsIgnoredDirs`) the arm makes, since `status`'s
+ * forced `--ignored` and `ls-files -o`'s stripped exclusions DO read
+ * them. Claimed-name pins and `<gitlink>/.git` slots inside ignored
+ * dirs are never pruned regardless — tracked entries consult
+ * regardless of ignore state.
  */
-export function pruneIgnoredDirs(surface: WorktreeSurface, ignoredAbs: ReadonlySet<string>): void {
-  const dirs = surface.dirs as Map<string, ReadonlySet<string> | null>;
-  const files = surface.files as Map<string, { ino: number; ctimeMs: number } | null>;
-  for (const d of ignoredAbs) {
-    dirs.delete(d);
-    files.delete(path.join(d, ".gitignore"));
-  }
+export function markIgnoredDirs(surface: WorktreeSurface, ignoredAbs: ReadonlySet<string>): void {
+  const set = surface.ignoredDirs as Set<string>;
+  for (const d of ignoredAbs) set.add(d);
 }
 
 /**
@@ -1726,6 +1730,18 @@ const CAT_FILE_LEVER_FLAGS = [
 ] as const;
 
 /**
+ * Flags that read a session-named FILE for the pathspec set (CX-r41-F2):
+ * the judged child opens the argv-named path inside the evidence window,
+ * but the path itself sits outside every pinned/watched/armed surface —
+ * a mid-window flip silently rewrites which paths the enumeration
+ * attests. `--pathspec-file-nul` changes that file's parse. Every
+ * admitted op that supports the pair forbids them — callers pass
+ * pathspecs as argv literals. The anchored-mutation channel already
+ * forbids the same pair on `add`/`reset`.
+ */
+const PATHSPEC_FILE_FLAGS = ["--pathspec-from-file", "--pathspec-file-nul"] as const;
+
+/**
  * The argv space `gitEvidence` may spawn — a mirror of the shared
  * READ_ONLY_GIT_QUERIES table — pure reads only: the one mutating op
  * (`fetch`) was removed because every remote it can name is
@@ -1742,8 +1758,8 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
   { prefix: ["--version"], maxPositionals: 0 },
   { prefix: ["rev-parse"] },
   { prefix: ["worktree", "list"] },
-  { prefix: ["ls-files"], forbid: ["--recurse-submodules"] },
-  { prefix: ["ls-tree"] },
+  { prefix: ["ls-files"], forbid: ["--recurse-submodules", ...PATHSPEC_FILE_FLAGS] },
+  { prefix: ["ls-tree"], forbid: PATHSPEC_FILE_FLAGS },
   { prefix: ["cat-file"], forbid: CAT_FILE_LEVER_FLAGS },
   // `-g`/`--reflog` serve REFLOG data — fabricated by ordinary session
   // update-ref churn and anchored to nothing verifiable (CX-92). Long
@@ -1768,7 +1784,10 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
   // `--show-stash` prints "Your stash currently has N entries" — N is
   // a count of `.git/logs/refs/stash` REFLOG lines, session-fabricable
   // with no real stash objects: the CX-92 exclusion class (CX-146).
-  { prefix: ["status"], forbid: ["--branch", "-b", "--show-stash"] },
+  {
+    prefix: ["status"],
+    forbid: ["--branch", "-b", "--show-stash", ...PATHSPEC_FILE_FLAGS],
+  },
   // `--notes`/`--show-notes` add session-planted `refs/notes/*` bodies to
   // the display set — argv overrides the `notes.displayRef=`/`core.notesRef=`
   // pins verbatim, serving the provenance class the `%(notes)` atom refusal
@@ -1786,12 +1805,25 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
       "--test-bitmap",
       "--notes",
       "--show-notes",
+      ...PATHSPEC_FILE_FLAGS,
     ],
   },
-  { prefix: ["diff"], forbid: ["--output", "--ext-diff", "--textconv", "--no-index"] },
+  {
+    prefix: ["diff"],
+    forbid: ["--output", "--ext-diff", "--textconv", "--no-index", ...PATHSPEC_FILE_FLAGS],
+  },
   {
     prefix: ["show"],
-    forbid: ["--output", "--ext-diff", "--textconv", "-g", "--reflog", "--notes", "--show-notes"],
+    forbid: [
+      "--output",
+      "--ext-diff",
+      "--textconv",
+      "-g",
+      "--reflog",
+      "--notes",
+      "--show-notes",
+      ...PATHSPEC_FILE_FLAGS,
+    ],
   },
   { prefix: ["symbolic-ref"], forbid: ["-d", "--delete", "-m"], maxPositionals: 1 },
   // Config reads answer from .git/config only — the `--file`/`--blob`/
@@ -1830,11 +1862,15 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
       "-O",
       "--open-files-in-pager",
       "--recurse-submodules",
-      "--pathspec-from-file",
-      "--pathspec-file-nul",
+      ...PATHSPEC_FILE_FLAGS,
       "--untracked",
       "--no-index",
       "--all-objects",
+      // `-f`/`--file` reads the pattern set from an argv-named session
+      // file (CX-r41-F2) — a path outside every armed surface, flipped
+      // mid-window, silently rewrites the judged match set.
+      "-f",
+      "--file",
     ],
   },
   // `check-ignore` is a pure read — ignore-rule matching against
@@ -3661,9 +3697,16 @@ export function judgeEvidenceRepoSurface(
   // text. The pin only covers HEAD's branch because that is the only
   // upstream status ever evaluates; every other surface for the claim
   // (`for-each-ref %(upstream)`/`%(track)`/`%(push)`, `status -sb`,
-  // `branch -v`) is argv-refused instead. Config-unexpressible names
-  // cannot be armed through config at all, so they need no pin.
-  if (headBranch !== undefined && headBranch !== null && /^[\w][\w./-]*$/.test(headBranch)) {
+  // `branch -v`) is argv-refused instead. The pin emits for EVERY
+  // non-empty branch name (CX-r41-F3): Git arms `[branch "<name>"]`
+  // for names far outside `\w` — `a%b`, `a|b`, `feat/üñï` all resolve
+  // a session `branch.<n>.{remote,merge}` — and a dead pin on a name
+  // config cannot express is harmless (Git simply never matches it),
+  // while a missed armable name is a verbatim fabricated claim. A
+  // regex gate on the name would guess config's quoting grammar; the
+  // flat `-c` dotted form needs no guess — everything between the
+  // first and last dot is the subsection verbatim.
+  if (headBranch !== undefined && headBranch !== null && headBranch.length > 0) {
     // Empty `key=` pins SEGFAULT Git ≥2.53 on upstream resolution
     // (`status`/`commit --dry-run`, CX-r40-N2). A never-configured remote
     // name resolves upstream to nothing — resolution aborts on the remote
@@ -5219,6 +5262,7 @@ export function worktreeArmPlan(
   preflight: EvidencePreflight,
   coverUntrackedDirs = false,
   barrier = false,
+  allowIgnoredDirPrune = true,
 ): WorktreeArmPlan | null {
   const wt = preflight.fingerprint?.workTree;
   const names = preflight.index?.names;
@@ -5266,22 +5310,98 @@ export function worktreeArmPlan(
     }
     set.add(".git");
   }
+  // CX-r41-F1: the ignored-dir set is subtracted from ARMED coverage
+  // only when the caller proved (via `consultDescendsIgnoredDirs`) the
+  // consult never reads those interiors — `status`'s forced `--ignored`
+  // and `ls-files -o`'s stripped exclusions DO descend, so for them the
+  // full captured set arms. The member-set compare and settle re-read
+  // follow this same armed subset.
+  const armedDirs = coverUntrackedDirs
+    ? [...baseline.dirs.keys()].filter((d) => !allowIgnoredDirPrune || !baseline.ignoredDirs.has(d))
+    : undefined;
   // CX-r39-C1: ignore-rule consults (and every untracked enumeration,
   // which filters BY those rules) read `<dir>/.gitignore` bytes for any
   // non-ignored dir — an untracked rule source flips the verdict
   // exactly like a tracked one. The slots were captured per inventoried
   // dir; pinning them turns a dirent-invisible byte rewrite into ctime
-  // drift while the dir watches see every plant/remove dirent op.
-  if (coverUntrackedDirs) {
-    for (const d of baseline.dirs.keys()) files.add(path.join(d, ".gitignore"));
+  // drift while the dir watches see every plant/remove dirent op. Under
+  // a proven prune the ignored dirs' `.gitignore` slots drop out — no
+  // prunable consult ever reads them.
+  for (const d of armedDirs ?? []) files.add(path.join(d, ".gitignore"));
+  // The watch set is the CAPTURED dir inventory minus any proven-prunable
+  // ignored dirs — a dir the capture never saw has already drifted its
+  // parent's member set, and the arm's baseline compare refuses on that
+  // drift (CX-r38-W1). Left `undefined` for tracked-only scopes — the
+  // untracked enumeration is not consulted there, so honest dirent churn
+  // must not refuse.
+  return { files: [...files], dirNameSets, dirs: armedDirs, barrier, baseline };
+}
+
+/**
+ * Whether the consult's spawned child reads the interiors of dirs git
+ * reports ignored — the per-argv precondition for pruning them from
+ * armed coverage (CX-r41-F1). The test is admit-listed to the proven
+ * descent shapes, never "unlisted flag means safe":
+ *
+ * - `status` post-transform always carries `--ignored`, and `--ignored`
+ *   opens every ignored dir and probes its `.gitignore` even when the
+ *   output collapses to `!! dir/` (Git 2.53, strace-verified) — only
+ *   `-u no` skips the untracked walk entirely.
+ * - `ls-files -o`/`--others` post-transform carries NO exclusion
+ *   machinery, so the enumeration opens every ignored interior. The
+ *   `--directory` collapse reports dir entries without reading them —
+ *   unless `--no-empty-directory` forces the emptiness check. `-k`/
+ *   `--killed` never opens an ignored dir (verified), and index-only
+ *   forms never walk untracked dirs at all.
+ * - `add`/`rm`-family consults prune ignored dirs from their walk
+ *   unless `-f`/`--force` compels them (`git add -nf` reads interiors).
+ * - `check-ignore` never descends — its per-dir verdict IS the prune
+ *   source. Tracked-scope consults stat pinned tracked paths; every
+ *   other admitted op is index/object/ref.
+ */
+export function consultDescendsIgnoredDirs(args: readonly string[]): boolean {
+  const op = args[0] ?? "";
+  if (op === "status") {
+    let untracked = true;
+    for (let i = 1; i < args.length; i++) {
+      const a = args[i]!;
+      if (a === "--") break;
+      const v = a.startsWith("--untracked-files=")
+        ? a.slice("--untracked-files=".length)
+        : a === "--untracked-files" || a === "-u"
+          ? (args[++i] ?? "")
+          : a.startsWith("-u") && a.length > 2
+            ? a.slice(2)
+            : null;
+      if (v !== null) untracked = v !== "no";
+    }
+    return untracked;
   }
-  // The watch set is the CAPTURED dir inventory — a dir the capture
-  // never saw has already drifted its parent's member set, and the
-  // arm's baseline compare refuses on that drift (CX-r38-W1). Left
-  // `undefined` for tracked-only scopes — the untracked enumeration
-  // is not consulted there, so honest dirent churn must not refuse.
-  const dirs = coverUntrackedDirs ? [...baseline.dirs.keys()] : undefined;
-  return { files: [...files], dirNameSets, dirs, barrier, baseline };
+  if (op === "ls-files") {
+    let others = false;
+    let dirCollapse = false;
+    let noEmpty = false;
+    for (const a of args.slice(1)) {
+      if (a === "--") break;
+      if (!a.startsWith("-")) continue;
+      // `--o…` covers `--others` and every unambiguous abbreviation —
+      // an unknown long flag must bias toward coverage, not omission.
+      if (a.startsWith("--o")) others = true;
+      else if (a.startsWith("--no-empty")) noEmpty = true;
+      else if (a.startsWith("--dir")) dirCollapse = true;
+      else if (!a.startsWith("--") && a.includes("o")) others = true;
+    }
+    return others && !(dirCollapse && !noEmpty);
+  }
+  if (op === "add" || op === "rm" || op === "mv" || op === "clean") {
+    for (const a of args.slice(1)) {
+      if (a === "--") break;
+      if (a === "--force" || a === "-f") return true;
+      if (!a.startsWith("--") && a.startsWith("-") && a.includes("f")) return true;
+    }
+    return false;
+  }
+  return false;
 }
 
 /**
@@ -5303,7 +5423,15 @@ export function resolveWorktreeArm(
 } | null {
   const scope = worktreeConsultScope(args);
   if (scope === "tracked" || scope === "tracked+untracked") {
-    const wtPlan = worktreeArmPlan(preflight, scope === "tracked+untracked");
+    // CX-r41-F1: prune the ignored-dir set only when the consult argv
+    // provably never reads those interiors (`status -uall`/`--ignored`
+    // and `ls-files -o` DO — for them the full set arms).
+    const wtPlan = worktreeArmPlan(
+      preflight,
+      scope === "tracked+untracked",
+      false,
+      !consultDescendsIgnoredDirs(args),
+    );
     return wtPlan === null ? null : { scope, wtPlan, extraWatch: extraWatchPaths };
   }
   if (args[0] === "check-ignore") {
@@ -5313,8 +5441,10 @@ export function resolveWorktreeArm(
     // non-ignored ancestor of each queried path — an UNTRACKED rule
     // source flips the verdict exactly like a tracked one, so the full
     // untracked coverage (member sets, dir watches, `.gitignore` pins)
-    // joins the plan, not only the tracked rule sources.
-    const wtPlan = worktreeArmPlan(preflight, true);
+    // joins the plan, not only the tracked rule sources. The ignored-dir
+    // prune is sound here by construction: `check-ignore` itself never
+    // descends into the dirs its verdict marks ignored.
+    const wtPlan = worktreeArmPlan(preflight, true, false, true);
     if (wtPlan === null) return null;
     return {
       scope,
@@ -5620,15 +5750,21 @@ export function armEvidenceWindowWatch(
   // this compare — they attest the arm-instant enumeration like the
   // file pins above.
   if (!failed && wtArm?.dirs !== undefined && wtArm?.barrier !== true) {
-    for (const [d, capSet] of wtArm.baseline.dirs) {
+    // The compare covers the ARMED subset (CX-r41-F1) — prunable ignored
+    // dirs stay in `baseline.dirs` unarmed, and re-checking them here
+    // would re-refuse the honest churn the prune exists to tolerate.
+    for (const d of wtArm.dirs) {
+      const capSet = wtArm.baseline.dirs.get(d);
       let curSet = null;
       try {
         curSet = new Set(readdirSync(d));
       } catch {
         /* unreadable now */
       }
-      if (capSet === null || curSet === null) {
-        if (capSet !== curSet) {
+      if (capSet === null || capSet === undefined || curSet === null) {
+        // An armed dir missing from the captured map is unprovable —
+        // drift, never "absent at both instants".
+        if (!(capSet === null && curSet === null)) {
           failed = true;
           break;
         }
@@ -5843,15 +5979,19 @@ export function armEvidenceWindowWatch(
       // as drift. Mutation consults attest arm-instant state — the
       // compare skips them exactly like the arm's own baseline pass.
       if (wtArm?.barrier !== true) {
-        for (const [d, capSet] of wtArm?.dirs !== undefined ? wtArm.baseline.dirs : []) {
+        // Same armed subset as the arm-time compare (CX-r41-F1) —
+        // pruned ignored dirs carry no coverage obligations, so
+        // re-reading them would only re-refuse tolerated churn.
+        for (const d of wtArm?.dirs ?? []) {
+          const capSet = wtArm?.baseline.dirs.get(d);
           let curSet = null;
           try {
             curSet = new Set(readdirSync(d));
           } catch {
             /* unreadable now */
           }
-          if (capSet === null || curSet === null) {
-            if (capSet !== curSet) events.push(d);
+          if (capSet === null || capSet === undefined || curSet === null) {
+            if (!(capSet === null && curSet === null)) events.push(d);
             continue;
           }
           if (curSet.size !== capSet.size || ![...capSet].every((n) => curSet.has(n))) {
@@ -6338,17 +6478,18 @@ export async function evidenceRepoPreflight(
   if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
     const wt = fingerprint.workTree;
     const surface = captureWorktreeSurface(wt, preflight.index.names);
-    // CX-r39 reliability: directories git reports ignored are pruned
-    // from the member-set inventory — the enumeration never descends
-    // them and `check-ignore` never consults their `.gitignore`
-    // sources, so covering their interiors only refused honest churn
-    // (`.pnpm/`, build output). `check-ignore` per dir is the precise
-    // boundary — `status --ignored`/`ls-files --directory` collapse
-    // also cover unignored dirs whose CONTENTS are all ignored, where
-    // `.gitignore` still shapes verdicts. Every rule source that could
-    // flip a dir's ignored state is itself pinned/watched, so the
-    // boundary cannot move unobserved. A failed consult keeps the full
-    // inventory — unproven exclusion never narrows coverage.
+    // CX-r39 reliability, CX-r41-F1: directories git reports ignored
+    // are RECORDED on the surface, not removed — whether a consult may
+    // drop them from coverage is a per-argv judgment the arm makes via
+    // `consultDescendsIgnoredDirs` (`status` forced `--ignored` and
+    // `ls-files -o` post-strip DO descend, `check-ignore`/`add -f`-free
+    // consults do not). `check-ignore` per dir is the precise boundary
+    // — `status --ignored`/`ls-files --directory` collapse also cover
+    // unignored dirs whose CONTENTS are all ignored, where `.gitignore`
+    // still shapes verdicts. Every rule source that could flip a dir's
+    // ignored state is itself pinned/watched, so the boundary cannot
+    // move unobserved. A failed consult leaves the set empty — unproven
+    // exclusion never narrows coverage.
     const relDirs = [...surface.dirs.keys()]
       .map((d) => path.relative(wt, d))
       .filter((r) => r.length > 0);
@@ -6371,7 +6512,7 @@ export async function evidenceRepoPreflight(
       if (r.exitCode !== 0 && r.exitCode !== 1) break;
       for (const abs of ignoredDirSetFromCheckIgnore(wt, r.stdout)) ignored.add(abs);
     }
-    pruneIgnoredDirs(surface, ignored);
+    markIgnoredDirs(surface, ignored);
     preflight.worktreeSurface = surface;
   }
   return preflight;
@@ -6641,13 +6782,7 @@ export function spawnCaptured(
       child = spawn(bin, args as string[], {
         cwd: opts.cwd,
         env: opts.env,
-        stdio: [
-          "pipe",
-          "pipe",
-          "pipe",
-          opts.indexFd ?? "ignore",
-          ...bound.slots.map((s) => s.fd),
-        ],
+        stdio: ["pipe", "pipe", "pipe", opts.indexFd ?? "ignore", ...bound.slots.map((s) => s.fd)],
       });
     } catch (e) {
       resolve({
@@ -6737,9 +6872,7 @@ export function spawnCaptured(
  * arm or untracked-in-claims can never be attested; `null` marks the
  * domain unverifiable (claims index refused) and the op fails closed.
  */
-export function enumerateTrackedRuleSources(
-  preflight: EvidencePreflight,
-): Set<string> | null {
+export function enumerateTrackedRuleSources(preflight: EvidencePreflight): Set<string> | null {
   const wt = preflight.fingerprint?.workTree;
   if (wt === null || wt === undefined) return new Set();
   // The pre-op claims index is the only tracking basis the op cannot
@@ -7443,7 +7576,11 @@ async function verifierGitSpawn(
       // a mid-window flip→restore of a tracked file writes foreign
       // content into the judged index. The tracked surface joins the
       // pin+barrier+watch plan exactly like the read consults.
-      anchoredWtPlan = worktreeArmPlan(preflight, true, true);
+      // CX-r41-F1: the residual `ls-files -o -z` enumeration inside
+      // `verifyAnchoredMutationCoverage` opens every ignored interior
+      // post-strip — the ignored-dir set must NOT prune here regardless
+      // of whether this `add` itself carries `-f`.
+      anchoredWtPlan = worktreeArmPlan(preflight, true, true, false);
       if (anchoredWtPlan === null) {
         return {
           exitCode: -1,
@@ -7925,14 +8062,82 @@ function withNoExtDiff(args: readonly string[]): string[] {
  * payload invisible to the enumeration. A trusted enumeration must
  * answer EVERY untracked file, so the flags are stripped from the
  * spawned argv — the judged argv keeps them verbatim (the strip is a
- * strict widening, never a narrowing).
+ * strict widening, never a narrowing). CX-r41-F2: the strip must match
+ * the flag MECHANISM, not spelling forms — an unflagged `-X <file>` /
+ * space-form `--exclude-from <file>` opens an argv-named session file
+ * inside the armed window where no pin or watch can attest it.
+ * `valued` marks options that take an argument (attached `-xPAT` /
+ * `--exclude=PAT` or the next argv token); every `--no-<opt>` negation
+ * parse-options auto-derives is listed too.
  */
-const LS_FILES_EXCLUDE_FLAGS = new Set([
-  "--exclude-standard",
-  "--no-exclude-standard",
-  "--ignored",
-]);
-const LS_FILES_EXCLUDE_PREFIXES = ["--exclude=", "--exclude-from=", "--exclude-per-directory="];
+const LS_FILES_EXCLUDE_MEMBERS: ReadonlyArray<{ name: string; valued: boolean }> = [
+  { name: "--exclude", valued: true },
+  { name: "--exclude-from", valued: true },
+  { name: "--exclude-per-directory", valued: true },
+  { name: "--exclude-standard", valued: false },
+  { name: "--no-exclude", valued: false },
+  { name: "--no-exclude-from", valued: false },
+  { name: "--no-exclude-per-directory", valued: false },
+  { name: "--no-exclude-standard", valued: false },
+  { name: "--ignored", valued: false },
+  { name: "--no-ignored", valued: false },
+];
+/** `ls-files` short exclusion flags inside a cluster — `-x`/`-X` take the cluster tail or the next argv token as value; `-i` is `--ignored`. */
+const LS_FILES_EXCLUDE_SHORT_VALUED = new Set(["x", "X"]);
+const LS_FILES_EXCLUDE_SHORT_EXACT = new Set(["i"]);
+
+/**
+ * Strip every exclude-rule flag from an `ls-files` head argv (CX-142
+ * widening, CX-r41-F2 mechanism coverage): long names match by
+ * EXACT-member or unambiguous-abbreviation prefix, space-form values
+ * ride the next argv token, and short clusters drop only the exclusion
+ * chars while keeping siblings (`-co` survives, `-oXfile` drops the
+ * `-Xfile` pair). A stripped valued flag consumes its value so a
+ * pattern/file token can never be reinterpreted as a pathspec — over-
+ * stripping an ambiguous abbreviation only widens the enumeration,
+ * the safe direction.
+ */
+function stripLsFilesExclusions(head: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < head.length; i++) {
+    const a = head[i]!;
+    if (a.startsWith("--")) {
+      const eq = a.indexOf("=");
+      const name = eq === -1 ? a : a.slice(0, eq);
+      const member = LS_FILES_EXCLUDE_MEMBERS.find((m) => m.name === name);
+      if (member !== undefined) {
+        if (eq === -1 && member.valued) i++;
+        continue;
+      }
+      const abbrev = LS_FILES_EXCLUDE_MEMBERS.filter((m) => m.name.startsWith(name));
+      if (abbrev.length > 0) {
+        // An abbreviation ambiguous across valued/non-valued members
+        // still consumes the next token — the token following an
+        // excluded flag can never be trusted as a pathspec.
+        if (eq === -1 && abbrev.some((m) => m.valued)) i++;
+        continue;
+      }
+      out.push(a);
+      continue;
+    }
+    if (a.startsWith("-") && a.length > 1) {
+      const cluster = a.slice(1);
+      let keep = "";
+      for (let j = 0; j < cluster.length; j++) {
+        const c = cluster[j]!;
+        if (LS_FILES_EXCLUDE_SHORT_VALUED.has(c)) {
+          if (j === cluster.length - 1) i++; // value rides the next token
+          break; // everything after a valued flag IS its value
+        }
+        if (!LS_FILES_EXCLUDE_SHORT_EXACT.has(c)) keep += c;
+      }
+      if (keep.length > 0) out.push(`-${keep}`);
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
 
 /**
  * Spawn-argv transform applied AFTER argv judgment on every trusted
@@ -7947,7 +8152,11 @@ const LS_FILES_EXCLUDE_PREFIXES = ["--exclude=", "--exclude-from=", "--exclude-p
  *   treat ignored files as non-dirt filter `!!` themselves; a session-
  *   authored `.gitignore` is always dirt via the fs cross-check.
  * - `ls-files` drops exclude-rule flags before `--` — a trusted
- *   enumeration answers every untracked file (CX-142).
+ *   enumeration answers every untracked file (CX-142). The strip is
+ *   mechanism-level: long names match abbreviation-aware, space-form
+ *   values ride the next token, and `-x`/`-X`/`-i` inside short
+ *   clusters are dropped without losing sibling flags (CX-r41-F2 — an
+ *   argv-named pattern/rule file sits outside every armed surface).
  * - `grep --untracked`/`--no-index` gains `--no-exclude-standard` —
  *   git greps apply exclude rules to untracked files otherwise.
  */
@@ -7962,10 +8171,7 @@ export function evidenceSpawnArgs(args: readonly string[]): string[] {
       head = [...head, "--ignored"];
     }
   } else if (op === "ls-files") {
-    head = head.filter(
-      (a) =>
-        !LS_FILES_EXCLUDE_FLAGS.has(a) && !LS_FILES_EXCLUDE_PREFIXES.some((p) => a.startsWith(p)),
-    );
+    head = stripLsFilesExclusions(head);
   } else if (op === "grep" && (head.includes("--untracked") || head.includes("--no-index"))) {
     if (!head.includes("--no-exclude-standard")) head = [...head, "--no-exclude-standard"];
   }
@@ -8065,8 +8271,11 @@ export async function unprovenIgnoredPaths(
       // to the untracked surface: the inner `check-ignore -v` consult
       // reads `<dir>/.gitignore` for every non-ignored dir, so an
       // untracked rule source must pin+watch exactly like a tracked
-      // one or a mid-window plant launderers unproven provenance.
-      const wtPlan = worktreeArmPlan(preflight, true);
+      // one or a mid-window plant launderers unproven provenance. The
+      // ignored-dir prune is sound here: both inner consults
+      // (`check-ignore -v` provenance, `diff` tracked bytes) are
+      // non-descending by construction.
+      const wtPlan = worktreeArmPlan(preflight, true, false, true);
       if (wtPlan === null) return null;
       let windowWatch = armEvidenceWindowWatch(
         root,
