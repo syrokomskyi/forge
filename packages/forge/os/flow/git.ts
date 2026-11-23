@@ -13,11 +13,11 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: surface evidence refusals through claims and consult paths honestly (RFC-1616 follow-up)</item>
   <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
   <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
   <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
+  <item>RFC-1616: close r41 trust-boundary counterexamples — per-argv ignored-dir prune, file-valued argv strip/forbid, unconditional upstream pins</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -43,7 +43,7 @@ import {
   spawnCaptured,
   captureEvidenceSurface,
   captureWorktreeSurface,
-  pruneIgnoredDirs,
+  markIgnoredDirs,
   ignoredDirSetFromCheckIgnore,
   reproveEvidenceSurface,
   armEvidenceWindowWatch,
@@ -539,15 +539,16 @@ export async function evidencePreflight(
   if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
     const wt = fingerprint.workTree;
     const surface = captureWorktreeSurface(wt, preflight.index.names);
-    // CX-r39 reliability: directories git reports ignored are pruned
-    // from the member-set inventory — the enumeration never descends
-    // them and `check-ignore` never consults their `.gitignore`
-    // sources, so covering their interiors only refused honest churn
-    // (`.pnpm/`, build output). `check-ignore` per dir is the precise
-    // boundary — `status --ignored`/`ls-files --directory` collapse
-    // also cover unignored dirs whose CONTENTS are all ignored, where
-    // `.gitignore` still shapes verdicts. A failed consult keeps the
-    // full inventory — unproven exclusion never narrows coverage.
+    // CX-r39 reliability, CX-r41-F1: directories git reports ignored
+    // are RECORDED on the surface, not removed — whether a consult may
+    // drop them from coverage is a per-argv judgment `resolveWorktreeArm`
+    // makes via `consultDescendsIgnoredDirs` (`status` forced `--ignored`
+    // and `ls-files -o` post-strip DO descend, `check-ignore` does not).
+    // `check-ignore` per dir is the precise boundary —
+    // `status --ignored`/`ls-files --directory` collapse also cover
+    // unignored dirs whose CONTENTS are all ignored, where `.gitignore`
+    // still shapes verdicts. A failed consult leaves the set empty —
+    // unproven exclusion never narrows coverage.
     const relDirs = [...surface.dirs.keys()]
       .map((d) => relative(wt, d))
       .filter((r) => r.length > 0);
@@ -568,7 +569,7 @@ export async function evidencePreflight(
       if (r.exitCode !== 0 && r.exitCode !== 1) break;
       for (const abs of ignoredDirSetFromCheckIgnore(wt, r.stdout)) ignored.add(abs);
     }
-    pruneIgnoredDirs(surface, ignored);
+    markIgnoredDirs(surface, ignored);
     preflight.worktreeSurface = surface;
   }
   return preflight;
