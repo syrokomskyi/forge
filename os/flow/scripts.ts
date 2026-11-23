@@ -15,12 +15,12 @@ the branch worktree and the declared FLOW_* environment.</purpose>
   <item>stderrTail is the last 40 lines — enough for the report without flooding it (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1502: step 2 — release-prepare hook name</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: outlive the integration gate's own budgets in the hook spawn cap (RFC-1616 follow-up)</item>
-  <history>RFC-1487, RFC-1532</history>
+  <item>RFC-1502: raise hook spawn caps to outlive callee budgets — release-prepare and extract-verify die at 600s under load</item>
+  <history>RFC-1487, RFC-1490, RFC-1532</history>
 </CHANGE_SUMMARY>
 */
 
@@ -72,10 +72,18 @@ export async function runFlowScript(
   // carries caller-owned FLOW_* context only. The spawn cap must outlive the
   // hook's own inner budgets — the integration gate's per-package runs take
   // --timeout 900 and its cold e2e --e2e-timeout 1800, so a 600 s cap turned a
-  // legitimately long (all-checks-pass) run into a killed exit -1.
+  // legitimately long (all-checks-pass) run into a killed exit -1. The same
+  // class bit release-prepare (two sequential `werkstatt run` manifest
+  // commands, each near the kernel's 1200 s command budget under load) and
+  // extract-verify (install + build + full vitest suite past 800 s).
+  const HOOK_CAPS: Partial<Record<FlowScriptName, number>> = {
+    "integration-gate": 3_600_000,
+    "release-prepare": 2_700_000,
+    "extract-verify": 1_800_000,
+  };
   const result = await verifierSpawn("sh", [scriptPath], {
     cwd: opts.cwd,
-    timeoutMs: name === "integration-gate" ? 3_600_000 : 600_000,
+    timeoutMs: HOOK_CAPS[name] ?? 600_000,
     extraEnv: opts.env,
   });
   // A failing hook may report only on stdout (forge commands do); an empty tail
