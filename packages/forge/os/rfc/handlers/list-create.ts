@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
   <item>RFC-1534: --amends flag seeds amends: and merges the draft id into the amended file's amendedBy[] in the same pass (line-level, F-0056); unreadable counterpart downgrades to a pending report.</item>
   <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
-  <history>RFC-0303, RFC-1097, RFC-1138, RFC-1139, RFC-1364, RFC-1467</history>
+  <item>RFC-1536: degrade rfc.create session hint when the enclosing repo is unverifiable</item>
+  <history>RFC-0303, RFC-1097, RFC-1138, RFC-1139, RFC-1364, RFC-1467, RFC-1482</history>
 </CHANGE_SUMMARY>
 */
 
@@ -281,8 +281,7 @@ export async function runRfcCreate(
       .join("; ");
   const reviewBand = byId(
     scoredAll.filter(
-      (d) =>
-        TERMINAL_KINDS.has(d.kind) && d.score >= REVIEW_SCORE && d.score < REPROPOSED_SCORE,
+      (d) => TERMINAL_KINDS.has(d.kind) && d.score >= REVIEW_SCORE && d.score < REPROPOSED_SCORE,
     ),
   );
   const reviewBandIds = reviewBand.map((d) => d.rfcId);
@@ -439,9 +438,7 @@ export async function runRfcCreate(
         const closing = content.indexOf("\n---\n");
         if (closing !== -1) {
           content =
-            content.slice(0, closing + 1) +
-            `acceptance:\n${stubs}\n` +
-            content.slice(closing + 1);
+            content.slice(0, closing + 1) + `acceptance:\n${stubs}\n` + content.slice(closing + 1);
         }
       }
       // RFC-1467: cite the acknowledged/review-band precedents in `related`
@@ -468,14 +465,24 @@ export async function runRfcCreate(
       const targetPath = path.join(rfcDirPath, fileName);
       // RFC-1536: reserve on the shared surface BEFORE the file write — a
       // sibling session sees the claimed id even if this write never lands.
-      const landed = new Set<number>(files.map((f) => {
-        const m = path.basename(f).match(/^rfc-(\d{4})/);
-        return m ? parseInt(m[1]!, 10) : 0;
-      }));
+      const landed = new Set<number>(
+        files.map((f) => {
+          const m = path.basename(f).match(/^rfc-(\d{4})/);
+          return m ? parseInt(m[1]!, 10) : 0;
+        }),
+      );
       const reserved = await appendReservation(
         io,
         workspaceRoot,
-        { kind: "rfc", id: candidate, session: await currentBranch(workspaceRoot, io) },
+        {
+          kind: "rfc",
+          id: candidate,
+          // RFC-1536: `session` is a lifecycle hint, not a claim input — an
+          // unverifiable enclosing repo (phantom .git plant, load refusal)
+          // degrades to null like friction's "manual" attribution rather
+          // than sinking the whole create on a metadata read.
+          session: await currentBranch(workspaceRoot, io).catch(() => null),
+        },
         landed,
       );
       for (const warning of reserved.warnings) {
@@ -511,11 +518,9 @@ export async function runRfcCreate(
           }
         }
         const wrote = amendedFile
-          ? await appendRfcFrontmatterListEntry(
-              path.join(rfcDirPath, amendedFile),
-              "amendedBy",
-              [nextId],
-            )
+          ? await appendRfcFrontmatterListEntry(path.join(rfcDirPath, amendedFile), "amendedBy", [
+              nextId,
+            ])
           : undefined;
         amendsSync = { amended: amendsId, wroteCounterpart: wrote !== undefined };
       }
