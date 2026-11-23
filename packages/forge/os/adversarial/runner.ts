@@ -113,6 +113,12 @@ const git = async (root: string, args: string[]): Promise<string> => {
   return r.stdout;
 };
 
+// Every `add` below forces ignored paths in: the contour is a constructed
+// fixture, and a clone of a repo whose own .gitignore covers these paths
+// (the standalone forge export ignores forge.yaml) must not silently drop
+// them out of the commits the gate then judges — CX-8 observed "none"
+// downstream of exactly this miss.
+
 /** `src/correctness/index.ts` (source layout) or `dist/src/correctness/index.js`. */
 const CORRECTNESS_HELPERS = (() => {
   for (const rel of [
@@ -225,7 +231,7 @@ exemptions: []
 `,
   );
   for (const [rel, body] of Object.entries(c.extraFiles ?? {})) await write(rel, body);
-  await g(["add", "-A"]);
+  await g(["add", "-A", "--force"]);
   await g(["commit", "-qm", c.message ?? "seed the adopted contour"]);
   // the oracle review record, committed the way the verifier workflow does —
   // sha256 of the interpolated oracle body + the trailer pair.
@@ -250,7 +256,7 @@ oracles:
     attestedHandleIsUnderTest: true
 `,
   );
-  await g(["add", "-A"]);
+  await g(["add", "-A", "--force"]);
   await g([
     "commit",
     "-qm",
@@ -446,7 +452,7 @@ export async function runScenario(
           await writeFile(dest, interpolate(content));
         }
       }
-      await g(["add", "-A"]);
+      await g(["add", "-A", "--force"]);
       await g(["commit", "-qm", typeof step === "string" ? step : step.message, "--allow-empty"]);
     }
     const base = (await g(["rev-parse", "HEAD"])).trim();
@@ -465,7 +471,7 @@ export async function runScenario(
       await mkdir(path.dirname(dest), { recursive: true });
       await writeFile(dest, interpolate(content));
     }
-    await g(["add", "-A"]);
+    await g(["add", "-A", "--force"]);
     await g(["commit", "-qm", scenario.attack.commitMessage]);
 
     if (scenario.invoke === "internal:downgrade-forge") {

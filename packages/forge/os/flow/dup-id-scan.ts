@@ -19,7 +19,7 @@ spawn.</purpose>
 */
 
 import { git } from "./git.ts";
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import type { WorkspaceIO } from "../../src/types.ts";
 
 export interface DupIdViolation {
   /** The duplicated governance id, e.g. RFC-1600, ADR-0132, F-0300, FLOW-INT-25. */

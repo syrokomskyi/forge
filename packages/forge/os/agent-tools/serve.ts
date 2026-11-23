@@ -19,7 +19,7 @@
 
 import { join } from "node:path";
 
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel";
+import type { WorkspaceIO } from "../../src/types.ts";
 
 import { resolveIo } from "../../src/utils/io.ts";
 import { loadAgentToolsConfig, loadCommandManifest } from "./manifest.ts";

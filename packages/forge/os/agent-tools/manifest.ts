@@ -22,7 +22,7 @@ import { join } from "node:path";
 
 import { parse as parseYaml } from "yaml";
 
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel";
+import type { WorkspaceIO } from "../../src/types.ts";
 
 import { loadForgeConfig } from "../../src/config/forge-config.ts";
 import { resolveIo } from "../../src/utils/io.ts";

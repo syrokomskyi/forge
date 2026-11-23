@@ -138,7 +138,31 @@ import { collectDigest } from "../../flow/digest.ts";
 import { gitEvidence } from "../../flow/git.ts";
 import { pushFlow } from "../../flow/handlers/flow-push.ts";
 import { gitExec, initRepoWithOrigin } from "../../flow/tests/helpers.ts";
-import { createSourceScanner } from "@warpgogol/werkstatt-shared/node/kernel-source-scan";
+
+/** The slice shape the CX-70 static-scan probes consume from the scanner. */
+interface KernelSourceScanner {
+  handlerSlices(file: string, handler: string): { file: string; allowlistedGitEntry?: boolean }[];
+}
+
+const SCANNER_SPEC: string = "@warpgogol/werkstatt-shared/node/kernel-source-scan";
+
+/**
+ * The kernel source scanner ships only inside the werkstatt monorepo — the
+ * standalone forge extract carries no @warpgogol/werkstatt-shared at all, so
+ * the static-scan probes load it lazily and stand down when it cannot
+ * resolve. A widened specifier keeps tsc honest in the extract (a literal
+ * would fail TS2307 there).
+ */
+async function loadSourceScanner(): Promise<((root: string) => KernelSourceScanner) | undefined> {
+  try {
+    const mod = (await import(SCANNER_SPEC)) as {
+      createSourceScanner?: (root: string) => KernelSourceScanner;
+    };
+    return mod.createSourceScanner;
+  } catch {
+    return undefined;
+  }
+}
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -498,7 +522,10 @@ export async function gitEvidence(root: string, args: string[]): Promise<string>
 }
 `;
 
-function scanGitEntry(handler: string): boolean | undefined {
+function scanGitEntry(
+  createSourceScanner: (root: string) => KernelSourceScanner,
+  handler: string,
+): boolean | undefined {
   const root = mkdtempSync(path.join(os.tmpdir(), "cx4-scan-"));
   dirs.push(root);
   const put = (rel: string, body: string) => {
@@ -518,9 +545,14 @@ describe("RFC-1616 r4 — static scan argv judging on gitEvidence", () => {
   it(
     "CX-70: `gitEvidence(root, ['log', ...flags])` is exempt — a dynamic tail carrying `--ext-diff`/`--output` is never judged, and unlike git() there is NO runtime predicate behind the execFile channel (the 'runtime predicate judges them' comment is false for this body)",
     { timeout: 60_000 },
-    () => {
+    async () => {
+      const createSourceScanner = await loadSourceScanner();
+      // monorepo-side capability — stands down in the standalone extract.
+      if (createSourceScanner === undefined) return;
       // literal-tail control: a visible --ext-diff flags the callsite.
-      const flagged = scanGitEntry(`import { gitEvidence } from "../../forge/os/flow/git.ts";
+      const flagged = scanGitEntry(
+        createSourceScanner,
+        `import { gitEvidence } from "../../forge/os/flow/git.ts";
 export const cmd = {
   name: "ge.read",
   mutatesState: false,
@@ -528,12 +560,15 @@ export const cmd = {
     await gitEvidence(ctx.workspaceRoot, ["log", "--ext-diff"]);
   },
 };
-`);
+`,
+      );
       expect(flagged, "control: literal ['log','--ext-diff'] must flag").toBe(false);
 
       // the same argv with a dynamic tail is exempt — at runtime
       // flags === ['--ext-diff'] or ['--output=/p'] runs unjudged:
-      const dynTail = scanGitEntry(`import { gitEvidence } from "../../forge/os/flow/git.ts";
+      const dynTail = scanGitEntry(
+        createSourceScanner,
+        `import { gitEvidence } from "../../forge/os/flow/git.ts";
 export const cmd = {
   name: "ge.read",
   mutatesState: false,
@@ -542,7 +577,8 @@ export const cmd = {
     await gitEvidence(ctx.workspaceRoot, ["log", ...flags]);
   },
 };
-`);
+`,
+      );
       expect(
         dynTail,
         "['log', ...flags] counts as allowlisted — a dynamic tail smuggles " +
