@@ -52,6 +52,10 @@ excludePathSegments:
   - release-lines.test.ts
   - probe-batch.test.ts
   - validate-corpus.test.ts
+  # Parity probe between forge's evidence allowlist mirror and the
+  # werkstatt-shared READ_ONLY_GIT_QUERIES table — the compared table is
+  # monorepo-side by definition (FLOW-CUT-13 on the 9.7.0 cut).
+  - os/flow/tests/evidence-allowlist-parity.test.ts
   # monorepo-bound: they resolve the werkstatt root four levels up and read
   # docs/command-manifest.generated.yaml — outside the package root (RFC-1517)
   - src/tests/skill-agents-sync.test.ts

@@ -72,7 +72,31 @@ import { collectDigest } from "../../flow/digest.ts";
 import { gitEvidence, isEvidenceGitQuery } from "../../flow/git.ts";
 import { pushFlow } from "../../flow/handlers/flow-push.ts";
 import { gitExec, initRepoWithOrigin } from "../../flow/tests/helpers.ts";
-import { createSourceScanner } from "@warpgogol/werkstatt-shared/node/kernel-source-scan";
+
+/** The slice shape the static-scan probes consume from the scanner. */
+interface KernelSourceScanner {
+  handlerSlices(file: string, handler: string): { file: string; allowlistedGitEntry?: boolean }[];
+}
+
+const SCANNER_SPEC: string = "@warpgogol/werkstatt-shared/node/kernel-source-scan";
+
+/**
+ * The kernel source scanner ships only inside the werkstatt monorepo — the
+ * standalone forge extract carries no @warpgogol/werkstatt-shared at all, so
+ * the static-scan half of the R5-R4 probe loads it lazily and stands down
+ * when it cannot resolve. A widened specifier keeps tsc honest in the
+ * extract (a literal would fail TS2307 there).
+ */
+async function loadSourceScanner(): Promise<((root: string) => KernelSourceScanner) | undefined> {
+  try {
+    const mod = (await import(SCANNER_SPEC)) as {
+      createSourceScanner?: (root: string) => KernelSourceScanner;
+    };
+    return mod.createSourceScanner;
+  } catch {
+    return undefined;
+  }
+}
 
 const dirs: string[] = [];
 const spawned: Array<{ kill: () => void }> = [];
@@ -910,28 +934,30 @@ __attribute__((constructor)) static void pwn(void) {
     "R5-R4: CX-70 stays dead — `gitEvidence(root, ['log', ...flags])` fails the static scan's allowlist AND the runtime predicate refuses ['log','--ext-diff'] argv",
     { timeout: 60_000 },
     async () => {
-      const FIXTURE_GIT_TS = `import { execFile } from "node:child_process";
+      const createSourceScanner = await loadSourceScanner();
+      if (createSourceScanner !== undefined) {
+        const FIXTURE_GIT_TS = `import { execFile } from "node:child_process";
 export async function gitEvidence(root: string, args: string[]): Promise<string> {
   execFile("git", ["-C", root, ...args], () => {});
   return "";
 }
 `;
-      const scan = (handler: string): boolean | undefined => {
-        const root = mkdtempSync(path.join(os.tmpdir(), "cx5-scan-"));
-        dirs.push(root);
-        const put = (rel: string, body: string) => {
-          const p = path.join(root, rel);
-          mkdirSync(path.dirname(p), { recursive: true });
-          writeFileSync(p, body);
-          return p;
+        const scan = (handler: string): boolean | undefined => {
+          const root = mkdtempSync(path.join(os.tmpdir(), "cx5-scan-"));
+          dirs.push(root);
+          const put = (rel: string, body: string) => {
+            const p = path.join(root, rel);
+            mkdirSync(path.dirname(p), { recursive: true });
+            writeFileSync(p, body);
+            return p;
+          };
+          put("forge/os/flow/git.ts", FIXTURE_GIT_TS);
+          const file = put("src/commands/ge.ts", handler);
+          const scanner = createSourceScanner(root);
+          const slices = scanner.handlerSlices(file, "ge.read");
+          return slices.find((s) => s.file.endsWith("git.ts"))?.allowlistedGitEntry;
         };
-        put("forge/os/flow/git.ts", FIXTURE_GIT_TS);
-        const file = put("src/commands/ge.ts", handler);
-        const scanner = createSourceScanner(root);
-        const slices = scanner.handlerSlices(file, "ge.read");
-        return slices.find((s) => s.file.endsWith("git.ts"))?.allowlistedGitEntry;
-      };
-      const dynTail = scan(`import { gitEvidence } from "../../forge/os/flow/git.ts";
+        const dynTail = scan(`import { gitEvidence } from "../../forge/os/flow/git.ts";
 export const cmd = {
   name: "ge.read",
   mutatesState: false,
@@ -941,7 +967,8 @@ export const cmd = {
   },
 };
 `);
-      expect(dynTail, "dynamic-tail gitEvidence argv must not be allowlisted").toBe(false);
+        expect(dynTail, "dynamic-tail gitEvidence argv must not be allowlisted").toBe(false);
+      }
       const { repo } = await initRepoWithOrigin(dirs, { prefix: "cx5-extdiff-" });
       const r = await gitEvidence(repo, ["log", "--ext-diff"]);
       expect(r.exitCode !== 0, "['log','--ext-diff'] reached the trusted subprocess").toBe(true);
