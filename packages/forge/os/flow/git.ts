@@ -13,11 +13,11 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
   <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
   <item>RFC-1616: close r41 trust-boundary counterexamples — per-argv ignored-dir prune, file-valued argv strip/forbid, unconditional upstream pins</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
+  <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -104,6 +104,15 @@ export { isEvidenceGitQuery };
 
 export const MIN_GIT_VERSION = "2.33";
 
+/**
+ * RFC-1638 test seam: observes every consult argv on both channels so the
+ * DigestInputs coverage test can assert each collector read maps to a
+ * declared input field. Production paths never set it.
+ */
+export const consultProbe: {
+  current: ((argv: readonly string[], channel: "evidence" | "session") => void) | null;
+} = { current: null };
+
 export interface FlowWorktree {
   path: string;
   head: string;
@@ -118,6 +127,7 @@ export async function git(
   args: string[],
   opts?: { env?: Record<string, string> },
 ): Promise<ExecResult> {
+  consultProbe.current?.(args, "session");
   // Writes and session-config ops (commit identity, credential helpers,
   // url.insteadOf, hooks) need the session environment — the scrubbed
   // evidence channel drops global config, which would break authenticated
@@ -160,6 +170,7 @@ export async function gitEvidence(
     lockWaitMs?: number;
   },
 ): Promise<EvidenceResult> {
+  consultProbe.current?.(args, "evidence");
   // Runtime argv judgment — the evidence channel spawns a trusted git, so
   // nothing beyond the read-only + pinned-fetch table may reach it, even
   // through a dynamic tail the static scan cannot see (CX-70). bestEffort

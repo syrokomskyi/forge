@@ -20,16 +20,17 @@ stay empty by construction.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <item>RFC-1633: review round 1 — digest envInputs, package-wide bestEffort scan, holder command, serialized standalone preflight</item>
+  <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
   <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
 import { createHash } from "node:crypto";
+import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { parse as parseYaml } from "yaml";
@@ -42,6 +43,7 @@ import { describeEvidenceLockError, withEvidenceConsultLock } from "./evidence-l
 import { LockTimeoutError } from "./locks.ts";
 import {
   commonGitDir,
+  JOURNAL_RELATIVE_PATH,
   readJournal,
   readRegistry,
   RISK_CATEGORIES,
@@ -779,6 +781,240 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+// --- persisted digests (RFC-1638) -------------------------------------------
+
+export const PERSISTED_DIGEST_SCHEMA = "forge/persisted-digest@1";
+/** `.git/forge/` subdir carrying one persisted digest per file. */
+export const PERSISTED_DIGESTS_DIR = "forge/digests";
+/** gate-runs precedent (RFC-1568): the newest 50 persisted digests survive. */
+const PERSISTED_DIGEST_RETENTION = 50;
+
+/**
+ * Every input the digest reads that is cheap to re-observe (RFC-1638). The
+ * mapping is the exhaustiveness contract — a collector read that maps to no
+ * field is a false-negative hole (a stale digest attesting clean); the reads
+ * → inputs table lives in the RFC and the coverage assertion in
+ * os/flow/tests/digest-persist.test.ts.
+ */
+export interface DigestInputs {
+  /** HEAD position — pins every `git show HEAD:*` and HEAD-anchored tag read. */
+  head: string | null;
+  developLocal: string | null;
+  mainLocal: string | null;
+  /** Drift detection only — excluded from digestId (decision 2, CX-82). */
+  developRemote: string | null;
+  mainRemote: string | null;
+  /**
+   * sha256 over the remote-identity consults (configured/fetch/push url
+   * sets) — `.git/config` is outside every other input's coverage.
+   */
+  remoteConfigSha256: string;
+  /** All reachable release-line tags — the unsuppressed set. */
+  releaseTags: string[];
+  /** sha256 over `.github/workflows` file names + bytes on the primary checkout. */
+  tagTriggerFilesSha256: string;
+  /** sha256 over the whole journal file — catches record appends and rewrites. */
+  journalTailSha256: string;
+  /** Registered branch set, sorted. */
+  sessions: string[];
+  /** sha256 over `git status --porcelain=v1 -z` on the calling worktree and the primary. */
+  statusPorcelainSha256: string;
+}
+
+/** `.git/forge/digests/<digestId>.json` — the reviewed digest plus the input hash that attests it (RFC-1638). */
+export interface PersistedDigest {
+  schema: typeof PERSISTED_DIGEST_SCHEMA;
+  digestId: string;
+  inputHash: string;
+  computedAt: string; // ISO-8601 — outside the hashed surfaces
+  digest: FlowDigestData;
+}
+
+/** sha256 over canonicalJson(DigestInputs) — full hex, internal attestation. */
+export function digestInputHash(inputs: DigestInputs): string {
+  return createHash("sha256").update(canonicalJson(inputs)).digest("hex");
+}
+
+/** Every reachable release-line tag (unsuppressed), sorted — the set both
+ * digestId and DigestInputs cover; the journal `push` suppression applies
+ * only to the display/push-planning view (RFC-1638 decision 2). */
+async function releaseTagSet(
+  repoRoot: string,
+  io: WorkspaceIO,
+  lines: ReleaseLine[],
+): Promise<string[]> {
+  const set = new Set<string>();
+  for (const line of lines) {
+    const { reachable } = await listLineTags(repoRoot, line, io);
+    for (const tag of reachable) set.add(tag);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+/** sha256 over every `.github/workflows/*.y{ml,aml}` name + content on `dir` —
+ * the same file set workflowTagPatterns parses (RFC-1498 read surface). */
+async function workflowFilesSha256(dir: string, io: WorkspaceIO): Promise<string> {
+  const hash = createHash("sha256");
+  if (!(await io.exists(dir))) return hash.digest("hex");
+  const entries = await io
+    .readdir(dir)
+    .catch(() => [] as Awaited<ReturnType<WorkspaceIO["readdir"]>>);
+  const names = entries
+    .filter((e) => e.isFile && /\.ya?ml$/.test(e.name))
+    .map((e) => e.name)
+    .sort();
+  for (const name of names) {
+    const text = await io.readFile(join(dir, name)).catch(() => null);
+    hash.update(name);
+    hash.update("\0");
+    hash.update(text ?? "<unreadable>");
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * Re-observe every cheap digest input through the judged channel (RFC-1638:
+ * attestation feeds a refusal decision — a verdict input, never bestEffort).
+ * `null` means some input is unprovable — the caller falls back to recount.
+ */
+export async function observeDigestInputs(
+  repoRoot: string,
+  io: WorkspaceIO,
+): Promise<DigestInputs | null> {
+  try {
+    const urlSet = async (args: string[]): Promise<string> => {
+      const r = await gitEvidence(repoRoot, args);
+      if (r.exitCode === -1) throw new Error(r.stderr);
+      return r.exitCode === 0 ? r.stdout : "";
+    };
+    const [head, developLocal, mainLocal, developRemote, mainRemote] = await Promise.all([
+      revParse(repoRoot, io, "HEAD"),
+      revParse(repoRoot, io, "develop"),
+      revParse(repoRoot, io, "main"),
+      revParse(repoRoot, io, "refs/remotes/origin/develop"),
+      revParse(repoRoot, io, "refs/remotes/origin/main"),
+    ]);
+    const remoteConfigSha256 = createHash("sha256")
+      .update(
+        canonicalJson({
+          configured: await urlSet(["config", "--get-all", "remote.origin.url"]),
+          fetch: await urlSet(["remote", "get-url", "--all", "origin"]),
+          push: await urlSet(["remote", "get-url", "--push", "--all", "origin"]),
+        }),
+      )
+      .digest("hex");
+    const { lines } = await discoverReleaseLines(repoRoot, io);
+    const releaseTags = await releaseTagSet(repoRoot, io, lines);
+    const common = await commonGitDir(io, repoRoot);
+    let primary = repoRoot;
+    try {
+      primary = await primaryWorktree(io, repoRoot);
+    } catch {
+      primary = repoRoot;
+    }
+    const journalBytes = (await io.exists(join(common, JOURNAL_RELATIVE_PATH)))
+      ? await io.readFile(join(common, JOURNAL_RELATIVE_PATH))
+      : "";
+    const journalTailSha256 = createHash("sha256").update(journalBytes).digest("hex");
+    const sessions = (await readRegistry(io, common)).branches
+      .map((b) => b.name)
+      .sort((a, b) => a.localeCompare(b));
+    const repoStatus = await gitEvidence(repoRoot, ["status", "--porcelain=v1", "-z"]);
+    const primaryStatus =
+      primary === repoRoot
+        ? repoStatus
+        : await gitEvidence(primary, ["status", "--porcelain=v1", "-z"]);
+    // A refused status consult cannot prove worktree state — attestation is
+    // a verdict input, so the observation itself is unprovable (CX-174).
+    if (repoStatus.exitCode !== 0 || primaryStatus.exitCode !== 0) return null;
+    return {
+      head,
+      developLocal,
+      mainLocal,
+      developRemote,
+      mainRemote,
+      remoteConfigSha256,
+      releaseTags,
+      tagTriggerFilesSha256: await workflowFilesSha256(join(primary, WORKFLOWS_DIR), io),
+      journalTailSha256,
+      sessions,
+      statusPorcelainSha256: createHash("sha256")
+        .update(canonicalJson({ repo: repoStatus.stdout, primary: primaryStatus.stdout }))
+        .digest("hex"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load `.git/forge/digests/<digestId>.json`. "missing" names an absent file;
+ * "unknown" names an unreadable or wrong-schema record — both refuse
+ * FLOW-PUSH-14 upstream, never silently downgrade (RFC-1638).
+ */
+export async function loadPersistedDigest(
+  io: WorkspaceIO,
+  common: string,
+  digestId: string,
+): Promise<PersistedDigest | "missing" | "unknown"> {
+  // The id becomes a path segment — a crafted `--digest ../…` must not walk
+  // out of the digests dir.
+  if (!/^[a-z0-9-]{1,80}$/.test(digestId)) return "unknown";
+  const file = join(common, PERSISTED_DIGESTS_DIR, `${digestId}.json`);
+  if (!(await io.exists(file))) return "missing";
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await io.readFile(file));
+  } catch {
+    return "unknown";
+  }
+  const rec = raw as Partial<PersistedDigest> | null;
+  if (
+    rec === null ||
+    rec.schema !== PERSISTED_DIGEST_SCHEMA ||
+    rec.digestId !== digestId ||
+    typeof rec.inputHash !== "string" ||
+    typeof rec.computedAt !== "string" ||
+    typeof rec.digest !== "object" ||
+    rec.digest === null
+  ) {
+    return "unknown";
+  }
+  return rec as PersistedDigest;
+}
+
+/** Write the persisted digest atomically (tmp + rename) and sweep to the
+ * 50-newest retention (RFC-1568 precedent). Ambient fs — `.git/forge/*` is
+ * the evidence family, which bypasses the io adapter by convention. */
+async function persistDigest(common: string, persisted: PersistedDigest): Promise<void> {
+  const dir = join(common, PERSISTED_DIGESTS_DIR);
+  await mkdir(dir, { recursive: true });
+  const file = join(dir, `${persisted.digestId}.json`);
+  const tmp = `${file}.tmp-${process.pid}`;
+  await writeFile(tmp, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+  await rename(tmp, file);
+  const names = (await readdir(dir)).filter((n) => n.endsWith(".json") && !n.includes(".tmp-"));
+  if (names.length <= PERSISTED_DIGEST_RETENTION) return;
+  const aged = await Promise.all(
+    names.map(async (n) => ({
+      n,
+      t: await stat(join(dir, n))
+        .then((s) => s.mtimeMs)
+        .catch(() => 0),
+    })),
+  );
+  const keep = new Set(
+    aged
+      .sort((a, b) => b.t - a.t)
+      .slice(0, PERSISTED_DIGEST_RETENTION)
+      .map((e) => e.n),
+  );
+  for (const n of names) {
+    if (!keep.has(n)) await rm(join(dir, n)).catch(() => {});
+  }
+}
+
 /**
  * Collect the outbound digest of repoRoot. The `fetch` flag is retained for
  * call-site compatibility but is inert — the trusted channel refuses every
@@ -1171,14 +1407,13 @@ export async function collectDigest(
   // corroborated into one (R13-C) — flow.push publishes only what this
   // run itself pushes.
   const { lines } = await discoverReleaseLines(repoRoot, io);
-  const tags: string[] = [];
-  for (const line of lines) {
-    const { reachable } = await listLineTags(repoRoot, line, io);
-    for (const tag of reachable) {
-      if (!pushedTags.has(tag)) tags.push(tag);
-    }
-  }
-  tags.sort((a, b) => a.localeCompare(b));
+  // RFC-1638 decision 2: the hashed set is the UNSUPPRESSED reachable set —
+  // `pushedTags` suppression derives from journal `push` records, and a
+  // foreign push record must not move digestId. The display/push view keeps
+  // the suppression; flow.push re-applies it from the journal at planning
+  // time so records appended after the digest still hide their tags.
+  const releaseTags = await releaseTagSet(repoRoot, io, lines);
+  const tags = releaseTags.filter((t) => !pushedTags.has(t));
 
   const pendingPublications: FlowDigestData["pendingPublications"] = [];
   const supersededPublications: FlowDigestData["supersededPublications"] = [];
@@ -1194,7 +1429,9 @@ export async function collectDigest(
   }
   const tagPatterns = await workflowTagPatterns(join(primary, WORKFLOWS_DIR), io, diagnostics);
   const tagTriggers: FlowDigestData["tagTriggers"] = [];
-  for (const tag of tags) {
+  // Triggers compute over the unsuppressed set — a journal `push` record
+  // hiding a tag must not shrink the hashed trigger surface (RFC-1638).
+  for (const tag of releaseTags) {
     const workflows = tagPatterns
       .filter((w) => w.patterns.some((p) => tagPatternRegex(p)?.test(tag) === true))
       .map((w) => w.file);
@@ -1209,23 +1446,28 @@ export async function collectDigest(
   >;
   for (const item of items) byCategory[item.category].push(item.id);
 
+  // RFC-1638 decision 2: the hashed contract covers judgment inputs only —
+  // local branch tips, the unsuppressed release-tag set, triggers, the
+  // correctness trail and the item tips. `*.remote` (session-mutable
+  // tracking refs), the derived `ahead` counts and the display-only
+  // publication fields stay in the returned object as preview data but
+  // leave the hash: a foreign push or journal `push` record can no longer
+  // move a digest the operator already reviewed.
   const digestId = createHash("sha256")
     .update(
       canonicalJson({
-        develop: { local: developLocal, remote: developRemote, ahead: developTail.length },
-        main: { local: mainLocal, remote: mainRemote, ahead: mainTail.length },
-        tags,
+        develop: { local: developLocal },
+        main: { local: mainLocal },
+        releaseTags,
         tagTriggers,
         correctnessTrail,
-        pendingPublications,
-        supersededPublications,
         items: items.map((i) => ({ id: i.id, tip: i.tip })),
       }),
     )
     .digest("hex")
     .slice(0, 12);
 
-  return {
+  const data: FlowDigestData = {
     digestId,
     remote: "origin",
     fetched,
@@ -1242,4 +1484,29 @@ export async function collectDigest(
     correctnessTrail,
     diagnostics,
   };
+
+  // RFC-1638 persist — the reviewed digest + its input hash, so flow.push
+  // attests staleness in seconds instead of recounting. Best-effort: a
+  // failed persist degrades to the recount path (FLOW-PUSH-14 upstream),
+  // never blocks the digest itself.
+  try {
+    const inputs = await observeDigestInputs(repoRoot, io);
+    if (inputs !== null) {
+      await persistDigest(common, {
+        schema: PERSISTED_DIGEST_SCHEMA,
+        digestId,
+        inputHash: digestInputHash(inputs),
+        computedAt: new Date().toISOString(),
+        digest: data,
+      });
+    }
+  } catch (error) {
+    diagnostics.push({
+      ruleId: "FLOW-DIGEST-01",
+      severity: "warning",
+      message: `the persisted digest could not be written — flow.push will recount instead of attesting: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+
+  return data;
 }
