@@ -11,6 +11,7 @@ shebang first line and a clean `sh -n` parse.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1500: step 1 — profile flow hooks contract test</item>
   <item>RFC-1500: step 1 — profile flow hooks</item>
+  <item>RFC-1639: step 1-2 — deploy-scope contract, forge.source indirection, superfolder profile</item>
 </CHANGE_SUMMARY>
 */
 
@@ -44,6 +45,10 @@ describe("RFC-1500: built-in profiles ship flow hooks (AC-4)", () => {
   });
 
   for (const profile of profiles) {
+    // superfolder is a container scope — a non-git folder whose members are
+    // the repos; flow lifecycle hooks can never fire there (CONTAINER-SCOPE-01
+    // refuses flow.open at dispatch), so it ships no hooks (RFC-1639).
+    if (profile.id === "superfolder") continue;
     describe(`profile ${profile.id}`, () => {
       const files = profile.workspace.files;
       const paths = files.map((f) => f.path);
