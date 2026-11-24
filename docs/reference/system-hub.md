@@ -1,6 +1,31 @@
-# System hub — superfolder governance (RFC-1639)
+# System hub — superfolder governance (RFC-1639, RFC-1641)
 
 A **superfolder** is a directory whose immediate children are forge-governed repositories — for example `~/projects/warpgogol/` holding `werkstatt`, `lagebild`, `dater`, and the rest. Folder-level governance (member health, folder-level frictions, the task queue) lives **inside one member repository** — the system hub — never in a `forge.yaml` at the superfolder root.
+
+## Deploying a hub for a new business
+
+Three commands onboard a business folder end to end — no hand-edited yaml:
+
+```bash
+# 1. Scaffold the hub inside the business folder
+cd <business-folder> && forge create --in-place --profile system
+
+# 2. Populate the member roster — scans the folder for forge siblings,
+#    resolves each one's git origin, writes products.yaml + products.local.yaml
+forge system.product.register --discover [--dry-run]
+
+# 3. Verify the roster against disk reality
+forge system.products.status
+```
+
+Explicit registration for members outside the folder or not yet cloned:
+
+```bash
+forge system.product.register --id <kebab> --remote <url> [--folder <path>] \
+  [--offers <contract>]* [--frozen] [--update]
+```
+
+A fresh hub also generates a hub-native root `AGENTS.md` (`profiles/root-agents-system.md` via `rootAgentsMdTemplate`) — agents in the repo learn the member model, the sweep command, the folder-level friction path, and the task queue from their instruction layer.
 
 ## The hub model
 
@@ -10,6 +35,19 @@ A **superfolder** is a directory whose immediate children are forge-governed rep
 - Because the hub is a normal repository, its friction registry is the standard `docs/frictions/` `F-NNNN` per-record store — folder-level records are versioned, gated, and journaled like everything else. There is no second id namespace: a folder-level record is an `F-NNNN` record in the hub's registry carrying `level: folder`.
 
 ## Commands
+
+### `system.product.register`
+
+The roster write surface (RFC-1641). Writes `system/products.yaml` and the gitignored `system/products.local.yaml` — the session commits.
+
+- **Explicit:** `--id <kebab> --remote <url> [--folder <path>] [--offers <contract>]* [--frozen] [--update] [--dry-run]`. New ids require `--remote`; a duplicate id without `--update` refuses; a `--folder` already mapped to another product refuses; a `--folder` absent on disk warns but records.
+- **Discover:** `--discover` scans the hub's parent directory and registers every sibling carrying `forge.yaml` that is not already registered — id from the directory name, remote from `git remote get-url origin`, folder as `../<name>`. Skips `ignored[]` names, `@`-worktrees, hidden dirs, the hub itself, non-kebab names, and siblings with no readable origin — each reported under `skipped[]` with a reason; warning-class skips never fail the run.
+- Errors are `SYSTEM-PRODUCTS-03` (writes nothing); warnings are `SYSTEM-PRODUCTS-04`. Idempotent: an identical re-run reports `skipped: already-registered` rather than rewriting.
+
+```bash
+werkstatt run system.product.register --id billing --remote git@github.com:org/billing.git --folder ../billing --offers billing-api
+werkstatt run system.product.register --discover --dry-run
+```
 
 ### `system.products.status`
 
