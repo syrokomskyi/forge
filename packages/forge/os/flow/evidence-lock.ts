@@ -21,6 +21,7 @@ it — they already run inside the holder's serialized window.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1633: initial — evidence-consult serialization + env-declared wait/budget defaults</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
+  <item>RFC-1633: review round 1 — digest envInputs, package-wide bestEffort scan, holder command, serialized standalone preflight</item>
 </CHANGE_SUMMARY>
 */
 
@@ -38,8 +39,6 @@ import type { LockTimeoutError } from "./locks.ts";
 export const EVIDENCE_CONSULT_LOCK_RELATIVE_PATH = "forge/evidence-consult.lock";
 
 export const EVIDENCE_LOCKED_PREFIX = "EVIDENCE-LOCKED";
-export const EVIDENCE_BUDGET_PREFIX = "EVIDENCE-BUDGET";
-export const EVIDENCE_MODE_PREFIX = "EVIDENCE-MODE";
 
 /** Declared defaults — generous on purpose; tunable via envInputs declared
  * on flow.integrate / flow.push / flow.digest (flow.module.ts). */
@@ -172,7 +171,7 @@ export async function describeEvidenceLockError(
 ): Promise<string> {
   const holder =
     error.holder !== undefined
-      ? `holder pid ${error.holder.pid}${error.holder.host !== undefined ? ` on ${error.holder.host}` : ""} since ${error.holder.at}`
+      ? `holder pid ${error.holder.pid}${error.holder.host !== undefined ? ` on ${error.holder.host}` : ""} since ${error.holder.at}${error.holder.command !== undefined ? ` (${error.holder.command})` : ""}`
       : "holder unknown";
   const common = resolveEvidenceCommonGitDir(repoRoot);
   if (common !== null) {

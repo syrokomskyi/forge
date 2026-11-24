@@ -15,6 +15,7 @@ only in the enumerated non-judging call sites.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1633: step 5 — serialization/mode/budget/scan-guard tests</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
+  <item>RFC-1633: review round 1 — digest envInputs, package-wide bestEffort scan, holder command, serialized standalone preflight</item>
 </CHANGE_SUMMARY>
 */
 
@@ -172,14 +173,17 @@ describe("consult budget (AC-5)", () => {
 
 describe("bestEffort call-site scan", () => {
   it("mode:'bestEffort' appears only in the enumerated non-judging call sites", () => {
-    const FLOW_DIR = resolve(__dirname, "../../os/flow");
+    const PKG_DIR = resolve(__dirname, "../..");
     const ALLOWLIST = new Set(["digest.ts"]);
     const offenders: string[] = [];
     const scan = (dir: string) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const p = join(dir, entry.name);
+        const rel = relative(PKG_DIR, p).replaceAll("\\", "/");
         if (entry.isDirectory()) {
-          if (relative(FLOW_DIR, p).split("/")[0] === "tests") continue;
+          if (rel === "src/tests" || entry.name === "tests" || entry.name === "node_modules") {
+            continue;
+          }
           scan(p);
           continue;
         }
@@ -190,7 +194,9 @@ describe("bestEffort call-site scan", () => {
         }
       }
     };
-    scan(FLOW_DIR);
+    for (const root of [join(PKG_DIR, "os"), join(PKG_DIR, "src")]) {
+      if (existsSync(root)) scan(root);
+    }
     expect(offenders).toEqual([]);
   });
 });
