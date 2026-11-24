@@ -24,6 +24,7 @@ Idempotent: no legacy file and no qa-log.md files reports migrated: 0.</purpose>
   shard moves under .agents/skills/, --dry-run reporting.</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <item>RFC-1639: step 3-4 — friction.migrate --from ingest, friction.add --level, CREATE-SUPERFOLDER-01 guard</item>
+  <item>RFC-1639: review — SYSTEM-MAP-01 rules decl, git-probe warnings, sibling kind/path discriminants, friction.add provenance, ingest hardening</item>
 </CHANGE_SUMMARY>
 */
 
@@ -288,6 +289,22 @@ async function runIngest(
   const parent = path.dirname(resolved);
   const origin =
     path.basename(parent) === "docs" ? path.basename(path.dirname(parent)) : path.basename(parent);
+  if (origin.length === 0) {
+    return refuse(
+      `cannot derive an origin name from ${resolved} — pass a file inside a named folder`,
+    );
+  }
+
+  const levelFlag = flag(input, "level");
+  if (levelFlag !== undefined && levelFlag !== "repo" && levelFlag !== "folder") {
+    errors.push({
+      ruleId: "FRICTION-03",
+      severity: "error",
+      message: `level "${levelFlag}" is outside the closed catalog (repo, folder)`,
+      file: fromRaw,
+    });
+    return finish(`friction.migrate --from refused: invalid --level ${levelFlag}`);
+  }
 
   // Parse — accept both legacy shapes ({entries: [...]} and a bare array).
   let rows: Record<string, unknown>[];
@@ -334,7 +351,7 @@ async function runIngest(
 
   let max = frictionSourceMax(sources);
   const session = flag(input, "session") ?? (await defaultSession(workspaceRoot, fs));
-  const level = flag(input, "level") === "repo" ? ("repo" as const) : ("folder" as const);
+  const level = levelFlag === "repo" ? ("repo" as const) : ("folder" as const);
 
   for (const row of rows) {
     const oldId = row["id"] as string;
@@ -379,8 +396,17 @@ async function runIngest(
 
   // Source removal is LAST — a crash before this point re-runs cleanly.
   if (!dryRun && errors.length === 0) {
-    await fs.rm(resolved);
-    legacyRemoved = true;
+    try {
+      await fs.rm(resolved);
+      legacyRemoved = true;
+    } catch (e) {
+      errors.push({
+        ruleId: "FRICTION-01",
+        severity: "error",
+        message: `records written but the source could not be removed: ${e instanceof Error ? e.message : String(e)}`,
+        file: resolved,
+      });
+    }
   }
 
   if (outputFormat === "pretty") {

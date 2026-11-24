@@ -12,6 +12,7 @@ All objects are strict — unknown keys are schema violations (SYSTEM-MAP-01).</
   <item>RFC-1508: step 2 — system map schemas (system, products, edges, products-local)</item>
   <item>RFC-1508: review r1 — contract-exact schemas: strict objects, remote/offers, folders+launcher local map, edge note + required forbidden reason</item>
   <item>RFC-1639: additive roster fields — product.frozen + top-level ignored[]</item>
+  <item>RFC-1639: review — SYSTEM-MAP-01 rules decl, git-probe warnings, sibling kind/path discriminants, friction.add provenance, ingest hardening</item>
 </CHANGE_SUMMARY>
 */
 
@@ -50,10 +51,11 @@ export const systemProductSchema = z
   .strict();
 export type SystemProduct = z.infer<typeof systemProductSchema>;
 
-/** RFC-1639: a sibling directory deliberately outside the member model. */
+/** RFC-1639: a sibling directory deliberately outside the member model —
+ * matched against literal directory names, so any non-empty name is legal. */
 export const systemIgnoredSiblingSchema = z
   .object({
-    id: z.string().regex(SYSTEM_ID_PATTERN),
+    id: z.string().min(1),
     note: z.string().optional(),
   })
   .strict();

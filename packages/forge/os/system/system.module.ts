@@ -13,13 +13,12 @@ dispatch's product side is limited to opening the task branch and writing
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
-  <item>RFC-1533: surface pending flow branches in flow.open and the pre-user-prompt nudge</item>
   <item>RFC-1541: version-set@2 contracts with validator and pin-drift scenario checks</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
   <item>RFC-1639: system.products.status — member health + registry-vs-disk probe</item>
-  <history>RFC-1508, RFC-1509, RFC-1510, RFC-1511</history>
+  <item>RFC-1639: review — SYSTEM-MAP-01 rules decl, git-probe warnings, sibling kind/path discriminants, friction.add provenance, ingest hardening</item>
+  <history>RFC-1508, RFC-1509, RFC-1510, RFC-1511, RFC-1533</history>
 </CHANGE_SUMMARY>
 */
 
@@ -101,6 +100,7 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
         contract: "system",
         rules: [
           { id: "SYSTEM-01", severity: "error" },
+          { id: "SYSTEM-MAP-01", severity: "error" },
           { id: "SYSTEM-PRODUCTS-01", severity: "error" },
           { id: "SYSTEM-PRODUCTS-02", severity: "warning" },
         ],
