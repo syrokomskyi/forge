@@ -13,7 +13,7 @@ can be registered in a Warpgogol kernel without direct dependency.</purpose>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
   <item>RFC-1622: honor RFC-1622 receipt capability</item>
   <item>RFC-1622: preserve single manifest render during archive replay RFC-1622</item>
-  <item>RFC-1639: step 1-2 — deploy-scope contract, forge.source indirection, superfolder profile</item>
+  <item>RFC-1639: revert container-scope contracts — superfolder governance moves to the system hub</item>
   <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231, RFC-1306, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1463</history>
 </CHANGE_SUMMARY>
 */
@@ -160,25 +160,9 @@ export interface ForgeFlagSpec {
 
 export type ForgeCommandScope = "app" | "workspace";
 
-/**
- * RFC-1639: deployment scope — a workspace is either a repository (`repo`,
- * the default) or a non-git container of member repositories (`container`,
- * declared by the `superfolder` stack profile). This is a distinct axis from
- * `scope` (`app` | `workspace`), which classifies execution context. The
- * dispatch layer refuses a command whose `deployScopes` lacks the resolved
- * scope with CONTAINER-SCOPE-01.
- */
-export type DeployScopeKind = "repo" | "container";
-
 export interface ForgeCommandMetadata {
   description: string;
   scope: ForgeCommandScope;
-  /**
-   * RFC-1639: deployment scopes this command may run under. Absent defaults
-   * to `["repo"]` — repo-only commands refuse at a container workspace with
-   * CONTAINER-SCOPE-01. Distinct from `scope` (execution-context axis).
-   */
-  deployScopes?: DeployScopeKind[];
   /**
    * Filesystem-scoped mutation capability — structurally mirrors
    * KernelCommandMetadata. Delegated `executeKernelCommand` calls attribute
