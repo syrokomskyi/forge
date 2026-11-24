@@ -21,6 +21,7 @@ registry goes through this module.</purpose>
   layout, legacy-fallback loader, duplicate-id error, writeFriction and
   updateFriction mutation surface.</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <item>RFC-1639: step 3-4 — friction.migrate --from ingest, friction.add --level, CREATE-SUPERFOLDER-01 guard</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,11 +30,26 @@ import { join } from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
 import type { WorkspaceIO } from "../../src/types.ts";
+import { git } from "../flow/git.ts";
 
 import type { FrictionEntry } from "./types.ts";
 
 export const FRICTION_DIR = "docs/frictions";
 export const LEGACY_FRICTION_FILE = "docs/frictions.yaml";
+
+/** Session attribution default — the current branch name; detached or
+ * non-git invocations record "manual". Shared by friction.add and the
+ * friction.migrate --from ingest (RFC-1639). */
+export async function defaultSession(cwd: string, io: WorkspaceIO): Promise<string> {
+  try {
+    const r = await git(cwd, io, ["branch", "--show-current"]);
+    const name = r.stdout.trim();
+    if (r.exitCode === 0 && name.length > 0) return name;
+  } catch {
+    /* non-git cwd — manual attribution */
+  }
+  return "manual";
+}
 
 /** `F-NNNN.yaml` file-name shape (prefix match — suffixes stay legal). */
 export const FRICTION_FILE_PATTERN = /^F-(\d{4})/;

@@ -9,7 +9,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
   <item>RFC-1500: link branch-model guide in committed NEXT_STEPS.md (review r1)</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
@@ -20,7 +19,8 @@ F1 code-only anchor scan (markdown fences never declare anchors); F2 generated i
   <item>RFC-1578: close review REVIEW-CODE-2026-11-12-09 findings
 
 N1 index-hint rows count only for files in the workspace listing; N2 forge create leaves exempt repositories unbound; N3 listing test stages a file. Record DEV-3/DEV-4 amendments (CORR-07 future/escaping captures, index as re-verified hint) in the RFC Deviations section.</item>
-  <history>RFC-0544, RFC-0548, RFC-0550, RFC-0640, RFC-0643, RFC-0664, RFC-0877, RFC-1097, RFC-1224</history>
+  <item>RFC-1639: step 3-4 — friction.migrate --from ingest, friction.add --level, CREATE-SUPERFOLDER-01 guard</item>
+  <history>RFC-0544, RFC-0548, RFC-0550, RFC-0640, RFC-0643, RFC-0664, RFC-0877, RFC-1097, RFC-1224, RFC-1500</history>
 </CHANGE_SUMMARY>
 */
 
@@ -258,6 +258,32 @@ export async function runCreate(
   } catch {
     dirEntries = [];
   }
+  // RFC-1639 (CREATE-SUPERFOLDER-01): a directory whose immediate children
+  // already carry forge.yaml is a superfolder — its governance belongs in a
+  // system-profile hub repository, never in a folder-level forge.yaml. The
+  // guard bounds the command; a hand-written forge.yaml is untouched.
+  let forgeChildren = 0;
+  for (const name of dirEntries) {
+    if (await fio.exists(path.join(targetDir, name, "forge.yaml"))) forgeChildren++;
+  }
+  if (forgeChildren >= 2) {
+    const msg =
+      `CREATE-SUPERFOLDER-01: ${targetDir} already holds ${forgeChildren} forge-governed repositories — ` +
+      `this is a superfolder. Folder-level governance lives in a system-profile hub repository ` +
+      `(profile: system — system/products.yaml, friction registry, task queue), never in a ` +
+      `forge.yaml at this level. Refusing to scaffold.`;
+    errors.push(msg);
+    if (outputFormat === "pretty") {
+      logger.error(msg);
+    }
+    return {
+      data: { command: "forge.create", status: "fail", projectDir: targetDir, profile, filesCreated: [], errors },
+      nextSteps: failNextSteps,
+      exitCode: 1,
+      summary: `forge.create: failed — ${msg}`,
+    };
+  }
+
   const unexpectedEntries = dirEntries.filter((e) => !ALLOWED_EXISTING_DIRS.has(e));
   if (unexpectedEntries.length > 0) {
     const msg = `Directory is not empty. Found: ${unexpectedEntries.slice(0, 10).join(", ")}${unexpectedEntries.length > 10 ? ` (and ${unexpectedEntries.length - 10} more)` : ""}. The target directory must be empty. Refusing to scaffold.`;

@@ -22,6 +22,7 @@ and lastSeen is set — per-record files only.</purpose>
   <item>RFC-1590: friction.add — governance-reserved ids, write-time
   vocabulary gate (FRICTION-01..05 reuse), --recurrence-of counter path.</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <item>RFC-1639: step 3-4 — friction.migrate --from ingest, friction.add --level, CREATE-SUPERFOLDER-01 guard</item>
 </CHANGE_SUMMARY>
 */
 
@@ -34,9 +35,9 @@ import type {
 } from "../../../src/types.ts";
 
 import { reserveNextGovernanceId } from "../../rfc/next-id.ts";
-import { git } from "../../flow/git.ts";
 import {
   LegacyRecordMutationError,
+  defaultSession,
   frictionSourceMax,
   loadFrictionSources,
   updateFriction,
@@ -88,19 +89,6 @@ function refuse(
     summary: `friction.add refused: ${ruleId} ${message}`,
     exitCode: 1,
   };
-}
-
-/** Session attribution default — the current branch name; detached or
- * non-git invocations record "manual". */
-async function defaultSession(cwd: string): Promise<string> {
-  try {
-    const r = await git(cwd, fs, ["branch", "--show-current"]);
-    const name = r.stdout.trim();
-    if (r.exitCode === 0 && name.length > 0) return name;
-  } catch {
-    /* non-git cwd — manual attribution */
-  }
-  return "manual";
 }
 
 export async function runFrictionAdd(
@@ -161,6 +149,7 @@ export async function runFrictionAdd(
   const measure = flag(input, "measure");
   const measureKind = flag(input, "measure-kind");
   const status = flag(input, "status") ?? "open";
+  const level = flag(input, "level");
   const artifactsRaw = flag(input, "artifacts");
   const artifacts =
     artifactsRaw === undefined
@@ -200,12 +189,17 @@ export async function runFrictionAdd(
       `status "${status}" is outside the closed catalog (${FRICTION_STATUSES.join(", ")})`,
     );
   }
+  // RFC-1639: --level marks records about the superfolder (folder) vs the
+  // repo holding the registry (repo, the default — the field is omitted).
+  if (level !== undefined && level !== "repo" && level !== "folder") {
+    return refuse("FRICTION-03", `level "${level}" is outside the closed catalog (repo, folder)`);
+  }
 
   // ── reserve the id on the shared surface — allocate+append under one
   // lock so two concurrent adds can never pick the same id (AC-2).
   const sources = await loadFrictionSources(workspaceRoot, fs);
   const worktreeMax = frictionSourceMax(sources);
-  const session = flag(input, "session") ?? (await defaultSession(workspaceRoot));
+  const session = flag(input, "session") ?? (await defaultSession(workspaceRoot, fs));
   const allocation = await reserveNextGovernanceId(
     fs,
     workspaceRoot,
@@ -224,6 +218,7 @@ export async function runFrictionAdd(
     signature,
     measure,
     ...(measureKind !== undefined ? { measureKind: measureKind as FrictionMeasureKind } : {}),
+    ...(level === "folder" ? { level: "folder" as const } : {}),
     artifacts,
     status: status as FrictionStatus,
     recurrences: 0,

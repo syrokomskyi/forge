@@ -23,10 +23,13 @@ Idempotent: no legacy file and no qa-log.md files reports migrated: 0.</purpose>
   <item>RFC-1590: friction.migrate — legacy split + removal, qa-log.md
   shard moves under .agents/skills/, --dry-run reporting.</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <item>RFC-1639: step 3-4 — friction.migrate --from ingest, friction.add --level, CREATE-SUPERFOLDER-01 guard</item>
 </CHANGE_SUMMARY>
 */
 
-import { join } from "node:path";
+import path, { join } from "node:path";
+
+import { parse as yamlParse } from "yaml";
 
 import { ambientIo as fs } from "../../../src/utils/io.ts";
 import type {
@@ -36,12 +39,16 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 
+import { reserveNextGovernanceId } from "../../rfc/next-id.ts";
 import {
   FRICTION_DIR,
   LEGACY_FRICTION_FILE,
+  defaultSession,
+  frictionSourceMax,
   loadFrictionSources,
   writeFriction,
 } from "../store.ts";
+import { FRICTION_ID_PATTERN } from "../types.ts";
 import type { FrictionEntry } from "../types.ts";
 
 export interface FrictionMigrateResult {
@@ -82,10 +89,25 @@ async function listQaLogFiles(root: string): Promise<string[]> {
   return found;
 }
 
+function flag(input: ForgeCommandInput, name: string): string | undefined {
+  const v = input.flags[name];
+  if (typeof v === "string" && v.trim().length > 0) return v.trim();
+  if (typeof v === "number") return String(v);
+  return undefined;
+}
+
 export async function runFrictionMigrate(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<FrictionMigrateResult>> {
+  // RFC-1639: --from ingests an EXTERNAL legacy frictions.yaml into this
+  // workspace's registry — the superfolder-level file lands inside the
+  // system hub at the next F-ids with migratedFrom+origin provenance.
+  const from = flag(input, "from");
+  if (from !== undefined) {
+    return runIngest(input, context, from);
+  }
+
   const { workspaceRoot, logger, outputFormat } = context;
   const dryRun = input.flags["dry-run"] === true;
   const files: string[] = [];
@@ -203,4 +225,175 @@ export async function runFrictionMigrate(
         : `friction.migrate: ${migrated}/${files.length} records split, ${qaLogMoved.length + qaLogMerged.length} qa-log shard(s)${dryRun ? " (dry-run)" : ""}`,
     exitCode: errors.length === 0 ? 0 : 1,
   };
+}
+
+// ── --from ingest (RFC-1639) ─────────────────────────────────────────────
+
+/**
+ * Ingest an external legacy frictions.yaml into this workspace's registry.
+ * Records mint at the next ids via the shared git-dir ledger (never
+ * dir-scan), carry migratedFrom + origin + level provenance, and the source
+ * file is removed last so a crash-interrupted re-run re-derives the same
+ * mapping and skips already-ingested entries.
+ */
+async function runIngest(
+  input: ForgeCommandInput,
+  context: ForgeRuntimeContext,
+  fromRaw: string,
+): Promise<ForgeCommandResult<FrictionMigrateResult>> {
+  const { workspaceRoot, logger, outputFormat } = context;
+  const dryRun = input.flags["dry-run"] === true;
+  const files: string[] = [];
+  const skipped: Array<{ id: string | null; reason: string }> = [];
+  const errors: Diagnostic[] = [];
+  let migrated = 0;
+  let legacyRemoved = false;
+
+  const finish = (summary: string): ForgeCommandResult<FrictionMigrateResult> => ({
+    data: {
+      command: "friction.migrate",
+      status: errors.length === 0 ? "pass" : "fail",
+      dryRun,
+      migrated,
+      files,
+      legacyRemoved,
+      qaLogMoved: [],
+      qaLogMerged: [],
+      skipped,
+      errors,
+    },
+    summary,
+    exitCode: errors.length === 0 ? 0 : 1,
+  });
+  const refuse = (message: string): ForgeCommandResult<FrictionMigrateResult> => {
+    errors.push({ ruleId: "FRICTION-01", severity: "error", message, file: fromRaw });
+    return finish(`friction.migrate --from refused: ${message}`);
+  };
+
+  const resolved = path.isAbsolute(fromRaw)
+    ? path.normalize(fromRaw)
+    : path.resolve(workspaceRoot, fromRaw);
+  const rootNorm = path.resolve(workspaceRoot);
+  if (resolved === rootNorm || resolved.startsWith(rootNorm + path.sep)) {
+    return refuse(
+      "--from must point outside the workspace — the no-flag path owns docs/frictions.yaml",
+    );
+  }
+  if (!(await fs.exists(resolved))) {
+    return refuse(`source file not found: ${resolved}`);
+  }
+
+  // origin — the source registry's dir basename, unwrapping a trailing
+  // docs/ so <repo>/docs/frictions.yaml records origin as <repo>.
+  const parent = path.dirname(resolved);
+  const origin =
+    path.basename(parent) === "docs" ? path.basename(path.dirname(parent)) : path.basename(parent);
+
+  // Parse — accept both legacy shapes ({entries: [...]} and a bare array).
+  let rows: Record<string, unknown>[];
+  try {
+    const parsed = yamlParse(await fs.readFile(resolved)) as unknown;
+    const list = Array.isArray(parsed)
+      ? parsed
+      : parsed !== null &&
+          typeof parsed === "object" &&
+          Array.isArray((parsed as Record<string, unknown>)["entries"])
+        ? ((parsed as Record<string, unknown>)["entries"] as unknown[])
+        : null;
+    if (list === null) {
+      return refuse(`${resolved} is not a legacy frictions registry (no entries array)`);
+    }
+    rows = list as Record<string, unknown>[];
+  } catch (e) {
+    return refuse(
+      `${resolved} is not readable YAML: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+
+  // Every row must name an F-NNNN id — the run refuses before writing when
+  // one cannot be renumbered deterministically.
+  for (const [i, row] of rows.entries()) {
+    const id = row?.["id"];
+    if (typeof id !== "string" || !FRICTION_ID_PATTERN.test(id)) {
+      return refuse(
+        `source entry at index ${i} carries no readable F-NNNN id — repair the source registry before ingesting`,
+      );
+    }
+  }
+
+  const sources = await loadFrictionSources(workspaceRoot, fs);
+  const ingested = new Set(
+    sources.dir
+      .map((r) => r.raw as Record<string, unknown> | undefined)
+      .filter(
+        (r): r is Record<string, unknown> =>
+          r !== undefined && r["origin"] === origin && typeof r["migratedFrom"] === "string",
+      )
+      .map((r) => r["migratedFrom"] as string),
+  );
+
+  let max = frictionSourceMax(sources);
+  const session = flag(input, "session") ?? (await defaultSession(workspaceRoot, fs));
+  const level = flag(input, "level") === "repo" ? ("repo" as const) : ("folder" as const);
+
+  for (const row of rows) {
+    const oldId = row["id"] as string;
+    if (ingested.has(oldId)) {
+      skipped.push({ id: oldId, reason: `already ingested (origin: ${origin})` });
+      continue;
+    }
+    if (dryRun) {
+      files.push(join(FRICTION_DIR, `F-${String(max + 1).padStart(4, "0")}.yaml`));
+      max += 1;
+      continue;
+    }
+    const allocation = await reserveNextGovernanceId(fs, workspaceRoot, "friction", max, session);
+    max = Math.max(max, allocation.id);
+    const id = `F-${String(allocation.id).padStart(4, "0")}`;
+    const file = join(FRICTION_DIR, `${id}.yaml`);
+    files.push(file);
+    const record = {
+      ...row,
+      id,
+      migratedFrom: oldId,
+      origin,
+      level,
+    } as FrictionEntry;
+    try {
+      await writeFriction(workspaceRoot, record, fs);
+      migrated++;
+      ingested.add(oldId);
+      for (const w of allocation.warnings) {
+        if (outputFormat === "pretty") logger.warn(`  ${w}`);
+      }
+    } catch (e) {
+      errors.push({
+        ruleId: "FRICTION-01",
+        severity: "error",
+        message: e instanceof Error ? e.message : String(e),
+        file,
+      });
+      break;
+    }
+  }
+
+  // Source removal is LAST — a crash before this point re-runs cleanly.
+  if (!dryRun && errors.length === 0) {
+    await fs.rm(resolved);
+    legacyRemoved = true;
+  }
+
+  if (outputFormat === "pretty") {
+    logger.section("friction.migrate --from");
+    logger.info(
+      `  ${resolved} → ${files.length} record(s) under ${FRICTION_DIR}/ (origin: ${origin})` +
+        (dryRun ? " (dry-run)" : `, source ${legacyRemoved ? "removed" : "kept"}`),
+    );
+    for (const s of skipped) logger.info(`  skipped ${s.id}: ${s.reason}`);
+    for (const e of errors) logger.error(`  ${e.ruleId}: ${e.message}`);
+  }
+
+  return finish(
+    `friction.migrate --from: ${migrated} record(s) ingested from ${origin}${skipped.length > 0 ? `, ${skipped.length} skipped` : ""}${dryRun ? " (dry-run)" : ""}`,
+  );
 }
