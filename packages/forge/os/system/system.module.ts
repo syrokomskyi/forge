@@ -17,6 +17,7 @@ dispatch's product side is limited to opening the task branch and writing
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
   <item>RFC-1639: system.products.status — member health + registry-vs-disk probe</item>
+  <item>RFC-1641: system.product.register — roster write surface with --discover sibling scan</item>
   <item>RFC-1639: review — SYSTEM-MAP-01 rules decl, git-probe warnings, sibling kind/path discriminants, friction.add provenance, ingest hardening</item>
   <history>RFC-1508, RFC-1509, RFC-1510, RFC-1511, RFC-1533</history>
 </CHANGE_SUMMARY>
@@ -27,6 +28,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export async function createForgeSystemModule(): Promise<ForgeModule> {
   const { runSystemMapValidate } = await import("./handlers/system-map-validate.ts");
   const { runSystemProductsStatus } = await import("./handlers/system-products-status.ts");
+  const { runSystemProductRegister } = await import("./handlers/system-product-register.ts");
   const { runSystemTaskCreate } = await import("./handlers/system-task-create.ts");
   const { runSystemTaskMove } = await import("./handlers/system-task-move.ts");
   const { runSystemTaskDispatch } = await import("./handlers/system-task-dispatch.ts");
@@ -120,6 +122,79 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
         cacheable: false,
         flags: {},
         execute: runSystemProductsStatus,
+      },
+      {
+        name: "system.product.register",
+        description:
+          "Register a product in the system hub roster (RFC-1641) — the " +
+          "member-registry write surface. Explicit form --id <kebab> " +
+          "--remote <url> [--folder <path>] [--offers <contract>]* [--frozen] " +
+          "appends products.yaml and maps the folder in the gitignored " +
+          "products.local.yaml; --update modifies an existing id. --discover " +
+          "scans the hub's parent directory and registers every sibling " +
+          "carrying forge.yaml that is not already registered — id from the " +
+          "directory name, remote from git origin — skipping ignored[] names, " +
+          "@-worktrees, hidden dirs, the hub itself, non-kebab names and " +
+          "siblings with no readable origin (each reported as skipped). " +
+          "Invalid input — non-kebab id, duplicate without --update, missing " +
+          "--remote, a folder already mapped to another product — is " +
+          "SYSTEM-PRODUCTS-03 and writes nothing; SYSTEM-PRODUCTS-04 warns " +
+          "when a named folder is absent on disk. Writes files only — the " +
+          "session commits.",
+        scope: "workspace",
+        contract: "system",
+        rules: [
+          { id: "SYSTEM-01", severity: "error" },
+          { id: "SYSTEM-MAP-01", severity: "error" },
+          { id: "SYSTEM-PRODUCTS-03", severity: "error" },
+          { id: "SYSTEM-PRODUCTS-04", severity: "warning" },
+        ],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        writes: ["system/products.yaml", "system/products.local.yaml"],
+        generates: [],
+        coverage: "operator",
+        coverageNote:
+          "member onboarding — the operator or a hub session registers products and discovers forge siblings (RFC-1641)",
+        reads: [
+          "forge.yaml",
+          "system/system.yaml",
+          "system/products.yaml",
+          "system/edges.yaml",
+          "system/products.local.yaml",
+          "<sibling>/forge.yaml",
+          "<sibling>/.git/**",
+        ],
+        cacheable: false,
+        flags: {
+          id: {
+            kind: "string",
+            description: "Product id (kebab-case) — required unless --discover",
+          },
+          remote: {
+            kind: "string",
+            description: "Git remote url — required on first registration",
+          },
+          folder: {
+            kind: "string",
+            description: "Local checkout folder, absolute or repo-relative (e.g. ../billing)",
+          },
+          offers: {
+            kind: "string[]",
+            description: "Contract ids this product offers (repeatable)",
+          },
+          frozen: {
+            kind: "boolean",
+            description: "Pin the product by contract — health reports stay informational",
+          },
+          update: { kind: "boolean", description: "Modify an already-registered product id" },
+          discover: {
+            kind: "boolean",
+            description: "Scan sibling dirs for unregistered forge repositories and register them",
+          },
+          "dry-run": { kind: "boolean", description: "Plan only — write nothing" },
+        },
+        execute: runSystemProductRegister,
       },
       {
         name: "system.task.create",
