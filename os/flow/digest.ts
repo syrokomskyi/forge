@@ -20,11 +20,11 @@ stay empty by construction.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
+  <item>RFC-1633: review round 1 — digest envInputs, package-wide bestEffort scan, holder command, serialized standalone preflight</item>
   <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -36,8 +36,10 @@ import { parse as parseYaml } from "yaml";
 
 import { listRfcFiles, readRfcFrontmatter, rfcFileMatchesId } from "../rfc/frontmatter-io.ts";
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
-import { EVIDENCE_REFUSED_PREFIX } from "../../src/utils/verifier-git.ts";
+import { EVIDENCE_REFUSED_PREFIX, type EvidencePreflight } from "../../src/utils/verifier-git.ts";
 import { git, gitEvidence, evidencePreflight, parseGitTrailers } from "./git.ts";
+import { describeEvidenceLockError, withEvidenceConsultLock } from "./evidence-lock.ts";
+import { LockTimeoutError } from "./locks.ts";
 import {
   commonGitDir,
   readJournal,
@@ -797,8 +799,29 @@ export async function collectDigest(
   // read resolves (CX-79). Emitting the reasons here keeps the digest's
   // diagnostics honest instead of cascading "no origin"/"fetch failed"
   // secondaries on top of the refused channel.
-  const preflight = await evidencePreflight(repoRoot);
-  if (preflight === null) {
+  // RFC-1633 (review DEV-4): the standalone surface preflight is itself a
+  // heavy judged reader (~47k openat on this repo) — it serializes on the
+  // consult lock like every other judged read, so a parallel digest's
+  // fingerprint capture cannot interleave mid-sweep.
+  let preflight: EvidencePreflight | null;
+  try {
+    preflight = await withEvidenceConsultLock(repoRoot, { command: "flow.digest preflight" }, () =>
+      evidencePreflight(repoRoot),
+    );
+  } catch (error) {
+    if (error instanceof LockTimeoutError) {
+      diagnostics.push({
+        ruleId: "FLOW-PUSH-13",
+        severity: "error",
+        message: await describeEvidenceLockError(repoRoot, error),
+        fixHint: `a parallel judged consult held the evidence lock past the wait budget — re-run flow.digest`,
+      });
+      preflight = null;
+    } else {
+      throw error;
+    }
+  }
+  if (preflight === null && !diagnostics.some((d) => d.ruleId === "FLOW-PUSH-13")) {
     diagnostics.push({
       ruleId: "FLOW-PUSH-13",
       severity: "error",

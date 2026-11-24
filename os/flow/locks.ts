@@ -15,12 +15,12 @@ locks broken, always released in finally. Used for the short registry lock
   <item>Refused attempts render the holder via describeHeldLock — `stale` serves callers classifying a lock they never waited on.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1515: record rfc-1515 review r1 fixes, key decisions and corrected probe path</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
-  <history>RFC-1487, RFC-1504</history>
+  <item>RFC-1633: review round 1 — digest envInputs, package-wide bestEffort scan, holder command, serialized standalone preflight</item>
+  <history>RFC-1487, RFC-1504, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
 
@@ -62,11 +62,17 @@ export class LockTimeoutError extends Error {
   readonly lockPath: string;
   /** RFC-1515: last observed holder payload — absent when the lock file was
    * unreadable or vanished between polls ("holder unknown"). */
-  readonly holder?: { pid: number; host?: string; at: string; bootId?: string };
+  readonly holder?: {
+    pid: number;
+    host?: string;
+    at: string;
+    bootId?: string;
+    command?: string;
+  };
   constructor(
     lockPath: string,
     waitedMs: number,
-    holder?: { pid: number; host?: string; at: string; bootId?: string },
+    holder?: { pid: number; host?: string; at: string; bootId?: string; command?: string },
   ) {
     super(`lock ${lockPath} still held after ${waitedMs} ms`);
     this.name = "LockTimeoutError";
@@ -88,6 +94,8 @@ export interface HeldLockDiagnostic {
   pid: number;
   host?: string;
   at: string;
+  /** RFC-1633: caller-supplied holder label when the lock file carries one. */
+  command?: string;
   /** ms since the holder's `at` — null when the timestamp never parsed. */
   heldMs: number | null;
   disposition: "live" | "dead-holder" | "stale";
@@ -102,7 +110,7 @@ export interface HeldLockDiagnostic {
  * they never waited on.
  */
 export function describeHeldLock(
-  holder: { pid: number; host?: string; at: string; bootId?: string },
+  holder: { pid: number; host?: string; at: string; bootId?: string; command?: string },
   staleMs: number,
 ): HeldLockDiagnostic {
   const heldAtMs = Date.parse(holder.at);
@@ -111,6 +119,7 @@ export function describeHeldLock(
     pid: holder.pid,
     host: holder.host,
     at: holder.at,
+    command: holder.command,
     heldMs,
     disposition: holderIsDead(holder, currentBootId())
       ? "dead-holder"
@@ -160,6 +169,9 @@ interface HeldLock {
   host?: string;
   at: string;
   bootId?: string;
+  /** RFC-1633: caller-supplied label (e.g. the consult kind) written via
+   * extraContent — surfaced in timeout diagnostics. */
+  command?: string;
 }
 
 /**
@@ -179,6 +191,7 @@ async function readHolder(
       host: typeof parsed["host"] === "string" ? parsed["host"] : undefined,
       at: typeof parsed["at"] === "string" ? parsed["at"] : "",
       bootId: typeof parsed["bootId"] === "string" ? parsed["bootId"] : undefined,
+      command: typeof parsed["command"] === "string" ? parsed["command"] : undefined,
     };
   } catch {
     return null;
