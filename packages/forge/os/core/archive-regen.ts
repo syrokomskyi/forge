@@ -271,27 +271,53 @@ export async function runArchiveRegen(options: {
 export async function stageMovedPairs(options: {
   movedPaths: string[];
   workspaceRoot: string;
-}): Promise<{ staged: number; error?: string }> {
+}): Promise<{ staged: number; ignored: string[]; error?: string }> {
   const { movedPaths, workspaceRoot } = options;
-  if (movedPaths.length === 0) return { staged: 0 };
+  if (movedPaths.length === 0) return { staged: 0, ignored: [] };
   // Anchored mutation on the judged channel — the ambient exec layer
   // inherits the session's `GIT_*`, so `git add` could stage into a
   // foreign index or under a hostile env (CX-170). A refused surface
   // reports an error, never a fabricated `staged`.
   const preflight = await evidenceRepoPreflight(workspaceRoot);
   if (preflight === null) {
-    return { staged: 0, error: "repo surface unverifiable — refusing to stage" };
+    return { staged: 0, ignored: [], error: "repo surface unverifiable — refusing to stage" };
   }
   try {
-    const result = await evidenceAnchoredGit(workspaceRoot, ["add", "-A", "--", ...movedPaths], {
+    // F-0004: a moved path hidden by .gitignore makes `git add` refuse the
+    // whole pathspec — the commit would carry the source delete alone and
+    // pinned.validate would report a bare `D`. `-f` is off the anchored
+    // table by design, so the ignored set is filtered out first and
+    // surfaces as a caller-visible diagnostic instead. `check-ignore`
+    // exit 0 = some ignored, 1 = none, other = error (fail open — the
+    // add below then reports it).
+    const ignoredResult = await verifierGit(workspaceRoot, ["check-ignore", "--", ...movedPaths]);
+    // `git add` refuses only ignored paths it would ADD — a deleted source
+    // matching a broad ignore pattern still stages its delete cleanly, so
+    // the refusal set (and the stageable set) sees only worktree-present
+    // ignored paths.
+    const ignored =
+      ignoredResult.exitCode === 0
+        ? ignoredResult.stdout
+            .split("\n")
+            .filter((l) => l.length > 0 && existsSync(path.join(workspaceRoot, l)))
+        : [];
+    const stageable = movedPaths.filter((p) => !ignored.includes(p));
+    if (stageable.length === 0) {
+      return { staged: 0, ignored };
+    }
+    const result = await evidenceAnchoredGit(workspaceRoot, ["add", "-A", "--", ...stageable], {
       preflight,
     });
     if (result.exitCode !== 0) {
-      return { staged: 0, error: result.stderr || `git add exit ${result.exitCode}` };
+      return { staged: 0, ignored, error: result.stderr || `git add exit ${result.exitCode}` };
     }
-    return { staged: movedPaths.length };
+    return { staged: stageable.length, ignored };
   } catch (error) {
-    return { staged: 0, error: error instanceof Error ? error.message : String(error) };
+    return {
+      staged: 0,
+      ignored: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     closeEvidenceIndex(preflight);
   }

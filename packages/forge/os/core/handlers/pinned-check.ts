@@ -107,11 +107,18 @@ export async function loadPinnedManifest(repoRoot: string): Promise<PinnedManife
         `pinned.yaml: entry "${entryPath}" must have a non-empty reason string`,
       );
     }
+    const entryArchive = entry["archive"];
+    if (entryArchive !== undefined && typeof entryArchive !== "boolean") {
+      throw new PinnedManifestMalformedError(
+        `pinned.yaml: entry "${entryPath}" has invalid archive "${String(entryArchive)}" — must be a boolean`,
+      );
+    }
 
     entries.push({
       path: entryPath,
       mode: entryMode as PinnedMode,
       reason: entryReason,
+      archive: entryArchive,
     });
   }
 
@@ -176,6 +183,29 @@ export function isIntraDirMove(
   }
 
   return false;
+}
+
+/**
+ * Check whether an archive handler must NOT relocate sourceRel to destRel.
+ * Returns the blocking PinnedEntry or null when the move is allowed.
+ *
+ * Blocked cases:
+ * - Source matches a `freeze` entry — freeze means no relocation at all,
+ *   even inside the pinned directory.
+ * - Source matches an entry declared `archive: false` — the consumer's
+ *   explicit opt-out (F-0004): docs.archive family leaves it alone.
+ * - Any pinned source whose destination leaves the same pinned directory
+ *   (i.e. not an intra-directory move).
+ */
+export function isArchiveBlocked(
+  manifest: PinnedManifest,
+  sourceRel: string,
+  destRel: string,
+): PinnedEntry | null {
+  const entry = isPinned(manifest, sourceRel);
+  if (!entry) return null;
+  if (entry.mode === "freeze" || entry.archive === false) return entry;
+  return isIntraDirMove(manifest, sourceRel, destRel) ? null : entry;
 }
 
 /**

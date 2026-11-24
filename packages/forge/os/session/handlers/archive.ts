@@ -35,7 +35,7 @@ import {
   type SessionArchiveMove,
   type SessionArchiveSkip,
 } from "../types.ts";
-import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
+import { loadPinnedManifest, isArchiveBlocked } from "../../core/handlers/pinned-check.ts";
 
 const DEFAULT_MAX_AGE_DAYS = 7;
 
@@ -118,11 +118,7 @@ export async function runSessionArchive(
 
       // RFC-0733: Check if file is pinned before moving
       // Gap fix: exempt intra-directory moves (file stays within the same pinned dir)
-      if (
-        pinnedManifest &&
-        isPinned(pinnedManifest, relFile) &&
-        !isIntraDirMove(pinnedManifest, relFile, targetRel)
-      ) {
+      if (pinnedManifest && isArchiveBlocked(pinnedManifest, relFile, targetRel)) {
         skipped.push({ id, file: relFile, reason: "pinned (protected by .forge/pinned.yaml)" });
         if (outputFormat === "pretty") {
           logger.warn(`  pinned: skipping ${relFile} (protected)`);
@@ -206,11 +202,7 @@ export async function runSessionArchive(
 
       // RFC-0733: Check if file is pinned before moving
       // Gap fix: exempt intra-directory moves (file stays within the same pinned dir)
-      if (
-        pinnedManifest &&
-        isPinned(pinnedManifest, archRelFile) &&
-        !isIntraDirMove(pinnedManifest, archRelFile, targetRel)
-      ) {
+      if (pinnedManifest && isArchiveBlocked(pinnedManifest, archRelFile, targetRel)) {
         skipped.push({ id, file: archRelFile, reason: "pinned (protected by .forge/pinned.yaml)" });
         if (outputFormat === "pretty") {
           logger.warn(`  pinned: skipping ${archRelFile} (protected)`);
