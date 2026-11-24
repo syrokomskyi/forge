@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>flow.digest — read-only operator command (RFC-1491): prints the risk
+<purpose>flow.digest — operator digest command (RFC-1491): prints the risk
 digest of the unpushed outbound state. The digestId it reports is the id
 flow.push must quote; --no-fetch skips the git fetch for offline review.</purpose>
 <non-goals>
@@ -8,7 +8,6 @@ flow.push must quote; --no-fetch skips the git fetch for offline review.</purpos
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
 
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
@@ -17,6 +16,7 @@ flow.digest now reads .github/workflows on the primary checkout and reports tagT
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
+  <item>RFC-1638: review round 1 — payload preimage binding, fail-closed coverage scan, FLOW-PUSH-15</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -46,7 +46,9 @@ function emptyDigestData(diagnostics: Diagnostic[]): FlowDigestData {
     main: { local: "", remote: null, ahead: 0 },
     tags: [],
     items: [],
-    byCategory: Object.fromEntries(RISK_CATEGORIES.map((c) => [c, [] as string[]])) as FlowDigestData["byCategory"],
+    byCategory: Object.fromEntries(
+      RISK_CATEGORIES.map((c) => [c, [] as string[]]),
+    ) as FlowDigestData["byCategory"],
     held: [],
     pendingPublications: [],
     supersededPublications: [],
@@ -76,9 +78,7 @@ export async function runFlowDigest(
   } catch (error) {
     if (error instanceof FlowRegistrySchemaError) {
       return {
-        data: emptyDigestData([
-          { ruleId: "FLOW-07", severity: "error", message: error.message },
-        ]),
+        data: emptyDigestData([{ ruleId: "FLOW-07", severity: "error", message: error.message }]),
         exitCode: 1,
         summary: "[flow.digest] refused — registry unreadable",
       };
@@ -108,7 +108,9 @@ export async function runFlowDigest(
       }
     }
     for (const held of data.held) {
-      logger.info(`  held: ${held.branch} @ ${held.tip.slice(0, 9)} [${held.riskCategory}] — ${held.reason}`);
+      logger.info(
+        `  held: ${held.branch} @ ${held.tip.slice(0, 9)} [${held.riskCategory}] — ${held.reason}`,
+      );
     }
     for (const pending of data.pendingPublications) {
       logger.info(`  pending publication: ${pending.tag} (${pending.line})`);
@@ -124,7 +126,9 @@ export async function runFlowDigest(
       logger.warn(`  accepted correctness weakening ${w.sha.slice(0, 9)}: ${w.reason}`);
     }
     for (const v of data.correctnessTrail.verifierCommits) {
-      logger.info(`  verifier-trailer commit ${v.sha.slice(0, 9)} ${v.subject}${v.report ? ` (report ${v.report})` : ""}`);
+      logger.info(
+        `  verifier-trailer commit ${v.sha.slice(0, 9)} ${v.subject}${v.report ? ` (report ${v.report})` : ""}`,
+      );
     }
     for (const d of data.diagnostics) {
       if (d.severity === "error") logger.error(`  ${d.ruleId}: ${d.message}`);

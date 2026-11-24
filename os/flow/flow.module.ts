@@ -9,12 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1626: make gate-isolation sweeps durable and refuse foreign uncommitted work</item>
   <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <item>RFC-1633: review round 1 — digest envInputs, package-wide bestEffort scan, holder command, serialized standalone preflight</item>
   <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589, RFC-1592, RFC-1597, RFC-1599, RFC-1600, RFC-1616</history>
+  <item>RFC-1638: review round 1 — payload preimage binding, fail-closed coverage scan, FLOW-PUSH-15</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589, RFC-1592, RFC-1597, RFC-1599, RFC-1600, RFC-1616, RFC-1626</history>
 </CHANGE_SUMMARY>
 */
 
@@ -832,7 +832,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-PUSH-06", severity: "error" },
           { id: "FLOW-PUSH-07", severity: "error" },
           { id: "FLOW-PUSH-08", severity: "error" },
-          { id: "FLOW-PUSH-14", severity: "error" },
+          { id: "FLOW-PUSH-15", severity: "error" },
           { id: "FLOW-PUB-01", severity: "error" },
           { id: "PKG-HEALTH-10", severity: "error" },
           { id: "FLOW-07", severity: "error" },
@@ -848,6 +848,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         reads: [
           "forge.yaml",
           ".git/**",
+          ".github/workflows/**",
           "docs/rfcs/*.md",
           "hooks/**",
           "pnpm-workspace.yaml",
