@@ -6,19 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
-  <item>RFC-1616: external verification trust boundary
-
-policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
-with a 12-scenario catalog replayed through the real gate in a scratch
-clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
-forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
-scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580, RFC-1591, RFC-1596, RFC-1615</history>
+  <item>RFC-1639: step 1-2 — deploy-scope contract, forge.source indirection, superfolder profile</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580, RFC-1591, RFC-1596, RFC-1615, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +25,7 @@ import {
   type CompassPolicyOverrides,
 } from "../profiles/profile-schema.ts";
 import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
+import type { DeployScopeKind } from "../types.ts";
 
 // ---------------------------------------------------------------------------
 // Bindings schema (forge/bindings@1) — RFC-0393
@@ -418,6 +412,31 @@ export const forgeConfigSchema = z
     forge: z
       .object({
         syncedVersion: z.string().nullable().default(null),
+        /**
+         * RFC-1639: container scope only — names the member directory that
+         * provides the forge installation (`<container>/<source>` carrying
+         * `packages/forge` or `node_modules/@warpgogol/forge`).
+         */
+        source: z.string().min(1).optional(),
+      })
+      .optional(),
+    /**
+     * RFC-1639: container member roster controls (superfolder profile only) —
+     * `exclude` hides child dirs from member discovery (for sibling checkouts
+     * that carry `.git` but no `forge.yaml`); `annotations.<id>.frozen` marks a
+     * member intentionally pinned and excluded from version-sync checks.
+     */
+    members: z
+      .object({
+        exclude: z.array(z.string()).default([]),
+        annotations: z
+          .record(
+            z.string(),
+            z.object({
+              frozen: z.boolean().optional(),
+            }),
+          )
+          .default({}),
       })
       .optional(),
     /** RFC-0643: profile id — when present, loadForgeConfig loads the corresponding profiles/<id>.yaml */
@@ -524,8 +543,17 @@ export interface ForgeConfig {
   specPackages?: SpecPackageEntry[];
   /** External proof checkers (RFC-1391). Optional — absent means only the built-in `exhaustive` tool. */
   formal?: { tools: Record<string, FormalToolEntry> };
-  /** Forge sync metadata (RFC-0543). Optional — absent means never synced. */
-  forge?: { syncedVersion: string | null };
+  /** Forge sync metadata (RFC-0543) + RFC-1639 container `source`. Optional — absent means never synced. */
+  forge?: { syncedVersion: string | null; source?: string };
+  /**
+   * RFC-1639: container member roster controls — meaningful only under the
+   * `superfolder` profile (`exclude` hides non-forge child dirs,
+   * `annotations.<id>.frozen` marks intentionally pinned members).
+   */
+  members?: {
+    exclude: string[];
+    annotations: Record<string, { frozen?: boolean }>;
+  };
   /** RFC-0643: loaded stack profile — present when forge.yaml has a `profile` field */
   profile?: StackProfile;
   /** RFC-1118: raw `profile:` id string from forge.yaml — preserved verbatim even when unresolvable */
@@ -861,8 +889,113 @@ export function resolveForgeRoot(workspaceRoot: string): string {
     return workspaceRoot;
   }
 
+  // RFC-1639: container scope — a superfolder carries no packages/forge and no
+  // node_modules of its own; `forge.source` names the member directory that
+  // provides the forge installation.
+  const source = readForgeSource(workspaceRoot);
+  if (source !== undefined) {
+    const memberRoot = path.resolve(workspaceRoot, source);
+    const sourceMonorepo = path.join(memberRoot, "packages", "forge");
+    const sourceNpm = path.join(memberRoot, "node_modules", "@warpgogol", "forge");
+    for (const candidate of [sourceMonorepo, sourceNpm]) {
+      if (fs.existsSync(path.join(candidate, "package.json"))) {
+        return candidate;
+      }
+    }
+    throw new Error(
+      `Could not resolve forge root through forge.source "${source}". Checked:\n` +
+        `  ${sourceMonorepo}\n  ${sourceNpm}\n` +
+        `Ensure the named member carries @warpgogol/forge (packages/forge source checkout or an installed dependency).`,
+    );
+  }
+
   throw new Error(
     `Could not resolve forge root. Checked:\n  ${monorepoPath}\n  ${npmPath}\nEnsure @warpgogol/forge is installed or packages/forge exists.`,
+  );
+}
+
+/**
+ * Read `forge.source` from a workspace's forge.yaml without validating the
+ * whole document — returns `undefined` when the file is absent, unreadable,
+ * or declares no source (distinguishing "no indirection" from "indirection
+ * declared but unresolvable", which resolveForgeRoot reports by name).
+ */
+function readForgeSource(workspaceRoot: string): string | undefined {
+  const configPath = path.join(workspaceRoot, "forge.yaml");
+  if (!fs.existsSync(configPath)) {
+    return undefined;
+  }
+  try {
+    const parsed = parseYaml(fs.readFileSync(configPath, "utf8")) as {
+      forge?: { source?: unknown };
+    } | null;
+    const source = parsed?.forge?.source;
+    if (typeof source === "string" && source.trim().length > 0) {
+      return source.trim();
+    }
+  } catch {
+    // unreadable/invalid forge.yaml — the declaring command surfaces the parse error
+  }
+  return undefined;
+}
+
+/**
+ * RFC-1639: resolve the deployment scope of a workspace root from the
+ * declared `profile:` id. `superfolder` declares a container — a non-git
+ * folder whose members are forge repositories. Anything else (including a
+ * missing or malformed forge.yaml, whose real error surfaces downstream at
+ * config load) resolves to `repo`.
+ */
+export function resolveDeployScope(workspaceRoot: string): DeployScopeKind {
+  const configPath = path.join(workspaceRoot, "forge.yaml");
+  if (!fs.existsSync(configPath)) {
+    return "repo";
+  }
+  try {
+    const parsed = parseYaml(fs.readFileSync(configPath, "utf8")) as {
+      profile?: unknown;
+    } | null;
+    const raw = parsed?.profile;
+    const declared =
+      typeof raw === "string"
+        ? raw
+        : raw && typeof raw === "object" && "id" in raw
+          ? String((raw as { id: unknown }).id)
+          : undefined;
+    return declared === "superfolder" ? "container" : "repo";
+  } catch {
+    return "repo";
+  }
+}
+
+/**
+ * RFC-1639: the dispatch-scope decision — a command without a `deployScopes`
+ * declaration is repo-only. The standalone CLI refuses a disallowed scope
+ * with CONTAINER-SCOPE-01 (fail closed — never run repo semantics inside a
+ * container or container commands inside a repo).
+ */
+export function deployScopeAllowed(
+  deployScopes: DeployScopeKind[] | undefined,
+  scope: DeployScopeKind,
+): boolean {
+  return (deployScopes ?? ["repo"]).includes(scope);
+}
+
+/** The rule id the dispatch-level deploy-scope refusal reports. */
+export const CONTAINER_SCOPE_RULE = "CONTAINER-SCOPE-01";
+
+/** The CONTAINER-SCOPE-01 refusal message — names the command, the resolved scope, and the allowed set. */
+export function deployScopeRefusalMessage(
+  commandName: string,
+  scope: DeployScopeKind,
+  allowed: DeployScopeKind[],
+): string {
+  return (
+    `${CONTAINER_SCOPE_RULE} ${commandName} does not run at ${scope} scope ` +
+    `(deployScopes: ${allowed.join(", ")})` +
+    (scope === "container"
+      ? " — the container manages member state only; run repo commands inside the member (forge.source names the provider)"
+      : " — this command exists only under the superfolder container profile")
   );
 }
 
