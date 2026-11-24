@@ -6,6 +6,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1639: step 5-6 — acceptance tests, system-hub reference, regenerated manifests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -114,6 +115,47 @@ describe("friction.add — write path", () => {
     const recs = await loadFrictions(tmpDir, ambientIo);
     expect(recs).toHaveLength(1);
     expect(recs[0]?.recurrences).toBe(1);
+  });
+});
+
+describe("friction.add — --level (RFC-1639 AC-5)", () => {
+  test("--level folder stamps level: folder on a ledger-minted record", async () => {
+    const repo = await initRepo({ prefix: "friction-level-", branch: "develop" });
+    try {
+      const result = await runFrictionAdd(
+        { argv: [], flags: { ...VALID_FLAGS, session: "s-1", level: "folder" } },
+        ctx(repo),
+      );
+      expect(result.exitCode).toBe(0);
+      const rec = YAML.parse(
+        await fs.readFile(path.join(repo, FRICTION_DIR, "F-0001.yaml"), "utf8"),
+      );
+      expect(rec.level).toBe("folder");
+    } finally {
+      await fs.rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a level outside the catalog refuses without writing", async () => {
+    const result = await runFrictionAdd(
+      { argv: [], flags: { ...VALID_FLAGS, level: "global" } },
+      ctx(tmpDir),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.data?.errors[0]?.ruleId).toBe("FRICTION-03");
+    expect(await recordFiles(tmpDir)).toEqual([]);
+  });
+
+  test("records without --level omit the field (repo is the default)", async () => {
+    const result = await runFrictionAdd(
+      { argv: [], flags: { ...VALID_FLAGS, session: "s-1" } },
+      ctx(tmpDir),
+    );
+    expect(result.exitCode).toBe(0);
+    const rec = YAML.parse(
+      await fs.readFile(path.join(tmpDir, FRICTION_DIR, "F-0001.yaml"), "utf8"),
+    );
+    expect(rec.level).toBeUndefined();
   });
 });
 
