@@ -6,32 +6,11 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1592: probe-or-retire ratchet for blocking check rules
-
-Every error-severity check rule now needs liveness evidence — a bound
-gate-probe fixture that has actually run — or an explicit entry in the
-shrink-only unprobed baseline, enforced by gate.probe.catalog --check
-(PROBE-06/07) and wired into the worktree gate as probe-ratchet.
-
-- probe-runs journal (docs/.index/gate-probes/runs.jsonl) records each
-  gate.probe fixture execution; shared liveness.ts joins fixtures x
-  journal for catalog + contribution report (liveness: none|fixture|fired)
-- gate.probe.catalog --check/--write-baseline: PROBE-06 unprobed error
-  rule, PROBE-07 stale baseline entry, PROBE-08 baseline growth refusal
-  (shrink-only, no file modification), PROBE-09 expired/undeclared
-  warnOnly provisional step
-- checks.contribution.report adds liveness to every rule record
-- KernelPipelineStep/RuleDescriptor gain provisionalUntil; the two
-  warnOnly pipeline steps carry future dates
-- worktree gate adds probe-ratchet step; gate-domains + forge pre-lock
-  DELTA_STEP_SPECS mirror updated
-- build-verification policy states blocking rules are probed or retired;
-  fo-session-retro preserves probe/retire evidence for escape frictions
-- baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
   <item>F-0287: committed-counters union + scope:app domain exclusion tests — evidence reproducibility across worktrees</item>
   <item>RFC-1592: make probe-catalog liveness worktree-reproducible and exclude app-scope rules (F-0287)</item>
   <item>RFC-1592: union shared flow-journal refusal ids into probe-catalog emittedIds — FLOW-INT-02 and rebase-class rules keep firing evidence after the session worktree's counters journal dies with it (F-0287 r2)</item>
   <item>RFC-1592: use synthetic FLOW-INT-99 in the shared-journal liveness test — a real rule id literal in the diff trips FLOW-INT-19's duplicate governance scan (F-0287 r2 follow-up)</item>
+  <item>RFC-1642: make the probe ratchet reproducible — bound fixture is liveness, mutating rules exempt</item>
   <history>RFC-1592</history>
 </CHANGE_SUMMARY>
 */
@@ -123,6 +102,35 @@ async function writeBaseline(rules: string[]) {
     join(root, UNPROBED_BASELINE_REL),
     `schema: forge/unprobed-baseline@1\ngeneratedBy: gate.probe.catalog\nrules:\n${rules.map((r) => `  - ${r}`).join("\n")}${rules.length > 0 ? "\n" : ""}`,
   );
+}
+
+/** Seed the inventory with a validator bound to a command (for the mutating exemption). */
+async function seedInventoryForCommand(
+  command: string,
+  rules: { id: string; severity?: string }[],
+) {
+  await mkdir(join(root, "docs"), { recursive: true });
+  const body = rules
+    .map((r) => `          - id: ${r.id}\n            severity: ${r.severity ?? "error"}`)
+    .join("\n");
+  await writeFile(
+    join(root, "docs", "validator-inventory.generated.yaml"),
+    `contracts:\n  - contract: knowledge\n    validators:\n      - command: ${command}\n        rules:\n${body}\n`,
+  );
+}
+
+/** Seed the generated command manifest with scope + mutatesState per command. */
+async function seedCommandManifest(
+  commands: { name: string; mutatesState?: boolean; scope?: string }[],
+) {
+  await mkdir(join(root, "docs"), { recursive: true });
+  const body = commands
+    .map(
+      (c) =>
+        `  - name: ${c.name}\n    scope: ${c.scope ?? "workspace"}\n    mutatesState: ${c.mutatesState === true}`,
+    )
+    .join("\n");
+  await writeFile(join(root, "docs", "command-manifest.generated.yaml"), `commands:\n${body}\n`);
 }
 
 beforeEach(async () => {
@@ -325,5 +333,32 @@ describe("gate.probe.catalog ratchet (RFC-1592)", () => {
     const msg = p6.map((d) => d.message).join("\n");
     expect(msg).toContain("WS-ONLY-01");
     expect(msg).not.toContain("FLOW-INT-99");
+  });
+
+  test("RFC-1640 follow-up: a bound fixture counts as liveness without a recorded probe run (reproducible across checkouts)", async () => {
+    await seedInventory([{ id: "BOUND-NORUN-01" }]);
+    await seedFixture("BOUND-NORUN-01");
+    // No probe-run journal entry and no baseline entry — the committed fixture alone is evidence.
+    const res = await runGateProbeCatalog(flags({ check: true }), ctx());
+    expect(res.exitCode).toBe(0);
+    expect(res.data?.diagnostics ?? []).toHaveLength(0);
+  });
+
+  test("RFC-1640 follow-up: a mutating-command error rule is exempt from the unprobed ratchet", async () => {
+    await seedInventoryForCommand("demo.mutate", [{ id: "MUT-06" }]);
+    await seedCommandManifest([{ name: "demo.mutate", mutatesState: true }]);
+    // No fixture, no baseline — a mutating command's rule cannot be probe-fixtured → exempt.
+    const res = await runGateProbeCatalog(flags({ check: true }), ctx());
+    expect(res.exitCode).toBe(0);
+    expect(res.data?.diagnostics ?? []).toHaveLength(0);
+  });
+
+  test("RFC-1640 follow-up: a non-mutating command's unprobed error rule still flags PROBE-06", async () => {
+    await seedInventoryForCommand("demo.check", [{ id: "CHECK-06" }]);
+    await seedCommandManifest([{ name: "demo.check", mutatesState: false }]);
+    const res = await runGateProbeCatalog(flags({ check: true }), ctx());
+    expect(res.exitCode).toBe(1);
+    const p6 = res.data?.diagnostics?.filter((d) => d.ruleId === "PROBE-06") ?? [];
+    expect(p6.map((d) => d.message).join()).toContain("CHECK-06");
   });
 });

@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>F-0287: union the committed check-counters projection into emittedIds — journals are worktree-local, so fresh session checkouts could never reproduce primary's firing evidence and the ratchet refused on inherited develop debt</item>
   <item>RFC-1592: make probe-catalog liveness worktree-reproducible and exclude app-scope rules (F-0287)</item>
   <item>F-0287 r2: union shared flow-journal refusal ids into emittedIds — integrate refusals journal {rule} to &lt;commonGitDir&gt;/forge/journal.jsonl, the only firing evidence that outlives session worktrees for rebase-class rules (FLOW-INT-02) no file fixture can seed</item>
   <item>RFC-1592: union shared flow-journal refusal ids into probe-catalog emittedIds — FLOW-INT-02 and rebase-class rules keep firing evidence after the session worktree's counters journal dies with it (F-0287 r2)</item>
   <item>RFC-1592: use synthetic FLOW-INT-99 in the shared-journal liveness test — a real rule id literal in the diff trips FLOW-INT-19's duplicate governance scan (F-0287 r2 follow-up)</item>
-  <history>RFC-1469, RFC-1485, RFC-1592</history>
+  <item>RFC-1642: make the probe ratchet reproducible — bound fixture is liveness, mutating rules exempt</item>
+  <history>F-0287, RFC-1469, RFC-1485, RFC-1592</history>
 </CHANGE_SUMMARY>
 */
 
@@ -237,6 +237,30 @@ async function commandScopeMap(
   return out;
 }
 
+/**
+ * RFC-1640 follow-up: command → mutatesState from the generated command
+ * manifest. A mutating command's rules cannot be proven by a gate.probe
+ * fixture (the probe injects a violation and invokes a CHECK command), so the
+ * ratchet exempts them the same way it exempts app-scope rules.
+ */
+async function commandMutatesStateMap(
+  root: string,
+  io: ReturnType<typeof resolveIo>,
+): Promise<Map<string, boolean>> {
+  const src = await io
+    .readFile(path.join(root, "docs/command-manifest.generated.yaml"))
+    .catch(() => null);
+  const out = new Map<string, boolean>();
+  if (src === null) return out;
+  const parsed = yamlParse(src) as {
+    commands?: { name?: unknown; mutatesState?: unknown }[];
+  } | null;
+  for (const c of parsed?.commands ?? []) {
+    if (typeof c.name === "string") out.set(c.name, c.mutatesState === true);
+  }
+  return out;
+}
+
 export async function runGateProbeCatalog(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -292,9 +316,17 @@ export async function runGateProbeCatalog(
   // F-0287/RFC-1518 D-001); commands missing from the manifest stay in-domain
   // (fail-closed).
   const commandScope = await commandScopeMap(root, io);
-  const ratchetRules = errorRules.filter(
-    (r) => r.command === undefined || commandScope.get(r.command) !== "app",
-  );
+  const commandMutates = await commandMutatesStateMap(root, io);
+  // RFC-1640 follow-up: a mutating command's rule cannot be proven by a
+  // gate.probe fixture (the probe injects a violation and invokes a check),
+  // so it is exempt from the unprobed ratchet — like app-scope rules, which
+  // the app-side gate judges. Their coverage is the command's unit tests.
+  const ratchetRules = errorRules.filter((r) => {
+    if (r.command === undefined) return true;
+    if (commandScope.get(r.command) === "app") return false;
+    if (commandMutates.get(r.command) === true) return false;
+    return true;
+  });
   const unprobedErrorRules = errorRules.filter((r) => !bound.has(r.id)).map((r) => r.id);
   // PROBE-05: fixture bindings pointing at rules no longer declared anywhere.
   const allDeclared = new Set(allRules.map((r) => r.id));
@@ -359,7 +391,7 @@ export async function runGateProbeCatalog(
   const ratchetIds = new Set(ratchetRules.map((r) => r.id));
   const livenessById = new Map(ratchetRules.map((r) => [r.id, livenessOf(r)]));
   const noneRules = ratchetRules
-    .filter((r) => livenessById.get(r.id) === "none")
+    .filter((r) => !bound.has(r.id) && livenessById.get(r.id) === "none")
     .map((r) => r.id)
     .sort();
 
@@ -370,7 +402,7 @@ export async function runGateProbeCatalog(
     // Baseline entries owned by app-scope commands are out of this surface's
     // domain — the app-side gate judges their liveness. A rule gone from the
     // inventory entirely is stale regardless of scope.
-    ratchetIds.has(id) ? livenessById.get(id) !== "none" : !allDeclared.has(id),
+    ratchetIds.has(id) ? bound.has(id) || livenessById.get(id) !== "none" : !allDeclared.has(id),
   );
 
   if (writeBaseline) {
