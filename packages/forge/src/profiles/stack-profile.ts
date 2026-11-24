@@ -15,7 +15,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <item>RFC-1639: step 1-2 — deploy-scope contract, forge.source indirection, superfolder profile</item>
+  <item>RFC-1639: revert container-scope contracts — superfolder governance moves to the system hub</item>
   <history>RFC-0392, RFC-0638, RFC-0674, RFC-0679</history>
 </CHANGE_SUMMARY>
 */
@@ -84,17 +84,6 @@ export const stackProfileSchema = z.object({
   nextSteps: stackProfileDomainFieldsSchema.shape.nextSteps,
   // Profile-driven Compass file extensions
   compass: stackProfileDomainFieldsSchema.shape.compass,
-  /**
-   * RFC-1639: container-scope friction registry declaration — `idPrefix`
-   * is the id namespace records mint under (superfolder declares `W`, so a
-   * container's records are `W-NNNN` and can never collide with member-repo
-   * `F-NNNN` ids). Absent means the friction store keeps its `F` default.
-   */
-  frictions: z
-    .object({
-      idPrefix: z.string().min(1),
-    })
-    .optional(),
 });
 
 export interface ProfileFile {
@@ -119,8 +108,6 @@ export interface StackProfile extends StackProfileDomainFields {
   };
   prerequisites?: import("./profile-schema.ts").ProfilePrerequisite[];
   templates?: import("./profile-schema.ts").ProfileTemplate[];
-  /** RFC-1639: container-scope friction registry — `idPrefix` namespaces minted record ids (`W` under the superfolder profile). */
-  frictions?: { idPrefix: string };
 }
 
 // ---------------------------------------------------------------------------

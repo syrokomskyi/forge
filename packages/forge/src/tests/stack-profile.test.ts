@@ -9,7 +9,7 @@ Unit tests for stack profile covering its documented public contract and regress
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0392: initial stack profile tests.</item>
-  <item>RFC-1639: step 1-2 — deploy-scope contract, forge.source indirection, superfolder profile</item>
+  <item>RFC-1639: revert container-scope contracts — superfolder governance moves to the system hub</item>
 </CHANGE_SUMMARY>
 */
 
@@ -169,9 +169,7 @@ test("all shipped profiles include @warpgogol/forge in install steps or package.
   const profiles = listStackProfiles(FORGE_ROOT);
   for (const profile of profiles) {
     // knowledge uses @warpgogol/werkstatt-knowledge plugin, not forge
-    // superfolder is a container scope — its forge.source member provides
-    // the install; the container itself carries no package.json (RFC-1639)
-    if (profile.id === "knowledge" || profile.id === "superfolder") continue;
+    if (profile.id === "knowledge") continue;
     const hasForgeInInstall = profile.install.some((cmd) => cmd.includes("@warpgogol/forge"));
     const pkgFile = profile.workspace.files.find((f) => f.path === "package.json");
     const hasForgeInPkg = pkgFile?.content.includes("@warpgogol/forge") ?? false;
