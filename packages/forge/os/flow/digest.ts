@@ -8,7 +8,7 @@ Journal records are suppressor-only (R13-C): they can hide a tag from
 digest.tags but never mint pending/superseded publication entries, which
 stay empty by construction.</purpose>
 <non-goals>
-  <item>No mutation — the only write is the optional git fetch of remote-tracking refs.</item>
+  <item>No git mutation — the only write is the RFC-1638 persisted digest record under .git/forge/digests/.</item>
   <item>No push or publish policy — handlers/flow-push.ts owns outbound execution.</item>
 </non-goals>
 </MODULE_CONTRACT>
@@ -20,17 +20,16 @@ stay empty by construction.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <item>RFC-1633: review round 1 — digest envInputs, package-wide bestEffort scan, holder command, serialized standalone preflight</item>
   <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
+  <item>RFC-1638: review round 1 — payload preimage binding, fail-closed coverage scan, FLOW-PUSH-15</item>
   <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
 import { createHash } from "node:crypto";
-import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { parse as parseYaml } from "yaml";
@@ -827,12 +826,73 @@ export interface PersistedDigest {
   digestId: string;
   inputHash: string;
   computedAt: string; // ISO-8601 — outside the hashed surfaces
+  /**
+   * The UNSUPPRESSED release-tag set — a digestId preimage member that the
+   * suppressed `digest.tags` view cannot reconstruct. Carried so flow.push
+   * can recompute the digestId from the file's own contents and bind the
+   * payload to the quoted id (RFC-1638 review round 1: a session-writable
+   * file must not mint a push payload it never preimages).
+   */
+  releaseTags: string[];
   digest: FlowDigestData;
 }
 
 /** sha256 over canonicalJson(DigestInputs) — full hex, internal attestation. */
 export function digestInputHash(inputs: DigestInputs): string {
   return createHash("sha256").update(canonicalJson(inputs)).digest("hex");
+}
+
+/** The digestId preimage — judgment inputs only (RFC-1638 decision 2). */
+interface DigestIdPreimage {
+  developLocal: string | null;
+  mainLocal: string | null;
+  releaseTags: string[];
+  tagTriggers: FlowDigestData["tagTriggers"];
+  correctnessTrail: FlowDigestData["correctnessTrail"];
+  items: ReadonlyArray<{ id: string; tip: string }>;
+}
+
+function computeDigestId(preimage: DigestIdPreimage): string {
+  return createHash("sha256")
+    .update(
+      canonicalJson({
+        develop: { local: preimage.developLocal },
+        main: { local: preimage.mainLocal },
+        releaseTags: preimage.releaseTags,
+        tagTriggers: preimage.tagTriggers,
+        correctnessTrail: preimage.correctnessTrail,
+        items: preimage.items.map((i) => ({ id: i.id, tip: i.tip })),
+      }),
+    )
+    .digest("hex")
+    .slice(0, 12);
+}
+
+/**
+ * Recompute the digestId a persisted record's own payload preimages —
+ * `null` when the record's fields cannot re-derive the preimage. A forged
+ * `.git/forge/digests/*.json` (session-writable) then needs a 48-bit
+ * sha256 preimage to move a push, not just a plausible-looking file.
+ */
+export function recomputePersistedDigestId(persisted: PersistedDigest): string | null {
+  const d = persisted.digest;
+  if (
+    typeof d.develop?.local !== "string" ||
+    typeof d.main?.local !== "string" ||
+    !Array.isArray(d.tagTriggers) ||
+    !Array.isArray(d.items) ||
+    !Array.isArray(persisted.releaseTags)
+  ) {
+    return null;
+  }
+  return computeDigestId({
+    developLocal: d.develop.local,
+    mainLocal: d.main.local,
+    releaseTags: persisted.releaseTags,
+    tagTriggers: d.tagTriggers,
+    correctnessTrail: d.correctnessTrail,
+    items: d.items.map((i) => ({ id: i.id, tip: i.tip })),
+  });
 }
 
 /** Every reachable release-line tag (unsuppressed), sorted — the set both
@@ -951,7 +1011,7 @@ export async function observeDigestInputs(
 /**
  * Load `.git/forge/digests/<digestId>.json`. "missing" names an absent file;
  * "unknown" names an unreadable or wrong-schema record — both refuse
- * FLOW-PUSH-14 upstream, never silently downgrade (RFC-1638).
+ * FLOW-PUSH-15 upstream, never silently downgrade (RFC-1638).
  */
 export async function loadPersistedDigest(
   io: WorkspaceIO,
@@ -970,14 +1030,23 @@ export async function loadPersistedDigest(
     return "unknown";
   }
   const rec = raw as Partial<PersistedDigest> | null;
+  const d = rec?.digest as Partial<FlowDigestData> | null | undefined;
   if (
     rec === null ||
     rec.schema !== PERSISTED_DIGEST_SCHEMA ||
     rec.digestId !== digestId ||
     typeof rec.inputHash !== "string" ||
     typeof rec.computedAt !== "string" ||
-    typeof rec.digest !== "object" ||
-    rec.digest === null
+    !Array.isArray(rec.releaseTags) ||
+    !rec.releaseTags.every((t) => typeof t === "string") ||
+    typeof d !== "object" ||
+    d === null ||
+    typeof d.digestId !== "string" ||
+    !Array.isArray(d.diagnostics) ||
+    typeof d.develop?.local !== "string" ||
+    typeof d.main?.local !== "string" ||
+    !Array.isArray(d.items) ||
+    !Array.isArray(d.tagTriggers)
   ) {
     return "unknown";
   }
@@ -985,21 +1054,39 @@ export async function loadPersistedDigest(
 }
 
 /** Write the persisted digest atomically (tmp + rename) and sweep to the
- * 50-newest retention (RFC-1568 precedent). Ambient fs — `.git/forge/*` is
- * the evidence family, which bypasses the io adapter by convention. */
-async function persistDigest(common: string, persisted: PersistedDigest): Promise<void> {
+ * 50-newest retention (RFC-1568 precedent); `.tmp-<pid>` orphans of a dead
+ * writer older than a minute are reclaimed in the same pass. */
+async function persistDigest(
+  io: WorkspaceIO,
+  common: string,
+  persisted: PersistedDigest,
+): Promise<void> {
   const dir = join(common, PERSISTED_DIGESTS_DIR);
-  await mkdir(dir, { recursive: true });
+  await io.mkdir(dir);
   const file = join(dir, `${persisted.digestId}.json`);
   const tmp = `${file}.tmp-${process.pid}`;
-  await writeFile(tmp, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
-  await rename(tmp, file);
-  const names = (await readdir(dir)).filter((n) => n.endsWith(".json") && !n.includes(".tmp-"));
-  if (names.length <= PERSISTED_DIGEST_RETENTION) return;
+  await io.writeFile(tmp, `${JSON.stringify(persisted, null, 2)}\n`);
+  await io.rename(tmp, file);
+  const entries = await io
+    .readdir(dir)
+    .catch(() => [] as Awaited<ReturnType<WorkspaceIO["readdir"]>>);
+  const names = entries.filter((e) => e.isFile).map((e) => e.name);
+  const orphans = names.filter((n) => n.endsWith(".json") === false && n.includes(".tmp-"));
+  const digests = names.filter((n) => n.endsWith(".json") && !n.includes(".tmp-"));
+  const now = Date.now();
+  for (const n of orphans) {
+    const t = await io
+      .stat(join(dir, n))
+      .then((s) => s.mtimeMs)
+      .catch(() => 0);
+    if (now - t > 60_000) await io.rm(join(dir, n)).catch(() => {});
+  }
+  if (digests.length <= PERSISTED_DIGEST_RETENTION) return;
   const aged = await Promise.all(
-    names.map(async (n) => ({
+    digests.map(async (n) => ({
       n,
-      t: await stat(join(dir, n))
+      t: await io
+        .stat(join(dir, n))
         .then((s) => s.mtimeMs)
         .catch(() => 0),
     })),
@@ -1010,8 +1097,8 @@ async function persistDigest(common: string, persisted: PersistedDigest): Promis
       .slice(0, PERSISTED_DIGEST_RETENTION)
       .map((e) => e.n),
   );
-  for (const n of names) {
-    if (!keep.has(n)) await rm(join(dir, n)).catch(() => {});
+  for (const n of digests) {
+    if (!keep.has(n)) await io.rm(join(dir, n)).catch(() => {});
   }
 }
 
@@ -1024,7 +1111,7 @@ async function persistDigest(common: string, persisted: PersistedDigest): Promis
 export async function collectDigest(
   repoRoot: string,
   io: WorkspaceIO,
-  _opts: { fetch: boolean },
+  opts: { fetch: boolean; persist?: boolean },
 ): Promise<FlowDigestData> {
   const diagnostics: Diagnostic[] = [];
 
@@ -1453,19 +1540,14 @@ export async function collectDigest(
   // publication fields stay in the returned object as preview data but
   // leave the hash: a foreign push or journal `push` record can no longer
   // move a digest the operator already reviewed.
-  const digestId = createHash("sha256")
-    .update(
-      canonicalJson({
-        develop: { local: developLocal },
-        main: { local: mainLocal },
-        releaseTags,
-        tagTriggers,
-        correctnessTrail,
-        items: items.map((i) => ({ id: i.id, tip: i.tip })),
-      }),
-    )
-    .digest("hex")
-    .slice(0, 12);
+  const digestId = computeDigestId({
+    developLocal,
+    mainLocal,
+    releaseTags,
+    tagTriggers,
+    correctnessTrail,
+    items,
+  });
 
   const data: FlowDigestData = {
     digestId,
@@ -1487,16 +1569,18 @@ export async function collectDigest(
 
   // RFC-1638 persist — the reviewed digest + its input hash, so flow.push
   // attests staleness in seconds instead of recounting. Best-effort: a
-  // failed persist degrades to the recount path (FLOW-PUSH-14 upstream),
-  // never blocks the digest itself.
+  // failed persist degrades to the recount path (FLOW-PUSH-15 upstream),
+  // never blocks the digest itself. `persist:false` (dry-run callers)
+  // leaves the digests dir untouched.
   try {
-    const inputs = await observeDigestInputs(repoRoot, io);
+    const inputs = opts?.persist === false ? null : await observeDigestInputs(repoRoot, io);
     if (inputs !== null) {
-      await persistDigest(common, {
+      await persistDigest(io, common, {
         schema: PERSISTED_DIGEST_SCHEMA,
         digestId,
         inputHash: digestInputHash(inputs),
         computedAt: new Date().toISOString(),
+        releaseTags,
         digest: data,
       });
     }

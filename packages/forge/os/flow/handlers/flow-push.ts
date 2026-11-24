@@ -17,11 +17,11 @@ path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
+  <item>RFC-1638: review round 1 — payload preimage binding, fail-closed coverage scan, FLOW-PUSH-15</item>
   <history>RFC-1491, RFC-1501, RFC-1503, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -43,6 +43,7 @@ import {
   lineForTag,
   loadPersistedDigest,
   observeDigestInputs,
+  recomputePersistedDigestId,
   versionOfTag,
   type FlowDigestData,
 } from "../digest.ts";
@@ -230,25 +231,48 @@ export async function pushFlow(
   // cheap input still matches (`observeDigestInputs` re-reads through the
   // judged channel — a verdict input, never bestEffort). Any drift, an
   // unprovable input, or --recount falls back to the full recount — the
-  // FLOW-PUSH-02 contract byte-for-byte. A missing or unreadable persisted
-  // digest refuses FLOW-PUSH-14: no weaker check to silently downgrade to.
+  // FLOW-PUSH-02 contract byte-for-byte. A missing, unreadable or
+  // payload-forged persisted digest refuses FLOW-PUSH-15: no weaker check
+  // to silently downgrade to.
   let digest: FlowDigestData | null = null;
   let attestation: "input-hash" | "recount" = "recount";
   let digestComputedAt: string | undefined;
+  // Attestation fields ride every refusal decided AFTER the digest loaded —
+  // the audit trail always records how the quoted digest was validated.
+  const refuseChecked = (ruleId: string, message: string, fixHint?: string): FlowPushData => ({
+    ...refuse(ruleId, message, fixHint),
+    attestation,
+    digestComputedAt,
+  });
   if (!opts.recount) {
     const persisted = await loadPersistedDigest(io, common, opts.digest);
     if (persisted === "missing") {
       return refuse(
-        "FLOW-PUSH-14",
+        "FLOW-PUSH-15",
         `no persisted digest ${opts.digest} under .git/forge/digests — the quoted id predates persistence or the forge state was cleaned; re-run flow.digest to record a fresh reviewed state`,
         "re-run flow.digest, review the new state and re-run flow.push --digest <id>",
       );
     }
     if (persisted === "unknown") {
       return refuse(
-        "FLOW-PUSH-14",
+        "FLOW-PUSH-15",
         `the persisted digest ${opts.digest} is unreadable or carries an unknown schema — it cannot attest pushed state; re-run flow.digest to record a fresh reviewed state`,
         "re-run flow.digest and re-run flow.push --digest <id>",
+      );
+    }
+    // Payload binding (RFC-1638 review round 1): the file is session-writable
+    // like the journal, but unlike a journal `push` record it MINTS the push
+    // payload — so the record must preimage the quoted id. Recomputing
+    // digestId from the file's own fields means a forged payload needs a
+    // 48-bit sha256 preimage, not a plausible-looking JSON.
+    if (
+      recomputePersistedDigestId(persisted) !== opts.digest ||
+      persisted.digest.digestId !== opts.digest
+    ) {
+      return refuse(
+        "FLOW-PUSH-15",
+        `the persisted digest ${opts.digest} does not preimage the quoted id — the file is forged or corrupt; re-run flow.digest to record a fresh reviewed state`,
+        "re-run flow.digest, review the new state and re-run flow.push --digest <id>",
       );
     }
     const inputs = await observeDigestInputs(repoRoot, io);
@@ -259,14 +283,14 @@ export async function pushFlow(
     }
   }
   if (digest === null) {
-    digest = await collectDigest(repoRoot, io, { fetch: !opts.dryRun });
+    digest = await collectDigest(repoRoot, io, { fetch: !opts.dryRun, persist: !opts.dryRun });
     digestComputedAt ??= new Date().toISOString();
   }
   const noOrigin = digest.diagnostics.find(
     (d) => d.ruleId === "FLOW-PUSH-01" && d.severity === "error",
   );
   if (noOrigin !== undefined) {
-    return refuse("FLOW-PUSH-01", noOrigin.message, "add an 'origin' remote first");
+    return refuseChecked("FLOW-PUSH-01", noOrigin.message, "add an 'origin' remote first");
   }
   // Any other error-severity digest diagnostic blocks the push too — a
   // remote identity that cannot be proven (FLOW-PUSH-09: url.insteadOf
@@ -276,7 +300,7 @@ export async function pushFlow(
   const blocking = digest.diagnostics.filter((d) => d.severity === "error");
   if (blocking.length > 0) {
     const first = blocking[0]!;
-    return refuse("FLOW-PUSH-10", first.message, first.fixHint);
+    return refuseChecked("FLOW-PUSH-10", first.message, first.fixHint);
   }
   // No remote-verification gate exists anymore: `fetched` is
   // structurally false because the evidence channel refuses every
@@ -287,15 +311,11 @@ export async function pushFlow(
   // (`remoteVerified` is never true), so nothing narrows the check on
   // remote-derived state.
   if (digest.digestId !== opts.digest) {
-    return {
-      ...refuse(
-        "FLOW-PUSH-02",
-        `the digest is stale — the current digestId is ${digest.digestId}, not ${opts.digest}`,
-        `run flow.digest, review the new state and re-run flow.push --digest ${digest.digestId}`,
-      ),
-      attestation,
-      digestComputedAt,
-    };
+    return refuseChecked(
+      "FLOW-PUSH-02",
+      `the digest is stale — the current digestId is ${digest.digestId}, not ${opts.digest}`,
+      `run flow.digest, review the new state and re-run flow.push --digest ${digest.digestId}`,
+    );
   }
 
   // RFC-1616 (AC-6): verifier-trailer scan over the unpushed develop+main
@@ -335,7 +355,7 @@ export async function pushFlow(
     scannedRanges.push(range);
     const scan = await scanVerifierTrailers(repoRoot, io, range);
     if (scan === null) {
-      return refuse(
+      return refuseChecked(
         "FLOW-PUSH-13",
         `the verifier-trailer scan over '${range}' is unverifiable — the push cannot prove which commits carry verifier/audit trailers`,
         "remove the evidence-channel refusal and re-run flow.push",
@@ -386,7 +406,7 @@ export async function pushFlow(
     const ancestor = await gitEvidence(repoRoot, ["merge-base", "--is-ancestor", remote, branch]);
     assertJudgedEvidence(ancestor);
     if (ancestor.exitCode !== 0) {
-      return refuse(
+      return refuseChecked(
         "FLOW-PUSH-03",
         `origin/${branch} is not an ancestor of ${branch} — someone pushed elsewhere`,
         "fetch, inspect the divergence and reconcile before pushing",
@@ -461,7 +481,7 @@ export async function pushFlow(
   for (const { line } of publishable) {
     const dir = line.paths[0]!;
     if (!(await markerIsValid(join(primary, dir, "forge.generated.yaml"), io))) {
-      return refuse(
+      return refuseChecked(
         "FLOW-PUSH-06",
         `package line ${line.id} has no valid forge.generated.yaml in ${dir} — it must not be published`,
         "re-run flow.install to restore the marker, or remove the line's tags",
@@ -471,7 +491,7 @@ export async function pushFlow(
 
   const extractBin = join(primary, "node_modules", ".bin", "repo-extract");
   if (publishable.length > 0 && !(await io.exists(extractBin))) {
-    return refuse(
+    return refuseChecked(
       "FLOW-PUSH-07",
       `${extractBin} is missing while ${publishable.length} tag(s) wait to publish`,
       "install the workspace dependencies so repo-extract is linked",
