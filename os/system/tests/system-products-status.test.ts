@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1639: step 5-6 — acceptance tests, system-hub reference, regenerated manifests</item>
+  <item>RFC-1639: review — SYSTEM-MAP-01 rules decl, git-probe warnings, sibling kind/path discriminants, friction.add provenance, ingest hardening</item>
 </CHANGE_SUMMARY>
 */
 
@@ -131,7 +132,7 @@ describe("system.products.status — sibling scan (RFC-1639 AC-3)", () => {
 });
 
 describe("system.products.status — frozen members (RFC-1639 AC-6)", () => {
-  test("a missing frozen member reports missing:true with a warning, never an error", async () => {
+  test("a missing frozen member reports null probes with a warning, never an error", async () => {
     const result = await runSystemProductsStatus({ argv: [], flags: {} }, makeContext(hub));
     expect(result.exitCode).toBe(0);
     const ghost = result.data?.products.find((p) => p.id === "ghost");

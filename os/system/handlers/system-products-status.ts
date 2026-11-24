@@ -15,6 +15,7 @@ degrades to warnings so the report stays complete.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1639: system.products.status — member health + registry-vs-disk probe</item>
   <item>RFC-1639: step 1-2 — friction record fields, roster frozen/ignored, system.products.status</item>
+  <item>RFC-1639: review — SYSTEM-MAP-01 rules decl, git-probe warnings, sibling kind/path discriminants, friction.add provenance, ingest hardening</item>
 </CHANGE_SUMMARY>
 */
 
@@ -180,25 +181,27 @@ export async function runSystemProductsStatus(
         continue;
       }
       if (await io.exists(path.join(childAbs, FORGE_CONFIG_FILE))) {
-        warnings.push(
-          diagnostic(
+        warnings.push({
+          ...diagnostic(
             "SYSTEM-PRODUCTS-02",
             "warning",
             child.name,
             `sibling "${child.name}" carries forge.yaml but is not a registered product`,
             `Declare it in ${SYSTEM_PRODUCTS_FILE} or name it in ignored[].`,
           ),
-        );
+          data: { kind: "unregistered-forge-sibling", path: childAbs },
+        });
       } else if (await io.exists(path.join(childAbs, ".git"))) {
-        warnings.push(
-          diagnostic(
+        warnings.push({
+          ...diagnostic(
             "SYSTEM-PRODUCTS-02",
             "warning",
             child.name,
             `sibling "${child.name}" is a git checkout without forge.yaml — a pre-adoption signal`,
             `Run forge.init in ${child.name} or name it in ignored[].`,
           ),
-        );
+          data: { kind: "git-sibling-without-forge", path: childAbs },
+        });
       }
     }
   } catch {
@@ -282,8 +285,9 @@ async function probeProduct(
   }
   status.profile = shape.profile;
   status.forgeVersion = shape.syncedVersion;
-  status.versionOk =
-    status.forgeVersion !== null && baseline !== null ? status.forgeVersion === baseline : null;
+  // A missing member version is provably unequal, not "unknown" — only a
+  // missing hub baseline makes versionOk un-evaluable (null).
+  status.versionOk = baseline !== null ? status.forgeVersion === baseline : null;
 
   // Live session worktrees: siblings of the product folder named `<id>@*`.
   try {
@@ -297,11 +301,28 @@ async function probeProduct(
   }
 
   // Git probes degrade to null + warning — a product with no readable git
-  // state reports its other fields rather than failing.
+  // state reports its other fields rather than failing. A missing io
+  // capability is never a concrete verdict (AGENTS.md capability rule).
   if (!(await io.exists(path.join(folder, ".git")))) {
-    flag(`product "${product.id}" has no .git at ${folder} — git probes skipped`, "");
+    warnings.push(
+      diagnostic(
+        "SYSTEM-PRODUCTS-02",
+        "warning",
+        product.id,
+        `product "${product.id}" has no .git at ${folder} — git probes skipped`,
+        "",
+      ),
+    );
   } else if (typeof io.exec !== "function") {
-    flag(`product "${product.id}" git probes unavailable — io.exec missing`, "");
+    warnings.push(
+      diagnostic(
+        "SYSTEM-PRODUCTS-02",
+        "warning",
+        product.id,
+        `product "${product.id}" git probes unavailable — io.exec missing`,
+        "",
+      ),
+    );
   } else {
     const dirty = await git(folder, io, ["status", "--porcelain", "--untracked-files=no"]);
     if (dirty.exitCode === 0) {

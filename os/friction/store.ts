@@ -22,6 +22,7 @@ registry goes through this module.</purpose>
   updateFriction mutation surface.</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <item>RFC-1639: step 3-4 — friction.migrate --from ingest, friction.add --level, CREATE-SUPERFOLDER-01 guard</item>
+  <item>RFC-1639: review — SYSTEM-MAP-01 rules decl, git-probe warnings, sibling kind/path discriminants, friction.add provenance, ingest hardening</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,7 +31,6 @@ import { join } from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
 import type { WorkspaceIO } from "../../src/types.ts";
-import { git } from "../flow/git.ts";
 
 import type { FrictionEntry } from "./types.ts";
 
@@ -42,6 +42,9 @@ export const LEGACY_FRICTION_FILE = "docs/frictions.yaml";
  * friction.migrate --from ingest (RFC-1639). */
 export async function defaultSession(cwd: string, io: WorkspaceIO): Promise<string> {
   try {
+    // Lazy import — keeps the store leaf-shaped for consumers that never
+    // mint ids (friction-validate) and never needed the flow/git surface.
+    const { git } = await import("../flow/git.ts");
     const r = await git(cwd, io, ["branch", "--show-current"]);
     const name = r.stdout.trim();
     if (r.exitCode === 0 && name.length > 0) return name;
