@@ -20,6 +20,7 @@ consistent with the JSON payload. r3 review verdict: pass.</item>
   <item>RFC-1601: ledger writers assign + refusals teach the violated rule (RFC-1601)
 
 FRICTION-11 flags any out-of-vocabulary friction field value at validate, naming field+value+closed set — the mechanical detector for hand-edit corruption (F-0206/F-0244). queue.decision is the new decision-ledger writer: schema-gated append stamping createdAt/answeredAt, next-free Q-id default, QUEUE-05/QUEUE-DEC-01 refusals carrying the minimal shape. ecosystem.commit --rfc/--adr normalize bare digits or refuse EC-35 with the format statement — the F-0248 silent-injection-skip class is closed, and a summary-record failure now names the id + skipped injection. RFC-IMP-10 refusal leads with the rule statement; pipeline conventions and guides point at the command write path.</item>
+  <item>RFC-1639: additive record fields — level (repo|folder), origin, migratedFrom</item>
   <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
@@ -64,6 +65,13 @@ export const frictionEntrySchema = z.object({
   measureKind: z.enum(FRICTION_MEASURE_KINDS).optional(),
   // RFC-1466: remediation-catalog ids this friction's scar was migrated into.
   catalogRefs: z.array(z.string().min(1)).optional(),
+  // RFC-1639: "folder" marks records about the superfolder rather than the
+  // repo holding the registry — metadata only, never a second namespace.
+  level: z.enum(["repo", "folder"]).optional(),
+  // RFC-1639: provenance for `friction.migrate --from` ingests — the source
+  // registry's dir basename and the record's old id there.
+  origin: z.string().min(1).optional(),
+  migratedFrom: z.string().regex(FRICTION_ID_PATTERN).optional(),
   artifacts: z.array(z.string().min(1)),
   status: z.enum(FRICTION_STATUSES),
   recurrences: z.number().int().min(0),

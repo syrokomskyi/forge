@@ -18,6 +18,7 @@ dispatch's product side is limited to opening the task branch and writing
   <item>RFC-1541: version-set@2 contracts with validator and pin-drift scenario checks</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
+  <item>RFC-1639: system.products.status — member health + registry-vs-disk probe</item>
   <history>RFC-1508, RFC-1509, RFC-1510, RFC-1511</history>
 </CHANGE_SUMMARY>
 */
@@ -26,6 +27,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 
 export async function createForgeSystemModule(): Promise<ForgeModule> {
   const { runSystemMapValidate } = await import("./handlers/system-map-validate.ts");
+  const { runSystemProductsStatus } = await import("./handlers/system-products-status.ts");
   const { runSystemTaskCreate } = await import("./handlers/system-task-create.ts");
   const { runSystemTaskMove } = await import("./handlers/system-task-move.ts");
   const { runSystemTaskDispatch } = await import("./handlers/system-task-dispatch.ts");
@@ -81,6 +83,43 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
         cacheable: false,
         flags: {},
         execute: runSystemMapValidate,
+      },
+      {
+        name: "system.products.status",
+        description:
+          "Read-only member health report (RFC-1639). Refuses outside the " +
+          "system profile (SYSTEM-01). For every products.yaml entry resolved " +
+          "through products.local.yaml folders it reports the checkout path, " +
+          "declared profile, syncedVersion vs the hub's own syncedVersion " +
+          "baseline, dirty state, live <id>@* session worktrees, and commits " +
+          "ahead of upstream — git probes degrade to null + warning. " +
+          "Registry-vs-disk: a sibling dir carrying forge.yaml that is not a " +
+          "registered product warns (SYSTEM-PRODUCTS-02) unless named in " +
+          "ignored[]; a registered product missing or broken on disk errors " +
+          "(SYSTEM-PRODUCTS-01) unless frozen. Exit 1 iff an error exists.",
+        scope: "workspace",
+        contract: "system",
+        rules: [
+          { id: "SYSTEM-01", severity: "error" },
+          { id: "SYSTEM-PRODUCTS-01", severity: "error" },
+          { id: "SYSTEM-PRODUCTS-02", severity: "warning" },
+        ],
+        mutatesState: false,
+        execOnReadOnly: true,
+        writes: [],
+        coverage: "operator",
+        coverageNote:
+          "maintenance sweeps — the operator's per-repo version/dirty/worktree audit (RFC-1639)",
+        reads: [
+          "forge.yaml",
+          "system/system.yaml",
+          "system/products.yaml",
+          "system/edges.yaml",
+          "system/products.local.yaml",
+        ],
+        cacheable: false,
+        flags: {},
+        execute: runSystemProductsStatus,
       },
       {
         name: "system.task.create",
