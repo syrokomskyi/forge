@@ -17,55 +17,11 @@ path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
-
-Independent clean-context verification (round 7, candidate d2f270ad6)
-returned REFUTED with eleven live counterexamples against the
-r6-hardened evidence channel — this commit closes all nine root causes.
-
-- remote.<name>.fetch is value-judged: only the clone-default
-  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
-  UNIONs configured refspecs with the pinned fetch argv and a session
-  spec writes arbitrary local refs inside the trusted fetch (CX-94).
-  remote.<name>.tagopt|promirror|followremotehead|prunetags|
-  skipfetchall|mirror move to REFUSE for the same reason.
-- Alternates/shape comment lexing is col-0 `#` only — git's parser does
-  not treat whitespace-led `#` as a comment, so `   # forged` is a real
-  alternates path the shape check must count (CX-95).
-- config reads forbid the alternate-source selectors --file/-f, --blob,
-  --worktree (reaches config.worktree even under the disabled-extension
-  pin), --system/--global, --default and --includes, plus the
-  write-action spellings, on both the evidence and shared read-only
-  tables (CX-96).
-- verifierGit judges fabrication argv on the runner/policy channel:
-  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
-  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
-  can no longer verify an unattested advance (CX-97).
-- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
-  both tables — the flag opts the trusted walk into the session-
-  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
-- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
-  on both tables — they block on input the no-stdin spawn never
-  supplies (CX-101).
-- The workflow-adoption heredoc lexer is bash-faithful: openers are
-  scanned on the raw line before the # comment strip (quoted-#
-  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
-  the terminator match is strict — << wants the delimiter alone, <<-/
-  <<~ skip leading tabs only (CX-100).
-- Trailer scans read %e beside %(trailers): a commit declaring a
-  non-UTF-8 encoding header recodes every trusted message read, so the
-  digest trail and the push-time scan flag it as unverifiable and the
-  policy attestation scan skips it (CX-102).
-
-Probe premise updates for the tightened contract: CX-61's decoy
-remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
-EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
-decoy-namespace guard it replaces. The independent r7 probe file and
-acceptance report land in the follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
+  <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
   <history>RFC-1491, RFC-1501, RFC-1503, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -81,7 +37,15 @@ import type {
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
 import { parse as parseYaml } from "yaml";
-import { collectDigest, lineForTag, versionOfTag } from "../digest.ts";
+import {
+  collectDigest,
+  digestInputHash,
+  lineForTag,
+  loadPersistedDigest,
+  observeDigestInputs,
+  versionOfTag,
+  type FlowDigestData,
+} from "../digest.ts";
 import {
   assertJudgedEvidence,
   git,
@@ -118,6 +82,10 @@ export interface FlowPushData {
   verifierTrailerCommits?: Array<{ sha: string; trailers: string[] }>;
   /** RFC-1616: the operator reason passed to --accept-verifier-trailers, when accepted. */
   verifierTrailersAccepted?: string;
+  /** RFC-1638: how the quoted digest was validated — persisted-input attestation or full recount. */
+  attestation?: "input-hash" | "recount";
+  /** RFC-1638: when the reviewed digest was computed (attestation path). */
+  digestComputedAt?: string;
 }
 
 /** RFC-1616: the commit trailers the push-time verifier-review scan flags. */
@@ -224,7 +192,14 @@ async function scanVerifierTrailers(
 export async function pushFlow(
   repoRoot: string,
   io: WorkspaceIO,
-  opts: { digest: string; dryRun: boolean; now?: Date; acceptVerifierTrailers?: string },
+  opts: {
+    digest: string;
+    dryRun: boolean;
+    now?: Date;
+    acceptVerifierTrailers?: string;
+    /** RFC-1638: force the full recount path — skip the persisted input-hash attestation. */
+    recount?: boolean;
+  },
 ): Promise<FlowPushData> {
   // These two reads go through gitEvidence — a refused channel (transport
   // lever or shape file in .git) throws here before the digest's own
@@ -251,7 +226,42 @@ export async function pushFlow(
   // RFC-1501: a dry-run never fetches — `git fetch origin --prune` rewrites
   // and prunes remote-tracking refs. It judges the digest exactly like
   // `flow.digest --no-fetch`; a real push still fetches first.
-  const digest = await collectDigest(repoRoot, io, { fetch: !opts.dryRun });
+  // RFC-1638: a persisted reviewed digest attests in seconds when every
+  // cheap input still matches (`observeDigestInputs` re-reads through the
+  // judged channel — a verdict input, never bestEffort). Any drift, an
+  // unprovable input, or --recount falls back to the full recount — the
+  // FLOW-PUSH-02 contract byte-for-byte. A missing or unreadable persisted
+  // digest refuses FLOW-PUSH-14: no weaker check to silently downgrade to.
+  let digest: FlowDigestData | null = null;
+  let attestation: "input-hash" | "recount" = "recount";
+  let digestComputedAt: string | undefined;
+  if (!opts.recount) {
+    const persisted = await loadPersistedDigest(io, common, opts.digest);
+    if (persisted === "missing") {
+      return refuse(
+        "FLOW-PUSH-14",
+        `no persisted digest ${opts.digest} under .git/forge/digests — the quoted id predates persistence or the forge state was cleaned; re-run flow.digest to record a fresh reviewed state`,
+        "re-run flow.digest, review the new state and re-run flow.push --digest <id>",
+      );
+    }
+    if (persisted === "unknown") {
+      return refuse(
+        "FLOW-PUSH-14",
+        `the persisted digest ${opts.digest} is unreadable or carries an unknown schema — it cannot attest pushed state; re-run flow.digest to record a fresh reviewed state`,
+        "re-run flow.digest and re-run flow.push --digest <id>",
+      );
+    }
+    const inputs = await observeDigestInputs(repoRoot, io);
+    if (inputs !== null && digestInputHash(inputs) === persisted.inputHash) {
+      digest = persisted.digest;
+      attestation = "input-hash";
+      digestComputedAt = persisted.computedAt;
+    }
+  }
+  if (digest === null) {
+    digest = await collectDigest(repoRoot, io, { fetch: !opts.dryRun });
+    digestComputedAt ??= new Date().toISOString();
+  }
   const noOrigin = digest.diagnostics.find(
     (d) => d.ruleId === "FLOW-PUSH-01" && d.severity === "error",
   );
@@ -277,11 +287,15 @@ export async function pushFlow(
   // (`remoteVerified` is never true), so nothing narrows the check on
   // remote-derived state.
   if (digest.digestId !== opts.digest) {
-    return refuse(
-      "FLOW-PUSH-02",
-      `the digest is stale — the current digestId is ${digest.digestId}, not ${opts.digest}`,
-      `run flow.digest, review the new state and re-run flow.push --digest ${digest.digestId}`,
-    );
+    return {
+      ...refuse(
+        "FLOW-PUSH-02",
+        `the digest is stale — the current digestId is ${digest.digestId}, not ${opts.digest}`,
+        `run flow.digest, review the new state and re-run flow.push --digest ${digest.digestId}`,
+      ),
+      attestation,
+      digestComputedAt,
+    };
   }
 
   // RFC-1616 (AC-6): verifier-trailer scan over the unpushed develop+main
@@ -338,6 +352,8 @@ export async function pushFlow(
     if (!opts.acceptVerifierTrailers) {
       return {
         digestId: digest.digestId,
+        attestation,
+        digestComputedAt,
         pushed: false,
         refs: [],
         publications: [],
@@ -394,13 +410,27 @@ export async function pushFlow(
     journalEvents.filter((e) => e.event === "publish-retired").map((e) => e.branch),
   );
 
+  // RFC-1638: `push` records suppress tags at push-PLANNING time — the
+  // persisted digest's tags were suppressed at digest time, and records
+  // appended meanwhile must hide their tags here too. Suppression is
+  // monotonic (a record can only hide, R13-C), so re-filtering the digest's
+  // list is idempotent on the recount path.
+  const pushedNow = new Set<string>();
+  for (const e of journalEvents) {
+    if (e.event !== "push") continue;
+    for (const token of e.detail.split(/[^A-Za-z0-9._/@-]+/)) {
+      if (token.length > 0) pushedNow.add(token);
+    }
+  }
+  const effectiveTags = digest.tags.filter((t) => !pushedNow.has(t));
+
   const publicationTags = new Map<string, ReleaseLine>();
   const addCandidate = (tag: string, lineId: string | null): void => {
     const line =
       (lineId === null ? null : lines.find((l) => l.id === lineId)) ?? lineForTag(lines, tag);
     if (line !== null && line.id !== "repo") publicationTags.set(tag, line);
   };
-  for (const tag of digest.tags) addCandidate(tag, null);
+  for (const tag of effectiveTags) addCandidate(tag, null);
 
   const baselineSkipped: PublicationRow[] = [];
   const planCandidates: PublicationPlanEntry[] = [];
@@ -450,10 +480,11 @@ export async function pushFlow(
 
   // Sha-pinned refspecs — the push ships exactly the reviewed tips; a local
   // branch that moved since the digest stays local instead of sneaking in.
-  // Refspecs cover digest.tags in full (R13-C): every tag this run will
-  // treat as publishable is pushed in the same atomic push — a fabricated
-  // journal `push` record can never make an unpushed tag look remote.
-  const pushedTagNames = digest.tags;
+  // Refspecs cover the effective tag set in full (R13-C): every tag this
+  // run will treat as publishable is pushed in the same atomic push — a
+  // fabricated journal `push` record can never make an unpushed tag look
+  // remote.
+  const pushedTagNames = effectiveTags;
   const refspecs = [
     `${digest.develop.local}:refs/heads/develop`,
     `${digest.main.local}:refs/heads/main`,
@@ -463,6 +494,8 @@ export async function pushFlow(
   if (opts.dryRun) {
     return {
       digestId: digest.digestId,
+      attestation,
+      digestComputedAt,
       fetched: digest.fetched,
       pushed: false,
       refs: refspecs,
@@ -502,6 +535,8 @@ export async function pushFlow(
     if (push.exitCode !== 0) {
       return {
         digestId: digest.digestId,
+        attestation,
+        digestComputedAt,
         fetched: digest.fetched,
         pushed: false,
         refs: refspecs,
@@ -655,6 +690,8 @@ export async function pushFlow(
 
   return {
     digestId: digest.digestId,
+    attestation,
+    digestComputedAt,
     fetched: digest.fetched,
     pushed,
     refs: refspecs,
@@ -718,6 +755,7 @@ export async function runFlowPush(
       digest: digestFlag,
       dryRun: input.flags["dry-run"] === true,
       acceptVerifierTrailers: acceptVerifierTrailers || undefined,
+      recount: input.flags["recount"] === true,
     });
   } catch (error) {
     if (error instanceof FlowRegistrySchemaError) {
