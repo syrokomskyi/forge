@@ -14,12 +14,12 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1616: close r25 trust-boundary counterexamples — pseudo-ref fingerprinting, resolved-path mutation ownership, origin/scratch spawn watches, transient-refusal retry</item>
   <item>RFC-1622: bind RFC-1622 manifest regeneration to rendered bytes</item>
   <item>RFC-1616: keep foreign-dirt attribution and lockfile/remote anchors honest under the judged evidence channel (RFC-1616)</item>
   <item>RFC-1616: surface evidence refusals through claims and consult paths honestly (RFC-1616 follow-up)</item>
-  <history>ADR-0129, ADR-0130, RFC-0000, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1590, RFC-1591</history>
+  <item>RFC-1640: classify decision-log generated files as owned generated rebase conflicts</item>
+  <history>ADR-0129, ADR-0130, RFC-0000, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1590, RFC-1591, RFC-1599</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1338,6 +1338,8 @@ export const GENERATED_BASENAME_OWNERS: Record<string, string> = {
   "ecosystem.generated.yaml": "ecosystem.manifest.generate",
   "command-manifest.generated.yaml": "command.manifest.generate",
   "agent-tools.generated.json": "command.tools.generate",
+  "decision-log.generated.md": "rfc.decision-log.generate",
+  "decision-log.generated.yaml": "rfc.decision-log.generate",
 };
 
 /**
