@@ -15,11 +15,11 @@ locks broken, always released in finally. Used for the short registry lock
   <item>Refused attempts render the holder via describeHeldLock — `stale` serves callers classifying a lock they never waited on.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1504: review fixes — single io.readFile parse per iteration, real ageMs on dead-holder onStale, atomic break claim</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1515: record rfc-1515 review r1 fixes, key decisions and corrected probe path</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
+  <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <history>RFC-1487, RFC-1504</history>
 </CHANGE_SUMMARY>
 */
@@ -52,6 +52,9 @@ export interface FlowLockOptions {
   now?: () => number;
   /** Injectable sleep for tests. */
   sleep?: (ms: number) => Promise<void>;
+  /** RFC-1633: extra fields merged into the written lock payload (e.g.
+   * `command` on evidence-consult.lock) — readers ignore unknown keys. */
+  extraContent?: Record<string, unknown>;
 }
 
 /** Thrown when the wait budget elapses while a live lock is held. */
@@ -203,10 +206,11 @@ export async function withFlowLock<T>(
   let heldPayload: { pid: number; at: string } | null = null;
   for (;;) {
     const at = new Date(now()).toISOString();
-    const content: LockFileContent = {
+    const content: LockFileContent & Record<string, unknown> = {
       pid: process.pid,
       host: hostname(),
       at,
+      ...(opts.extraContent ?? {}),
     };
     if (ownBootId !== undefined) content.bootId = ownBootId;
     const acquired = await tryAcquire(lockPath, content);

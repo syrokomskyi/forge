@@ -20,55 +20,11 @@ stay empty by construction.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
-
-Independent clean-context verification (round 7, candidate d2f270ad6)
-returned REFUTED with eleven live counterexamples against the
-r6-hardened evidence channel — this commit closes all nine root causes.
-
-- remote.<name>.fetch is value-judged: only the clone-default
-  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
-  UNIONs configured refspecs with the pinned fetch argv and a session
-  spec writes arbitrary local refs inside the trusted fetch (CX-94).
-  remote.<name>.tagopt|promirror|followremotehead|prunetags|
-  skipfetchall|mirror move to REFUSE for the same reason.
-- Alternates/shape comment lexing is col-0 `#` only — git's parser does
-  not treat whitespace-led `#` as a comment, so `   # forged` is a real
-  alternates path the shape check must count (CX-95).
-- config reads forbid the alternate-source selectors --file/-f, --blob,
-  --worktree (reaches config.worktree even under the disabled-extension
-  pin), --system/--global, --default and --includes, plus the
-  write-action spellings, on both the evidence and shared read-only
-  tables (CX-96).
-- verifierGit judges fabrication argv on the runner/policy channel:
-  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
-  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
-  can no longer verify an unattested advance (CX-97).
-- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
-  both tables — the flag opts the trusted walk into the session-
-  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
-- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
-  on both tables — they block on input the no-stdin spawn never
-  supplies (CX-101).
-- The workflow-adoption heredoc lexer is bash-faithful: openers are
-  scanned on the raw line before the # comment strip (quoted-#
-  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
-  the terminator match is strict — << wants the delimiter alone, <<-/
-  <<~ skip leading tabs only (CX-100).
-- Trailer scans read %e beside %(trailers): a commit declaring a
-  non-UTF-8 encoding header recodes every trusted message read, so the
-  digest trail and the push-time scan flag it as unverifiable and the
-  policy attestation scan skips it (CX-102).
-
-Probe premise updates for the tightened contract: CX-61's decoy
-remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
-EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
-decoy-namespace guard it replaces. The independent r7 probe file and
-acceptance report land in the follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r16 trust-boundary counterexamples</item>
   <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
+  <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -448,7 +404,9 @@ async function jsonAtRef(
   ref: string,
   path: string,
 ): Promise<Record<string, unknown> | null> {
-  const result = await gitEvidence(repoRoot, ["show", `${ref}:${path}`]);
+  const result = await gitEvidence(repoRoot, ["show", `${ref}:${path}`], {
+    mode: "bestEffort",
+  });
   if (result.exitCode !== 0) return null;
   try {
     const parsed = JSON.parse(result.stdout) as unknown;
@@ -531,7 +489,9 @@ async function classifyItem(
   // files a later commit reverted). A refused names read must never
   // degrade to files=[] — that silently narrows the classification
   // (CX-155: a contract-touching item labelled "other").
-  const names = await gitEvidence(repoRoot, ["diff", "--name-only", base, tip]);
+  const names = await gitEvidence(repoRoot, ["diff", "--name-only", base, tip], {
+    mode: "bestEffort",
+  });
   const splitNames = (stdout: string) =>
     stdout
       .split("\n")
@@ -583,15 +543,13 @@ async function classifyItem(
   // the scan tight. --no-textconv/--no-ext-diff: a repo-config filter must
   // not rewrite what the diff reports (CX-50 class — config channels are
   // scrubbed, this closes the repo-config half too).
-  const diff = await gitEvidence(repoRoot, [
-    "diff",
-    "--unified=0",
-    "--no-color",
-    "--no-textconv",
-    "--no-ext-diff",
-    base,
-    tip,
-  ]);
+  const diff = await gitEvidence(
+    repoRoot,
+    ["diff", "--unified=0", "--no-color", "--no-textconv", "--no-ext-diff", base, tip],
+    {
+      mode: "bestEffort",
+    },
+  );
   let diffOut: string | null = diff.exitCode === 0 ? diff.stdout : null;
   if (diffOut === null) {
     // Same refused-diff fallback as the names read — per-commit patches

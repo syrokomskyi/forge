@@ -17,7 +17,6 @@ path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
 
 Independent clean-context verification (round 7, candidate d2f270ad6)
@@ -66,6 +65,7 @@ acceptance report land in the follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
+  <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <history>RFC-1491, RFC-1501, RFC-1503, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -82,7 +82,14 @@ import type {
 import { resolveIo } from "../../../src/utils/io.ts";
 import { parse as parseYaml } from "yaml";
 import { collectDigest, lineForTag, versionOfTag } from "../digest.ts";
-import { git, gitEvidence, parseGitTrailers, requireGit, verifierTopLevel } from "../git.ts";
+import {
+  assertJudgedEvidence,
+  git,
+  gitEvidence,
+  parseGitTrailers,
+  requireGit,
+  verifierTopLevel,
+} from "../git.ts";
 import { EVIDENCE_REFUSED_PREFIX } from "../../../src/utils/verifier-git.ts";
 import { markerIsValid } from "../markers.ts";
 import { publishTag, tagAnnotationLevel, type PublicationRow } from "../publish.ts";
@@ -153,6 +160,7 @@ async function scanVerifierTrailers(
   range: string,
 ): Promise<Array<{ sha: string; trailers: string[] }> | null> {
   const list = await gitEvidence(repoRoot, ["rev-list", range]);
+  assertJudgedEvidence(list);
   // Any failure on an enumerable range is unverifiable — `[]` would run
   // the trailer scan over nothing (CX-174's shape inside the push gate
   // itself); null lets the caller refuse loudly.
@@ -174,6 +182,7 @@ async function scanVerifierTrailers(
       "--format=%(trailers:only,separator=%x00)%x00%e",
       sha,
     ]);
+    assertJudgedEvidence(parsed);
     if (parsed.exitCode !== 0) {
       // An enumerated commit whose trailer read fails is unverifiable —
       // flag it like the encoding case instead of silently dropping its
@@ -195,6 +204,7 @@ async function scanVerifierTrailers(
     // looks exactly like provenance text, so flag it anyway (stricter is
     // safe, CX-23). `%s` is one line — no delimiter to smuggle.
     const subj = await gitEvidence(repoRoot, ["log", "-1", "--format=%s", sha]);
+    assertJudgedEvidence(subj);
     if (subj.exitCode === 0) {
       const m = /^([^:\s][^:]*?)\s*:\s*(.*)$/.exec(subj.stdout.trim());
       if (m) {
@@ -285,6 +295,7 @@ export async function pushFlow(
   let declared: boolean | undefined;
   try {
     const show = await gitEvidence(repoRoot, ["show", "HEAD:forge.yaml"]);
+    assertJudgedEvidence(show);
     if (show.exitCode === 0) {
       const doc = parseYaml(show.stdout) as Record<string, unknown> | null;
       const v = (doc?.["push"] as Record<string, unknown> | undefined)?.["requireVerifierReview"];
@@ -357,6 +368,7 @@ export async function pushFlow(
   ] as const) {
     if (remote === null) continue;
     const ancestor = await gitEvidence(repoRoot, ["merge-base", "--is-ancestor", remote, branch]);
+    assertJudgedEvidence(ancestor);
     if (ancestor.exitCode !== 0) {
       return refuse(
         "FLOW-PUSH-03",

@@ -13,11 +13,11 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r37 trust-boundary counterexamples — silent-write channel, live object/geometry consults, claims TOCTOU (RFC-1616 r37)</item>
   <item>RFC-1616: close r38 trust-boundary counterexamples — worktree consult surface, root fd-binding</item>
   <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
   <item>RFC-1616: close r41 trust-boundary counterexamples — per-argv ignored-dir prune, file-valued argv strip/forbid, unconditional upstream pins</item>
+  <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -62,6 +62,36 @@ import {
   reportsRepoGeometry,
   repoShaped,
 } from "../../src/utils/verifier-git.ts";
+import { LockTimeoutError } from "./locks.ts";
+import {
+  describeEvidenceLockError,
+  evidenceConsultBudgetMs,
+  withEvidenceConsultLock,
+} from "./evidence-lock.ts";
+
+/** RFC-1633: consult modes — `judged` is the default judged consult
+ * (preflight+watch+settle, trusted:true); `bestEffort` skips all judgment
+ * machinery for non-verdict readers and marks the result untrusted. */
+export type EvidenceMode = "judged" | "bestEffort";
+
+export interface EvidenceResult extends ExecResult {
+  /** RFC-1633: false only for mode "bestEffort" results — advisory data
+   * no verdict may consume (`assertJudgedEvidence` polices the boundary). */
+  trusted: boolean;
+}
+
+/** RFC-1633: verdict-consuming boundaries assert judged provenance — a
+ * `trusted:false` result here is a wiring error, not an environmental
+ * refusal, so it throws EVIDENCE-MODE rather than returning data. */
+export function assertJudgedEvidence(
+  result: EvidenceResult,
+): asserts result is EvidenceResult & { trusted: true } {
+  if (result.trusted !== true) {
+    throw new Error(
+      "EVIDENCE-MODE: untrusted (bestEffort) evidence reached a verdict-consuming boundary",
+    );
+  }
+}
 
 /**
  * The argv judgment the evidence channel applies — owned by
@@ -119,16 +149,49 @@ export async function gitEvidence(
     preflight?: boolean;
     /** Extra file inodes folded into the spawn-window watch (see `verifierGit`). */
     extraWatchPaths?: readonly string[];
+    /** RFC-1633: opt-in degraded mode for non-verdict readers — skips
+     * preflight/watch/settle and the consult lock, returns `trusted: false`.
+     * The argv allowlist still applies. */
+    mode?: EvidenceMode;
+    /** RFC-1633: cumulative bound on preflight+arm+settle, measured from
+     * consult-lock acquisition (judged only). */
+    consultBudgetMs?: number;
+    /** RFC-1633: bound on the evidence-consult lock wait (judged only). */
+    lockWaitMs?: number;
   },
-): Promise<ExecResult> {
+): Promise<EvidenceResult> {
   // Runtime argv judgment — the evidence channel spawns a trusted git, so
   // nothing beyond the read-only + pinned-fetch table may reach it, even
-  // through a dynamic tail the static scan cannot see (CX-70).
+  // through a dynamic tail the static scan cannot see (CX-70). bestEffort
+  // consults judge argv on the same table — the allowlist is the channel's
+  // argv boundary, independent of provenance mode (RFC-1633).
   if (!isEvidenceGitQuery(args)) {
     return {
       exitCode: -1,
       stdout: "",
       stderr: `gitEvidence refused argv outside the evidence allowlist: git ${args.join(" ")}`,
+      trusted: opts?.mode !== "bestEffort",
+    };
+  }
+  // RFC-1633 bestEffort: the same scrubbed spawn on the resolved real
+  // binary — none of the judgment machinery (no preflight, no watch, no
+  // settle, no lock). The result is advisory data, never evidence.
+  if (opts?.mode === "bestEffort") {
+    const r = await spawnCaptured(resolveGitBin(), ["-C", repoRoot, ...args], {
+      cwd: repoRoot,
+      env: {
+        ...verifierGitEnv(),
+        ...filterEvidenceExtraEnv(opts?.extraEnv),
+        ...(opts?.internalEnv ?? {}),
+      },
+      timeoutMs: opts?.timeoutMs ?? 60_000,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    return {
+      exitCode: r.exitCode,
+      stdout: r.stdout.toString(),
+      stderr: r.stderr.toString(),
+      trusted: false,
     };
   }
   // A mid-window refusal means the surface MOVED during the judged read —
@@ -138,17 +201,78 @@ export async function gitEvidence(
   // flux budget is spent (RFC-1616 R25 follow-up — callers no longer need
   // per-site catch loops for transient churn).
   const fluxDeadline = Date.now() + 2_000;
+  // RFC-1633: judged consults serialize per commonGitDir — the lock wraps
+  // ONE attempt so a flux retry re-acquires and a retrying holder never
+  // starves waiters. `preflight:false` internal enumeration reads skip
+  // the lock (they already run inside the holder's serialized window).
+  // consultStartedAt is stamped on first acquisition — the consult budget
+  // is cumulative across retries, and the lock wait itself is separately
+  // bounded by lockWaitMs.
+  let consultStartedAt: number | undefined;
   for (;;) {
-    const r = await gitEvidenceAttempt(repoRoot, args, opts);
+    let r: ExecResult;
+    try {
+      r =
+        opts?.preflight === false
+          ? await gitEvidenceAttempt(repoRoot, args, opts)
+          : await withEvidenceConsultLock(
+              repoRoot,
+              { waitMs: opts?.lockWaitMs, command: `git ${args.join(" ")}` },
+              async () => {
+                consultStartedAt ??= Date.now();
+                return gitEvidenceAttempt(repoRoot, args, {
+                  ...opts,
+                  consultStartedAt,
+                });
+              },
+            );
+    } catch (error) {
+      // EVIDENCE-LOCKED is a distinct refusal class — it names the lock
+      // holder and does NOT re-enter the flux ride-out (which keys on
+      // mid-window "during the judged read" refusals).
+      if (error instanceof LockTimeoutError) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: await describeEvidenceLockError(repoRoot, error),
+          trusted: true,
+        };
+      }
+      throw error;
+    }
     if (
       r.exitCode !== -1 ||
+      r.exitCode === null ||
       !r.stderr.includes("during the judged read") ||
       Date.now() >= fluxDeadline
     ) {
-      return r;
+      return { ...r, trusted: true };
     }
     await new Promise((r2) => setTimeout(r2, 120));
   }
+}
+
+/**
+ * RFC-1633: cumulative wall-clock bound on preflight+arm+settle — the clock
+ * starts at consult-lock acquisition (`consultStartedAt`), not per phase.
+ * Returns the EVIDENCE-BUDGET refusal naming the active phase, or null.
+ * Exported for the RFC-1633 serialization tests.
+ */
+export function evidenceBudgetBreach(
+  args: string[],
+  phase: "preflight" | "arm" | "settle",
+  consultStartedAt: number | undefined,
+  consultBudgetMs: number | undefined,
+): ExecResult | null {
+  if (consultStartedAt === undefined) return null;
+  const budgetMs = evidenceConsultBudgetMs(consultBudgetMs);
+  const elapsed = Date.now() - consultStartedAt;
+  if (elapsed <= budgetMs) return null;
+  return {
+    exitCode: -1,
+    stdout: "",
+    stderr: `EVIDENCE-BUDGET: ${phase} exceeded the cumulative consult budget (${elapsed}ms elapsed > ${budgetMs}ms budget): git ${args.join(" ")}`,
+  };
 }
 
 /** One armed-and-judged evidence spawn — see `gitEvidence`'s flux ride-out. */
@@ -162,6 +286,10 @@ async function gitEvidenceAttempt(
     preflight?: boolean;
     /** Extra file inodes folded into the spawn-window watch (see `verifierGit`). */
     extraWatchPaths?: readonly string[];
+    /** RFC-1633: consult budget clock start (lock acquisition instant). */
+    consultStartedAt?: number;
+    /** RFC-1633: cumulative preflight+arm+settle bound. */
+    consultBudgetMs?: number;
   },
 ): Promise<ExecResult> {
   // The session-writable repo surface is judged before every spawn —
@@ -188,6 +316,16 @@ async function gitEvidenceAttempt(
     const priorFp = preflight.fingerprint;
     closeEvidenceIndex(preflight);
     preflight = attempt >= 2 ? null : await evidencePreflight(repoRoot, priorFp);
+  }
+  const preflightBreach = evidenceBudgetBreach(
+    args,
+    "preflight",
+    opts?.consultStartedAt,
+    opts?.consultBudgetMs,
+  );
+  if (preflightBreach !== null) {
+    closeEvidenceIndex(preflight);
+    return preflightBreach;
   }
   // The spawn-window watch (CX-r22): the judged child opens `.git`
   // metadata inside ITS lifetime — the reprove ends at spawn, not at
@@ -229,6 +367,17 @@ async function gitEvidenceAttempt(
       closeEvidenceIndex(preflight);
       preflight = armAttempt >= 1 ? null : await evidencePreflight(repoRoot, preflight.fingerprint);
     }
+  }
+  const armBreach = evidenceBudgetBreach(
+    args,
+    "arm",
+    opts?.consultStartedAt,
+    opts?.consultBudgetMs,
+  );
+  if (armBreach !== null) {
+    if (windowWatch !== null) await windowWatch.settle();
+    closeEvidenceIndex(preflight);
+    return armBreach;
   }
   try {
     if (preflight === null && opts?.preflight !== false) {
@@ -366,6 +515,13 @@ async function gitEvidenceAttempt(
         };
       }
     }
+    const settleBreach = evidenceBudgetBreach(
+      args,
+      "settle",
+      opts?.consultStartedAt,
+      opts?.consultBudgetMs,
+    );
+    if (settleBreach !== null) return settleBreach;
     let stdout = r.stdout.toString();
     if (overlayRefs && reportsRepoGeometry(args) && preflight?.overlay != null) {
       stdout = substituteOverlayPaths(

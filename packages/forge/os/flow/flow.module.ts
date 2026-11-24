@@ -9,7 +9,6 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1592: retire 3 unprobeable rules (F-0288 recurrence) unblocking this worktree's RFC-1592 ratchet</item>
   <item>RFC-1616: external verification trust boundary
 
 policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
@@ -20,7 +19,8 @@ scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1626: make gate-isolation sweeps durable and refuse foreign uncommitted work</item>
   <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589, RFC-1597, RFC-1599, RFC-1600</history>
+  <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589, RFC-1592, RFC-1597, RFC-1599, RFC-1600</history>
 </CHANGE_SUMMARY>
 */
 
@@ -366,7 +366,11 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
             description: "Evaluate the integration's preconditions without mutating.",
           },
         },
-        envInputs: [{ name: "FORGE_INTEGRATE_PRELOCK", required: false }],
+        envInputs: [
+          { name: "FORGE_INTEGRATE_PRELOCK", required: false },
+          { name: "FORGE_EVIDENCE_LOCK_WAIT_MS", required: false },
+          { name: "FORGE_EVIDENCE_CONSULT_BUDGET_MS", required: false },
+        ],
         execute: runFlowIntegrate,
       },
       {
@@ -693,6 +697,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { name: "COMSPEC", required: false },
           { name: "PATHEXT", required: false },
           { name: "PATH", required: false },
+          { name: "FORGE_EVIDENCE_LOCK_WAIT_MS", required: false },
+          { name: "FORGE_EVIDENCE_CONSULT_BUDGET_MS", required: false },
         ],
         execute: runFlowDiscard,
       },
@@ -873,6 +879,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { name: "COMSPEC", required: false },
           { name: "PATHEXT", required: false },
           { name: "PATH", required: false },
+          { name: "FORGE_EVIDENCE_LOCK_WAIT_MS", required: false },
+          { name: "FORGE_EVIDENCE_CONSULT_BUDGET_MS", required: false },
         ],
         execute: runFlowPush,
       },
