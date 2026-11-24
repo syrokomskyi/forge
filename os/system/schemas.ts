@@ -11,6 +11,7 @@ All objects are strict — unknown keys are schema violations (SYSTEM-MAP-01).</
 <CHANGE_SUMMARY>
   <item>RFC-1508: step 2 — system map schemas (system, products, edges, products-local)</item>
   <item>RFC-1508: review r1 — contract-exact schemas: strict objects, remote/offers, folders+launcher local map, edge note + required forbidden reason</item>
+  <item>RFC-1639: additive roster fields — product.frozen + top-level ignored[]</item>
 </CHANGE_SUMMARY>
 */
 
@@ -43,14 +44,28 @@ export const systemProductSchema = z
     remote: z.string().min(1),
     /** Contract ids this product offers to consumers (package or spec ids). */
     offers: z.array(z.string().min(1)).default([]),
+    /** RFC-1639: pinned by contract — health reports stay visible but never flag it. */
+    frozen: z.boolean().optional(),
   })
   .strict();
 export type SystemProduct = z.infer<typeof systemProductSchema>;
+
+/** RFC-1639: a sibling directory deliberately outside the member model. */
+export const systemIgnoredSiblingSchema = z
+  .object({
+    id: z.string().regex(SYSTEM_ID_PATTERN),
+    note: z.string().optional(),
+  })
+  .strict();
+export type SystemIgnoredSibling = z.infer<typeof systemIgnoredSiblingSchema>;
 
 export const systemProductsSchema = z
   .object({
     schema: z.literal("forge/system-products@1"),
     products: z.array(systemProductSchema),
+    /** RFC-1639: sibling dirs that are not products — silences the
+     * unregistered-forge-sibling diagnostic by name. */
+    ignored: z.array(systemIgnoredSiblingSchema).optional(),
   })
   .strict();
 export type SystemProducts = z.infer<typeof systemProductsSchema>;
