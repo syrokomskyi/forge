@@ -46,7 +46,7 @@ import {
   type MissionArchiveSkip,
   type MissionArchiveResult,
 } from "../types.ts";
-import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
+import { loadPinnedManifest, isArchiveBlocked } from "../../core/handlers/pinned-check.ts";
 import { pruneMissionImportersFromLockfile, execFileSyncAdapter } from "../lockfile.ts";
 import { resolveStateRoots } from "../../flow/worktree-path.ts";
 
@@ -502,11 +502,7 @@ export async function runMissionArchive(
 
     // RFC-0733: Check if mission directory is pinned before moving
     // Gap fix: exempt intra-directory moves (dir stays within the same pinned parent)
-    if (
-      pinnedManifest &&
-      isPinned(pinnedManifest, sourceRel) &&
-      !isIntraDirMove(pinnedManifest, sourceRel, targetRel)
-    ) {
+    if (pinnedManifest && isArchiveBlocked(pinnedManifest, sourceRel, targetRel)) {
       skipped.push({
         missionId,
         dir: sourceRel,
@@ -597,11 +593,7 @@ export async function runMissionArchive(
 
         // RFC-0733: Check if mission directory is pinned before moving
         // Gap fix: exempt intra-directory moves (dir stays within the same pinned parent)
-        if (
-          pinnedManifest &&
-          isPinned(pinnedManifest, sourceRel) &&
-          !isIntraDirMove(pinnedManifest, sourceRel, targetRel)
-        ) {
+        if (pinnedManifest && isArchiveBlocked(pinnedManifest, sourceRel, targetRel)) {
           skipped.push({
             missionId,
             dir: sourceRel,

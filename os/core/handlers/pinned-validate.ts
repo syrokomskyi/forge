@@ -58,10 +58,10 @@ const AUDIT_LOG_PATH = path.join(".forge", "pinned-audit.log");
  */
 function parseGitNameStatus(
   output: string,
-): Array<{ relPath: string; operation: PinnedViolation["operation"]; destPath?: string }> {
+): Array<{ relPath: string; operation: PinnedViolation["operation"] | "add"; destPath?: string }> {
   const entries: Array<{
     relPath: string;
-    operation: PinnedViolation["operation"];
+    operation: PinnedViolation["operation"] | "add";
     destPath?: string;
   }> = [];
   const lines = output.trim().split("\n").filter(Boolean);
@@ -78,8 +78,10 @@ function parseGitNameStatus(
       entries.push({ relPath: oldPath, operation: "delete" });
     } else if (statusCode.startsWith("R") || statusCode.startsWith("C")) {
       entries.push({ relPath: oldPath, operation: "move", destPath: newPath });
-    } else if (statusCode.startsWith("M")) {
+    } else if (statusCode.startsWith("M") || statusCode.startsWith("T")) {
       entries.push({ relPath: oldPath, operation: "modify" });
+    } else if (statusCode.startsWith("A")) {
+      entries.push({ relPath: oldPath, operation: "add" });
     }
   }
 
@@ -231,9 +233,20 @@ export async function runPinnedValidate(
 
   const changedFiles = parseGitNameStatus(diffOutput);
 
+  // Pairing candidates for the D-side of moves git reported as delete+add
+  // (rename detection off, similarity under the threshold, or a destination
+  // already tracked in HEAD → `D`+`A`/`D`+`M` instead of `R`). Collect every
+  // non-delete touched path — an `add` is never a violation itself.
+  const nonDeletePaths = changedFiles
+    .filter((e) => e.operation !== "delete")
+    .flatMap((e) => (e.destPath ? [e.destPath] : [e.relPath]));
+
   // Check each changed file against the manifest
   const allViolations: PinnedViolation[] = [];
   for (const { relPath, operation, destPath } of changedFiles) {
+    if (operation === "add") {
+      continue;
+    }
     if (operation === "move" && destPath) {
       // Exempt intra-directory moves — the file stays inside the same pinned
       // dir (e.g. docs.archive moves docs/rfcs/x.md → docs/rfcs/archive/…/x.md).
@@ -260,6 +273,18 @@ export async function runPinnedValidate(
       // For protect mode, only delete and move are violations — modify is allowed
       if (entry.mode === "protect" && operation === "modify") {
         continue;
+      }
+      if (operation === "delete") {
+        // Paired-move exemption: a same-basename add/modify under the same
+        // pinned dir means this "delete" is an intra-dir move git did not
+        // pair as `R` — apply the same exemption the `R` branch gets.
+        const basename = relPath.split("/").pop();
+        const isPairedMove = nonDeletePaths.some(
+          (p) => p.split("/").pop() === basename && isIntraDirMove(manifest, relPath, p),
+        );
+        if (isPairedMove) {
+          continue;
+        }
       }
       allViolations.push({
         path: relPath,

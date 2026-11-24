@@ -188,15 +188,23 @@ export async function runAdrCreate(
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean)
+        .map((id) =>
+          id.replace(
+            /^(rfc|adr|dna|ap)-(\d+)$/i,
+            (_, p, n) => `${String(p).toUpperCase()}-${String(n).padStart(4, "0")}`,
+          ),
+        )
     : [];
-  if (relatedIds.length > 0) {
-    content = content.replace(
-      /^related:\s*\n\s*- RFC-0001\s*$/m,
-      `related:\n${relatedIds.map((id) => `  - ${id}`).join("\n")}`,
-    );
-  } else {
-    content = content.replace(/^related:\s*\n\s*- RFC-0001\s*$/m, `related: []`);
-  }
+  // Templates ship `related:` as `related: []`, a bare `related:`, or a seeded
+  // `related:\n  - RFC-0001` list — replace the field plus any list items under
+  // it. The previous regex only matched the seeded shape and silently no-oped
+  // on `related: []` (F-0005).
+  content = content.replace(
+    /^related:[^\n]*(?:\n[ \t]+-[^\n]*)*/m,
+    relatedIds.length > 0
+      ? `related:\n${relatedIds.map((id) => `  - ${id}`).join("\n")}`
+      : `related: []`,
+  );
 
   try {
     await fs.mkdir(adrDirPath);

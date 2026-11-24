@@ -1480,6 +1480,13 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
                 logger.info(`  docs.archive: staged ${staged.staged} move path(s) (both sides)`);
               }
             }
+            // F-0004: an ignored move destination never staged — the commit
+            // would carry the source `D` alone and pinned.validate flags it.
+            for (const ignoredPath of staged.ignored) {
+              bookkeepingWarnings.push(
+                `${ignoredPath} is .gitignore'd — the move destination was not staged; commit would carry the source delete alone`,
+              );
+            }
             // RFC-1602 AC-4: MM sweep over the bookkeeping set — staged
             // prune + worktree restore leaves X/Y both non-space residue;
             // surface the exact index→worktree remediation, exit stays 0.

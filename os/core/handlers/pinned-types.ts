@@ -21,6 +21,13 @@ export interface PinnedEntry {
   path: string;
   mode: PinnedMode;
   reason: string;
+  /**
+   * Opt-out for the archive family (docs.archive and the per-domain
+   * *.archive handlers): `archive: false` makes those commands skip files
+   * under this entry entirely — including the intra-directory moves that
+   * `protect` mode otherwise exempts. Absent = archive allowed.
+   */
+  archive?: boolean;
 }
 
 export interface PinnedManifest {

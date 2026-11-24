@@ -505,6 +505,31 @@ describe("RFC-1535 stageMovedPairs", () => {
     expect(status).toMatch(/docs\/rfcs\/archive\/rfc-1\.md/);
   });
 
+  it("a gitignored move destination surfaces in the ignored diagnostic", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "docs-archive-ignored-"));
+    execFileSync("git", ["-C", root, "init", "-q"], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "config", "user.email", "t@t"], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "config", "user.name", "T"], { stdio: "pipe" });
+    // F-0004 shape: a consumer's `archive/` ignore rule silently swallows the
+    // destination add — the commit would carry the source delete alone.
+    writeFileSync(path.join(root, ".gitignore"), "archive/\n");
+    mkdirSync(path.join(root, "docs/rfcs"), { recursive: true });
+    writeFileSync(path.join(root, "docs/rfcs/rfc-1.md"), "# rfc\n");
+    execFileSync("git", ["-C", root, "add", ".", "-f"], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "commit", "-qm", "init"], { stdio: "pipe" });
+    mkdirSync(path.join(root, "docs/rfcs/archive"), { recursive: true });
+    renameSync(
+      path.join(root, "docs/rfcs/rfc-1.md"),
+      path.join(root, "docs/rfcs/archive/rfc-1.md"),
+    );
+    const outcome = await stageMovedPairs({
+      movedPaths: ["docs/rfcs/rfc-1.md", "docs/rfcs/archive/rfc-1.md"],
+      workspaceRoot: root,
+    });
+    expect(outcome.error).toBeUndefined();
+    expect(outcome.ignored).toEqual(["docs/rfcs/archive/rfc-1.md"]);
+  });
+
   it("a non-git tree reports the error without throwing", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "docs-archive-nogit-"));
     const outcome = await stageMovedPairs({
