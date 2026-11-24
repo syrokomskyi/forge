@@ -17,12 +17,12 @@ forge/journal.jsonl.</purpose>
   <item>`held` is typed null now — the wave-2 outbound RFC widens it to { heldAt, riskCategory, reason }.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1532: FlowJournalEvent.gateReport — the repo-relative path links integrate/backmerge and integrate-refusal events to the attempt's persisted gate report</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1589: run the integration gate outside the integration lock</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1503, RFC-1515, RFC-1537</history>
+  <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1503, RFC-1515, RFC-1532, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
 
@@ -136,7 +136,11 @@ export interface FlowJournalEvent {
     | "publish"
     | "publish-superseded"
     | "publish-retired"
-    | "integrate-refusal";
+    | "integrate-refusal"
+    /** RFC-1633: evidence-consult lock break/wait-refusal bookkeeping —
+     * appended by evidence-lock.ts only on lock breaks and EVIDENCE-LOCKED
+     * refusals (bounded cardinality; acquire/release never journals). */
+    | "consult-lock";
   branch: string;
   sha: string;
   detail: string;
