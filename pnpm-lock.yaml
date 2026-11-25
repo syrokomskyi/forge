@@ -67,6 +67,10 @@ importers:
   packages/forge-system: {}
 
   packages/forge-typescript:
+    dependencies:
+      '@warpgogol/forge':
+        specifier: workspace:*
+        version: link:../forge
     devDependencies:
       '@types/node':
         specifier: ^26.5.1

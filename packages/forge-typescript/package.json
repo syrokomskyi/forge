@@ -1,12 +1,12 @@
 {
   "name": "@warpgogol/forge-typescript",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": false,
   "type": "module",
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=24"
   },
-  "description": "Forge first-party TypeScript stack plugin (scaffold — v9 implementation in git history, v10 rewrite at program WP-5).",
+  "description": "Forge first-party TypeScript stack plugin (scaffold \u2014 v9 implementation in git history, v10 rewrite at program WP-5).",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/syrokomskyi/werkstatt-typescript.git"
@@ -43,7 +43,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@warpgogol/forge": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^26.5.1",
     "eslint": "^10.10.0",
