@@ -8,11 +8,19 @@ Per-consumer protocol, distilled from the warpgogol-verbund canary execution. Ea
 | --- | --- | --- | --- | --- |
 | warpgogol-verbund | ^10.1.0 ✅ | CLI-only | 1+1 templates | DONE — the canary |
 | pipelines | ^9.7.1 | CLI + turbo monorepo, stack typescript | 9 RFCs | prime candidate — can adopt forge-typescript plugin |
-| dater | ^9.7.1 | CLI-only | recon pending | |
-| dialogue-steward | ^9.7.1 | CLI-only | recon pending | |
-| lagebild | ^9.7.1 | CLI-only | recon pending | |
-| metads | ^9.7.1 | CLI-only | recon pending | |
-| hdri-frozen-v3 | ^9.0.0 | frozen | — | likely skip — frozen artifact repo, triage |
+| dater | ^9.7.1 | CLI-only | 1 RFC + 2 ADRs | tracked skills twin present; corpus trivial — no baseline needed |
+| dialogue-steward | ^9.7.1 | CLI-only | 4 RFCs + 1 ADR | tracked skills twin present; corpus trivial |
+| lagebild | ^9.7.1 | CLI-only | 1 RFC + 2 ADRs | tracked skills twin present; corpus trivial |
+| metads | ^9.7.1 | CLI-only | 1 RFC + 1 ADR | tracked skills twin present; corpus trivial |
+| hdri-frozen-v3 | ^9.0.0 | frozen | — | ABSENT locally 2026-11-25 — skip, frozen artifact repo |
+
+### pipelines baseline (captured pre-migration 2026-11-25, v9.7.1, durable in /tmp)
+
+- rfc.validate: **fail / 175 violations** — sha256 529edf144b73d91a (`/tmp/pipelines-baseline-v9-rfc-ALL.json`)
+- adr.validate: **fail / 54 violations** (`/tmp/pipelines-baseline-v9-adr.json`)
+- spec.validate: **fail / 3 specs** (`/tmp/pipelines-baseline-v9-spec.json`)
+- invocation form: whole-corpus in one run — `forge rfc.validate --json` (no id); per-id uses `--id RFC-NNNN`, positional ids are refused (KERNEL-ARG-01)
+- dark-run parity criterion: v10 verdict+count+violation signatures must exactly match these baselines
 | werkstatt | workspace:* | WP-8 subject | — | not a WP-9 consumer |
 
 ## Per-consumer protocol
