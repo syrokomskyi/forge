@@ -350,3 +350,18 @@ Design decision needed before journal-dependent extraction (journal is needed-by
 2. **Option B — `ctx.forgeState` host port** (preferred direction): the host exposes journal/evidence/flow-state reads as named port methods; plugins never know `.git` layout at all. Matches the port-and-capability philosophy — the sandbox boundary stays absolute while forge's own state space becomes a first-class capability.
 
 Either way the capability model needs a distinct grant (`forgeState: read`?) rather than widening `filesystem` — the sandbox escape denial is a load-bearing security invariant and must not weaken.
+
+## P2 sequencing correction: outbound coupling measured (P1 validation pass)
+
+The leaf-first heuristic (zero inbound cluster deps) is necessary but not sufficient — extraction order is governed by OUTBOUND coupling, because a plugin command may only use what SDK ports provide. Measured cross-cluster imports of the six leaf candidates:
+
+| candidate | real cross-cluster deps | extraction implication |
+|---|---|---|
+| deploy | ~none (fingerprint/integrity primitives, self-contained) | **wave-2 first candidate** — expressible against current ports |
+| workpiece | mission (1, heaviest cluster) | blocked on mission-port design |
+| bauakte | dns, leitstand, sternsystem | needs sternsystem/leitstand ports |
+| sichtpass | bordbuch, nachweis | needs bordbuch/nachweis ports |
+| fleet | bordbuch, journal, kernel, ownership, sternsystem | cluster-extract with bordbuch, not before |
+| hygiene | evidence, kernel, mission, sternsystem, werkstatt | heaviest leaf — late wave |
+
+Sharper framing: the extraction unit is the COMMAND, not the cluster. Wave-2 scan enumerates commands inside deploy/fleet/hygiene whose implementation touches only filesystem/git-read/process — those extract against current SDK ports immediately; commands needing journal/bordbuch/mission semantics wait for the forgeState port decision (P2 design blocker above).
