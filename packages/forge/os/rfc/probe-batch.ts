@@ -13,7 +13,8 @@
 
 import { spawn } from "../../src/utils/sync-fs.ts";
 import { resolveSpawnPlan } from "../../src/utils/spawn.ts";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -115,9 +116,17 @@ export async function spawnBatchedVitest(
   boundMs: number,
   outputFile: string,
 ): Promise<BatchSpawnOutcome> {
+  // v10 monorepo topology: vitest is a per-package dependency, never a workspace-root
+  // one — `pnpm exec vitest` from the root resolves nothing. Resolve the vitest
+  // entrypoint through THIS module's own package resolution (probe-batch ships inside
+  // the forge package, so its resolution always reaches the package-local vitest)
+  // and spawn node directly with cwd=workspaceRoot so probe paths stay root-relative.
+  const vitestPkgJson = createRequire(import.meta.url).resolve("vitest/package.json");
+  const vitestBin = JSON.parse(readFileSync(vitestPkgJson, "utf8")) as { bin?: Record<string, string> };
+  const binRel = vitestBin.bin?.vitest ?? "./vitest.mjs";
+  const vitestEntry = path.join(path.dirname(vitestPkgJson), binRel);
   const args = [
-    "exec",
-    "vitest",
+    vitestEntry,
     "run",
     ...files,
     "--reporter=json",
@@ -130,9 +139,7 @@ export async function spawnBatchedVitest(
 
   let stderrTail = "";
   const exit = await new Promise<{ exitCode: number | null; timedOut: boolean }>((resolve) => {
-    // pnpm is a .cmd shim on Windows — PATHEXT resolution routes it through
-    // cmd.exe; a missing pnpm keeps spawn ENOENT for the caller to classify.
-    const plan = resolveSpawnPlan("pnpm", args);
+    const plan = resolveSpawnPlan(process.execPath, args);
     const child = spawn(plan.command, plan.args, {
       cwd: workspaceRoot,
       stdio: ["ignore", "ignore", "pipe"],
