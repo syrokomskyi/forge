@@ -319,3 +319,20 @@ agent, plugin, flow, gate, gate-run, correctness, adversarial, codebase, conform
 1. ~~Lifecycle-hook runtime absent~~ — **CLOSED 2026-11-25**: hook modules self-describe and load fail-closed; `beforeIntegrate` vetoes in the drain, `afterIntegrate` notifies (commit 0db0f482). Design: module-path entries in `registers.hooks`, self-describing exports, duplicate refusal.
 2. **Pipeline-step contributions** — werkstatt pipelines (build.post, validate.postbuild) compose steps; v10 has no plugin-contributed pipeline-step surface. Triage whether studio extraction needs it or whether pipelines become plugin commands outright.
 3. **`init` does not sync plugin skills** (upgrade does) — marginal edge case (plugins rarely precede init); documented, not a blocker.
+
+## Iteration 1 — P1 scaffold landed + P2 sequencing measured (2026-11-25)
+
+**P1 complete in werkstatt session worktree**: `packages/werkstatt-studio` project-local v10 plugin scaffold — forge.plugin.yaml, SDK-port-only pilot command `studio.journal.tail`, wired into werkstatt forge.yaml plugins as v10 string entry. Proof points:
+- v10 CLI (forge10 alias, npm 10.1.1) loads the project-local plugin through the standard SDK path and executes the pilot — zero engine/kernel/shared imports.
+- **Coexistence proven**: v9 machinery (rfc.validate RFC-1645 pass) unaffected by the mixed plugins section — v10 bridge filters non-string entries (`cli-bridge.ts:31`), v9 ignores string entries.
+- npm-shadowing hazard: pnpm workspace links shadow the same-name npm dep even at unsatisfiable versions — types resolved via tsconfig `paths` to the `forge10` alias (documented workaround; proper fix is vendored-forge retirement in P4).
+
+**P2 extraction sequencing (measured cluster-internal dependency direction)**:
+
+leaf-first (needed-by-count 0 — first waves): fleet, deploy, bauakte, sichtpass, workpiece, hygiene
+middle: nachweis(2), evidence(2), leitstand(4), integrity(4), release(6)
+foundation (extract last): journal(21, but already a shim — real logic in werkstatt-shared), mission(24), sternsystem(47), bordbuch(61)
+
+**Design tensions filed for SDK iteration**:
+1. project-local plugins require pre-built dist (loader consumes compiled artifacts) — strip-type .ts loading is the natural fit since the forge CLI itself runs strip-mode; candidate for forge 10.2.
+2. `.git/forge/` state access through workspace-scoped fs port works but is conventionally invisible — studio ops need a declared forge-state SDK port (evidence access port exists; journal/state surface review needed).
