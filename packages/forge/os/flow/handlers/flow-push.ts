@@ -17,11 +17,11 @@ path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1616: close r21 counterexample CX-179 + push-scan refusal polarity</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
   <item>RFC-1638: review round 1 — payload preimage binding, fail-closed coverage scan, FLOW-PUSH-15</item>
+  <item>RFC-1643: committed verifier-review baseline for flow.push</item>
   <history>RFC-1491, RFC-1501, RFC-1503, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -83,6 +83,20 @@ export interface FlowPushData {
   verifierTrailerCommits?: Array<{ sha: string; trailers: string[] }>;
   /** RFC-1616: the operator reason passed to --accept-verifier-trailers, when accepted. */
   verifierTrailersAccepted?: string;
+  /** RFC-1643: how the committed review baseline was judged; absent when the scan did not run. */
+  verifierReviewBaseline?: {
+    status: "absent" | "applied" | "unusable";
+    declared?: string;
+    reason?: VerifierReviewBaselineReason;
+    /** Full shas of hits the baseline exempted, sorted. */
+    exempted: string[];
+    /** Subset of `exempted` the previous baseline did not cover. */
+    newlyExempted: string[];
+    /** The first-parent commit that last changed the parsed value, when found. */
+    bumpedBy?: string;
+    /** Every parsed-value change in the walk window, newest first. */
+    changes: BaselineChange[];
+  };
   /** RFC-1638: how the quoted digest was validated — persisted-input attestation or full recount. */
   attestation?: "input-hash" | "recount";
   /** RFC-1638: when the reviewed digest was computed (attestation path). */
@@ -273,6 +287,304 @@ function judgeVerifierTrailers(reads: CommitReads): string[] {
   return [...found].sort();
 }
 
+/** RFC-1643: why a declared review baseline exempts nothing. */
+export type VerifierReviewBaselineReason =
+  "malformed" | "unknown" | "not-a-commit" | "not-ancestor" | "unverifiable";
+
+/** RFC-1643: the judged state of `push.verifierReviewedThrough`. */
+export type VerifierReviewBaseline =
+  | { status: "absent" }
+  | { status: "applied"; sha: string }
+  | { status: "unusable"; declared: string; reason: VerifierReviewBaselineReason };
+
+/** RFC-1643: the committed `forge.yaml` at a sha — `unverifiable` on a refused read. */
+type CommittedForgeDoc =
+  | { kind: "doc"; doc: Record<string, unknown> | null; raw: string }
+  | { kind: "missing" }
+  | { kind: "unparsable"; raw: string }
+  | { kind: "unverifiable" };
+
+async function readCommittedForgeDoc(repoRoot: string, rev: string): Promise<CommittedForgeDoc> {
+  const show = await gitEvidence(repoRoot, ["show", `${rev}:forge.yaml`]);
+  assertJudgedEvidence(show);
+  if (show.exitCode === -1) return { kind: "unverifiable" };
+  if (show.exitCode !== 0) return { kind: "missing" };
+  try {
+    // `yaml` rejects duplicate keys by default — a shadowed `push:` block
+    // is a parse error, never a silently-chosen winner.
+    const doc = parseYaml(show.stdout) as unknown;
+    return {
+      kind: "doc",
+      doc: typeof doc === "object" && doc !== null ? (doc as Record<string, unknown>) : null,
+      raw: show.stdout,
+    };
+  } catch {
+    return { kind: "unparsable", raw: show.stdout };
+  }
+}
+
+function pushSection(doc: Record<string, unknown> | null): Record<string, unknown> | undefined {
+  const push = doc?.["push"];
+  return typeof push === "object" && push !== null && !Array.isArray(push)
+    ? (push as Record<string, unknown>)
+    : undefined;
+}
+
+/** The raw declared baseline in a committed doc — `undefined` when absent. */
+function declaredBaseline(doc: CommittedForgeDoc): unknown {
+  if (doc.kind !== "doc") return undefined;
+  const v = pushSection(doc.doc)?.["verifierReviewedThrough"];
+  return v === null ? undefined : v;
+}
+
+/**
+ * RFC-1643: judge `push.verifierReviewedThrough` from the committed
+ * forge.yaml at the digest-reviewed develop tip. Every read is a judged
+ * consult; every failure exempts nothing (fail closed). Only a full,
+ * lower-case object name of the repository's format that names a commit
+ * reachable from `refs/heads/develop` (re-read, must equal `developTip`)
+ * is `applied`.
+ */
+export async function resolveVerifierReviewBaseline(
+  repoRoot: string,
+  developTip: string,
+  committed: CommittedForgeDoc,
+): Promise<VerifierReviewBaseline> {
+  if (committed.kind === "unverifiable") {
+    return { status: "unusable", declared: "", reason: "unverifiable" };
+  }
+  if (committed.kind === "missing") return { status: "absent" };
+  if (committed.kind === "unparsable") {
+    return committed.raw.includes("verifierReviewedThrough")
+      ? { status: "unusable", declared: "", reason: "malformed" }
+      : { status: "absent" };
+  }
+  const raw = declaredBaseline(committed);
+  if (raw === undefined) return { status: "absent" };
+  if (typeof raw !== "string") {
+    return { status: "unusable", declared: String(raw), reason: "malformed" };
+  }
+  const unusable = (reason: VerifierReviewBaselineReason): VerifierReviewBaseline => ({
+    status: "unusable",
+    declared: raw,
+    reason,
+  });
+  const fmt = await gitEvidence(repoRoot, ["rev-parse", "--show-object-format"]);
+  assertJudgedEvidence(fmt);
+  if (fmt.exitCode !== 0) return unusable("unverifiable");
+  const hexLen = fmt.stdout.trim() === "sha256" ? 64 : 40;
+  if (!new RegExp(`^[0-9a-f]{${hexLen}}$`).test(raw)) return unusable("malformed");
+  // The develop tip the baseline is judged against must still be the
+  // fully-qualified local branch — a persisted digest from a bare-name
+  // resolution, or a shadow ref, must not anchor the ancestry check.
+  const tip = await gitEvidence(repoRoot, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    "refs/heads/develop",
+  ]);
+  assertJudgedEvidence(tip);
+  if (tip.exitCode !== 0 || tip.stdout.trim() !== developTip) return unusable("unverifiable");
+  const peeled = await gitEvidence(repoRoot, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    "--end-of-options",
+    `${raw}^{commit}`,
+  ]);
+  assertJudgedEvidence(peeled);
+  if (peeled.exitCode === -1) return unusable("unverifiable");
+  if (peeled.exitCode !== 0) return unusable("unknown");
+  // A tag object peels to a DIFFERENT commit — never a stand-in.
+  if (peeled.stdout.trim() !== raw) return unusable("not-a-commit");
+  const anc = await gitEvidence(repoRoot, ["merge-base", "--is-ancestor", raw, developTip]);
+  assertJudgedEvidence(anc);
+  if (anc.exitCode === 1) return unusable("not-ancestor");
+  if (anc.exitCode !== 0) return unusable("unverifiable");
+  return { status: "applied", sha: raw };
+}
+
+/** `rev-list <rev>` as a set — null when the read fails (exempt nothing). */
+async function ancestrySet(repoRoot: string, rev: string): Promise<Set<string> | null> {
+  const r = await gitEvidence(repoRoot, ["rev-list", rev]);
+  assertJudgedEvidence(r);
+  if (r.exitCode !== 0) return null;
+  return new Set(
+    r.stdout
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+}
+
+async function singleParent(repoRoot: string, sha: string): Promise<string | null> {
+  const r = await gitEvidence(repoRoot, ["rev-list", "--parents", "-n", "1", sha]);
+  assertJudgedEvidence(r);
+  if (r.exitCode !== 0) return null;
+  const parts = r.stdout.trim().split(/\s+/);
+  return parts.length === 2 && parts[0] === sha ? parts[1]! : null;
+}
+
+async function treeOf(repoRoot: string, sha: string): Promise<string | null> {
+  const r = await gitEvidence(repoRoot, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    "--end-of-options",
+    `${sha}^{tree}`,
+  ]);
+  assertJudgedEvidence(r);
+  return r.exitCode === 0 ? r.stdout.trim() : null;
+}
+
+async function treeListing(repoRoot: string, sha: string): Promise<Map<string, string> | null> {
+  const r = await gitEvidence(repoRoot, ["ls-tree", "-r", "-z", sha]);
+  assertJudgedEvidence(r);
+  if (r.exitCode !== 0) return null;
+  const out = new Map<string, string>();
+  for (const rec of r.stdout.split("\0")) {
+    if (rec.length === 0) continue;
+    const tab = rec.indexOf("\t");
+    if (tab <= 0) return null;
+    out.set(rec.slice(tab + 1), rec.slice(0, tab));
+  }
+  return out;
+}
+
+/** Canonical JSON for doc comparison — key order never matters. */
+function canonicalDoc(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonicalDoc).join(",")}]`;
+  if (typeof v === "object" && v !== null) {
+    const rec = v as Record<string, unknown>;
+    return `{${Object.keys(rec)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonicalDoc(rec[k])}`)
+      .join(",")}}`;
+  }
+  // NaN/±Infinity serialize as `null` and unsafe integers lose
+  // precision — a doc carrying one never compares equal (no exemption).
+  if (typeof v === "number" && (!Number.isFinite(v) || !Number.isSafeInteger(Math.trunc(v)))) {
+    return `\u0000unfaithful:${Math.random()}`;
+  }
+  if (typeof v === "bigint") return `\u0000unfaithful:${Math.random()}`;
+  return JSON.stringify(v ?? null);
+}
+
+function withoutBaseline(doc: Record<string, unknown> | null): string {
+  if (doc === null) return "null";
+  const push = pushSection(doc);
+  if (push === undefined) return canonicalDoc(doc);
+  const { verifierReviewedThrough: _drop, ...restPush } = push;
+  return canonicalDoc({ ...doc, push: restPush });
+}
+
+/**
+ * RFC-1643: the integrate-generated weakening record of a baseline-only
+ * bump. In a `policy:` repository `push` is a contour key, so
+ * `flow.integrate --accept-weakening` appends an EMPTY commit carrying
+ * `X-Correctness-Weakening` on top of the bump — always a descendant of
+ * the baseline it records. Exempt exactly that record: sole trailer
+ * X-Correctness-Weakening, empty, single parent P, P single-parent, P
+ * changes only forge.yaml, only `push.verifierReviewedThrough` differs,
+ * and P sets it to the APPLIED baseline.
+ */
+async function isBaselineBumpRecord(
+  repoRoot: string,
+  hit: { sha: string; trailers: string[] },
+  baseline: string,
+): Promise<boolean> {
+  if (hit.trailers.length !== 1 || hit.trailers[0] !== "X-Correctness-Weakening") return false;
+  const p = await singleParent(repoRoot, hit.sha);
+  if (p === null) return false;
+  const [wTree, pTree] = await Promise.all([treeOf(repoRoot, hit.sha), treeOf(repoRoot, p)]);
+  if (wTree === null || wTree !== pTree) return false;
+  const pp = await singleParent(repoRoot, p);
+  if (pp === null) return false;
+  const [before, after] = await Promise.all([treeListing(repoRoot, pp), treeListing(repoRoot, p)]);
+  if (before === null || after === null) return false;
+  const changed = new Set<string>();
+  for (const [path, entry] of after) if (before.get(path) !== entry) changed.add(path);
+  for (const path of before.keys()) if (!after.has(path)) changed.add(path);
+  if (changed.size !== 1 || !changed.has("forge.yaml")) return false;
+  const [docBefore, docAfter] = await Promise.all([
+    readCommittedForgeDoc(repoRoot, pp),
+    readCommittedForgeDoc(repoRoot, p),
+  ]);
+  if (docBefore.kind !== "doc" || docAfter.kind !== "doc") return false;
+  if (declaredBaseline(docAfter) !== baseline) return false;
+  if (declaredBaseline(docBefore) === baseline) return false;
+  return withoutBaseline(docBefore.doc) === withoutBaseline(docAfter.doc);
+}
+
+/** RFC-1643: how far back FLOW-PUSH-17 walks forge.yaml-touching first-parent commits. */
+const BASELINE_HISTORY_WINDOW = 64;
+
+/** RFC-1643: one change of the parsed baseline value on develop's first-parent chain. */
+export interface BaselineChange {
+  commit: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * RFC-1643 (FLOW-PUSH-17 visibility): every change of the PARSED
+ * `push.verifierReviewedThrough` value on develop's first-parent chain,
+ * newest first — compared by value, never by text (a comment or a
+ * re-quote that `-G` would match is not a change, and a decoy commit can
+ * no longer pose as the bump). The walk covers the forge.yaml-touching
+ * first-parent commits up to BASELINE_HISTORY_WINDOW and stops where the
+ * key is absent (its introduction). `oldest` is the value at the window's
+ * far end — `undefined` when the key was introduced inside the window, so
+ * "newly exempted" is measured from a point a chain of session bumps
+ * cannot move inside the window. Advisory — a failed read yields
+ * `undefined`, never an exemption.
+ */
+async function baselineHistory(
+  repoRoot: string,
+  developTip: string,
+): Promise<{ changes: BaselineChange[]; oldest: unknown } | undefined> {
+  const r = await gitEvidence(repoRoot, [
+    "log",
+    "--first-parent",
+    "--format=%H",
+    "-n",
+    String(BASELINE_HISTORY_WINDOW),
+    developTip,
+    "--",
+    "forge.yaml",
+  ]);
+  assertJudgedEvidence(r);
+  if (r.exitCode !== 0) return undefined;
+  const commits = r.stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (commits.length === 0 || !commits.every((c) => /^[0-9a-f]{40,64}$/.test(c))) {
+    return undefined;
+  }
+  const valueAt = async (rev: string): Promise<string | undefined | null> => {
+    const doc = await readCommittedForgeDoc(repoRoot, rev);
+    if (doc.kind === "unverifiable" || doc.kind === "unparsable") return null;
+    const v = declaredBaseline(doc);
+    return v === undefined ? undefined : String(v);
+  };
+  const changes: BaselineChange[] = [];
+  let current = await valueAt(commits[0]!);
+  if (current === null) return undefined;
+  for (const c of commits) {
+    // History simplification: on the first-parent chain, `c^1` carries
+    // the same forge.yaml as the next older listed commit.
+    const before = await valueAt(`${c}^1`);
+    if (before === null) return undefined;
+    if (before !== current) {
+      changes.push({ commit: c, from: before ?? "(absent)", to: current ?? "(absent)" });
+    }
+    current = before;
+    if (current === undefined) return { changes, oldest: undefined };
+  }
+  return { changes, oldest: current };
+}
+
 export async function pushFlow(
   repoRoot: string,
   io: WorkspaceIO,
@@ -322,11 +634,20 @@ export async function pushFlow(
   let digestComputedAt: string | undefined;
   // Attestation fields ride every refusal decided AFTER the digest loaded —
   // the audit trail always records how the quoted digest was validated.
-  const refuseChecked = (ruleId: string, message: string, fixHint?: string): FlowPushData => ({
-    ...refuse(ruleId, message, fixHint),
-    attestation,
-    digestComputedAt,
-  });
+  // RFC-1643: the baseline judgment rides every refusal decided after the
+  // verifier scan ran (FLOW-PUSH-03/06/07…), not only the stop itself.
+  const baselineDiags: Diagnostic[] = [];
+  let verifierReviewBaseline: FlowPushData["verifierReviewBaseline"];
+  const refuseChecked = (ruleId: string, message: string, fixHint?: string): FlowPushData => {
+    const base = refuse(ruleId, message, fixHint);
+    return {
+      ...base,
+      attestation,
+      digestComputedAt,
+      ...(verifierReviewBaseline !== undefined ? { verifierReviewBaseline } : {}),
+      diagnostics: [...base.diagnostics, ...baselineDiags],
+    };
+  };
   if (!opts.recount) {
     const persisted = await loadPersistedDigest(io, common, opts.digest);
     if (persisted === "missing") {
@@ -401,27 +722,28 @@ export async function pushFlow(
     );
   }
 
-  // RFC-1616 (AC-6): verifier-trailer scan over the unpushed develop+main
-  // range. A commit carrying a verifier/audit trailer claims provenance the
+  // RFC-1616 (AC-6): verifier-trailer scan over the develop+main branches.
+  // A commit carrying a verifier/audit trailer claims provenance the
   // session cannot self-certify — the operator must see those commits before
   // they leave the machine. `push.requireVerifierReview` defaults to true;
   // an explicit `false` opts the repository out (itself a judged key).
-  // The declaration is read from the COMMITTED forge.yaml (HEAD) — a dirty
-  // worktree opt-out must not take effect unjudged (CX-34); an unreadable or
+  // RFC-1643: both review keys are read from the COMMITTED forge.yaml at the
+  // digest-reviewed develop tip — never the worktree (CX-34) and never HEAD,
+  // which in a session worktree is an unintegrated branch. An unreadable or
   // missing committed config defaults to required (fail closed).
-  let declared: boolean | undefined;
+  const developTip = digest.develop.local;
+  let committed: CommittedForgeDoc;
   try {
-    const show = await gitEvidence(repoRoot, ["show", "HEAD:forge.yaml"]);
-    assertJudgedEvidence(show);
-    if (show.exitCode === 0) {
-      const doc = parseYaml(show.stdout) as Record<string, unknown> | null;
-      const v = (doc?.["push"] as Record<string, unknown> | undefined)?.["requireVerifierReview"];
-      declared = typeof v === "boolean" ? v : undefined;
-    }
+    committed =
+      developTip === "" ? { kind: "missing" } : await readCommittedForgeDoc(repoRoot, developTip);
   } catch {
-    declared = undefined;
+    // A throwing channel is unverifiable — review stays required and the
+    // baseline exempts nothing (fail closed, as a diagnostic).
+    committed = { kind: "unverifiable" };
   }
-  const requireVerifierReview = declared !== false;
+  const declaredReview =
+    committed.kind === "doc" ? pushSection(committed.doc)?.["requireVerifierReview"] : undefined;
+  const requireVerifierReview = declaredReview !== false;
   const scannedRanges: string[] = [];
   const verifierTrailerCommits = new Map<string, { sha: string; trailers: string[] }>();
   for (const [local, remote] of [
@@ -451,7 +773,98 @@ export async function pushFlow(
   const trailerHits = [...verifierTrailerCommits.values()].sort((a, b) =>
     a.sha.localeCompare(b.sha),
   );
-  if (trailerHits.length > 0 && requireVerifierReview) {
+  // RFC-1643: the committed review baseline — exemption is computed AFTER
+  // the full scan, so the scan (batched or per-commit) never narrows and
+  // `verifierTrailerCommits` keeps every hit.
+  const exempt = new Set<string>();
+  if (requireVerifierReview && trailerHits.length > 0) {
+    const baseline =
+      developTip === ""
+        ? ({ status: "absent" } as const)
+        : await resolveVerifierReviewBaseline(repoRoot, developTip, committed);
+    let reason: VerifierReviewBaselineReason | undefined =
+      baseline.status === "unusable" ? baseline.reason : undefined;
+    const newlyExempted: string[] = [];
+    let bumpedBy: string | undefined;
+    let baselineChanges: BaselineChange[] = [];
+    if (baseline.status === "applied") {
+      // Positive membership: an under-reporting read can only shrink the
+      // exemption, never widen it.
+      const reviewed = await ancestrySet(repoRoot, baseline.sha);
+      if (reviewed === null) {
+        reason = "unverifiable";
+      } else {
+        for (const hit of trailerHits) {
+          // A pseudo-hit means the scan could not read the commit — it
+          // keeps blocking whatever its ancestry.
+          if (hit.trailers.some((t) => t.startsWith("x-unverifiable"))) continue;
+          if (reviewed.has(hit.sha) || (await isBaselineBumpRecord(repoRoot, hit, baseline.sha))) {
+            exempt.add(hit.sha);
+          }
+        }
+        if (exempt.size > 0) {
+          const history = await baselineHistory(repoRoot, developTip);
+          baselineChanges = history?.changes ?? [];
+          bumpedBy = baselineChanges[0]?.commit;
+          const prev =
+            typeof history?.oldest === "string" && /^[0-9a-f]{40,64}$/.test(history.oldest)
+              ? await ancestrySet(repoRoot, history.oldest)
+              : null;
+          for (const sha of exempt) if (prev === null || !prev.has(sha)) newlyExempted.push(sha);
+          newlyExempted.sort();
+          const changeLog =
+            history === undefined
+              ? "baseline history unreadable"
+              : baselineChanges.length === 0
+                ? `no value change in the last ${BASELINE_HISTORY_WINDOW} forge.yaml commits`
+                : baselineChanges
+                    .map(
+                      (c) => `${c.commit.slice(0, 9)}: ${c.from.slice(0, 9)}→${c.to.slice(0, 9)}`,
+                    )
+                    .join("; ");
+          baselineDiags.push({
+            ruleId: "FLOW-PUSH-17",
+            severity: "warning",
+            message:
+              `push.verifierReviewedThrough ${baseline.sha.slice(0, 9)} exempts ${exempt.size} ` +
+              `verifier/audit trailer commit(s) from the review stop (${newlyExempted.length} newly ` +
+              `exempted within the last ${BASELINE_HISTORY_WINDOW} forge.yaml commits; baseline changes: ${changeLog})`,
+            fixHint:
+              "confirm the baseline was moved by the operator after reviewing the listed commits (RFC-1643)",
+          });
+        }
+      }
+    }
+    if (reason !== undefined) {
+      const declared =
+        baseline.status === "unusable"
+          ? baseline.declared
+          : baseline.status === "applied"
+            ? baseline.sha
+            : "";
+      baselineDiags.push({
+        ruleId: "FLOW-PUSH-16",
+        severity: "warning",
+        message: `push.verifierReviewedThrough${declared ? ` '${declared}'` : ""} is unusable (${reason}) — it exempts no trailer commit`,
+        fixHint:
+          "set it to a full, quoted commit sha reachable from refs/heads/develop in the committed forge.yaml (RFC-1643)",
+      });
+    }
+    verifierReviewBaseline = {
+      status: reason !== undefined ? "unusable" : baseline.status,
+      ...(baseline.status === "unusable" && baseline.declared
+        ? { declared: baseline.declared }
+        : {}),
+      ...(baseline.status === "applied" ? { declared: baseline.sha } : {}),
+      ...(reason !== undefined ? { reason } : {}),
+      exempted: [...exempt].sort(),
+      newlyExempted,
+      ...(bumpedBy !== undefined ? { bumpedBy } : {}),
+      changes: baselineChanges,
+    };
+  }
+  const blockingHits = trailerHits.filter((h) => !exempt.has(h.sha));
+  if (blockingHits.length > 0 && requireVerifierReview) {
     if (!opts.acceptVerifierTrailers) {
       return {
         digestId: digest.digestId,
@@ -463,20 +876,29 @@ export async function pushFlow(
         superseded: [],
         retired: [],
         verifierTrailerCommits: trailerHits,
+        ...(verifierReviewBaseline !== undefined ? { verifierReviewBaseline } : {}),
         diagnostics: [
           {
             ruleId: "FLOW-PUSH-08",
             severity: "error",
             message:
-              `${trailerHits.length} commit(s) on the scanned local branches carry a verifier/audit trailer ` +
+              `${blockingHits.length} commit(s) on the scanned local branches carry a verifier/audit trailer ` +
               `(the scan covers the whole branch — tracking refs cannot prove what is already pushed, CX-82) ` +
-              `(${trailerHits.map((h) => `${h.sha.slice(0, 9)}[${h.trailers.join(",")}]`).join("; ")}) — ` +
-              `verifier evidence must be reviewed before it leaves the machine`,
+              `(${blockingHits.map((h) => `${h.sha.slice(0, 9)}[${h.trailers.join(",")}]`).join("; ")})` +
+              (exempt.size > 0
+                ? ` — ${exempt.size} more exempted by push.verifierReviewedThrough`
+                : "") +
+              (verifierReviewBaseline?.status === "unusable"
+                ? ` — push.verifierReviewedThrough is unusable (${verifierReviewBaseline.reason ?? "unverifiable"}) and exempts nothing`
+                : "") +
+              ` — verifier evidence must be reviewed before it leaves the machine`,
             fixHint:
               "review the commits, then re-run with " +
-              '--accept-verifier-trailers "<reason>" — or opt the repository out ' +
-              "with push.requireVerifierReview: false in forge.yaml",
+              '--accept-verifier-trailers "<reason>" — or record the review as a committed ' +
+              "push.verifierReviewedThrough baseline (operator only, RFC-1643), or opt the " +
+              "repository out with push.requireVerifierReview: false in forge.yaml",
           },
+          ...baselineDiags,
         ],
       };
     }
@@ -487,7 +909,14 @@ export async function pushFlow(
     ["main", digest.main.remote],
   ] as const) {
     if (remote === null) continue;
-    const ancestor = await gitEvidence(repoRoot, ["merge-base", "--is-ancestor", remote, branch]);
+    // RFC-1643: fully qualified — a shadow `refs/tags/<branch>` must not
+    // stand in for the local branch.
+    const ancestor = await gitEvidence(repoRoot, [
+      "merge-base",
+      "--is-ancestor",
+      remote,
+      `refs/heads/${branch}`,
+    ]);
     assertJudgedEvidence(ancestor);
     if (ancestor.exitCode !== 0) {
       return refuseChecked(
@@ -622,7 +1051,8 @@ export async function pushFlow(
       retired: [...retiredTags].sort((a, b) => a.localeCompare(b)),
       verifierTrailerCommits: trailerHits,
       verifierTrailersAccepted: opts.acceptVerifierTrailers,
-      diagnostics: [...digest.diagnostics],
+      ...(verifierReviewBaseline !== undefined ? { verifierReviewBaseline } : {}),
+      diagnostics: [...digest.diagnostics, ...baselineDiags],
     };
   }
 
@@ -649,7 +1079,9 @@ export async function pushFlow(
         retired: [...retiredTags].sort((a, b) => a.localeCompare(b)),
         verifierTrailerCommits: trailerHits,
         verifierTrailersAccepted: opts.acceptVerifierTrailers,
+        ...(verifierReviewBaseline !== undefined ? { verifierReviewBaseline } : {}),
         diagnostics: [
+          ...baselineDiags,
           {
             ruleId: "FLOW-PUSH-04",
             severity: "error",
@@ -717,6 +1149,7 @@ export async function pushFlow(
   // was the invisible half of CX-63.
   const diagnostics: Diagnostic[] = [
     ...digest.diagnostics,
+    ...baselineDiags,
     ...journalWarnings.map((message): Diagnostic => ({
       ruleId: "FLOW-07",
       severity: "warning",
@@ -804,6 +1237,7 @@ export async function pushFlow(
     retired: [...freshRetired].sort((a, b) => a.localeCompare(b)),
     verifierTrailerCommits: trailerHits,
     verifierTrailersAccepted: opts.acceptVerifierTrailers,
+    ...(verifierReviewBaseline !== undefined ? { verifierReviewBaseline } : {}),
     diagnostics,
   };
 }

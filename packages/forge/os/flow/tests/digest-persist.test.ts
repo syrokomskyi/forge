@@ -16,6 +16,7 @@ attesting a stale digest clean.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1638: persist reviewed digests + DigestInputs coverage assertion</item>
   <item>RFC-1638: review round 1 — fail-closed classifiers, ambient-io interception</item>
+  <item>RFC-1643: committed verifier-review baseline for flow.push</item>
 </CHANGE_SUMMARY>
 */
 
@@ -89,8 +90,9 @@ function classifyConsult(argv: readonly string[]): InputField | undefined {
   }
   if (op === "rev-parse") {
     if (head.includes("refs/remotes/")) return "developRemote";
-    if (argv.includes("develop")) return "developLocal";
-    if (argv.includes("main")) return "mainLocal";
+    // RFC-1643: tips resolve fully qualified (`refs/heads/*`).
+    if (argv.includes("develop") || argv.includes("refs/heads/develop")) return "developLocal";
+    if (argv.includes("main") || argv.includes("refs/heads/main")) return "mainLocal";
     if (argv.includes("HEAD")) return "head";
     return undefined; // any other rev-parse resolves a surface no input pins
   }
