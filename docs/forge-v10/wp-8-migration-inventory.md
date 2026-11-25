@@ -464,3 +464,7 @@ studio.deploy.status extracted and verified in the wave-2 session worktree:
 ### Operational hazard confirmed: werkstatt v9 machinery carries the inert-ignore phantom
 
 The wave-2 integrate refused on node_modules/.pnpm/robots-parser .gitignore phantom dirt — the CX-142 inverse problem. The fix shipped in forge 10.1.1 but werkstatt flow.integrate runs on the VENDORED v9 machinery which will never receive it. Every werkstatt integrate is one npm-shipped-.gitignore away from refusal until the v10 self-host migration completes (the WP-8 endgame itself). Interim: preemptive cleanup per runbook. This is additional evidence for prioritizing the migration over perfectionism in extraction ordering.
+
+## forgeState port — DECISION RESOLVED, implemented (forge develop bb9dc6a)
+
+Option B implemented as designed: resolveGitCommonDir parses the worktree pointer file without spawning git (primary layout and worktree layout both covered), journal.tail/size behind the distinct forgeState manifest grant. 8/8 tests green including the decisive boundary proof: worktree journal readable through the port while ctx.workspace correctly cannot see it. Ships with the next minor (10.2.0 — additive minor surface, not patch). Wave-3 journal-consuming extraction is unblocked at the SDK level; the werkstatt-studio pilot journal-tail migrates to the port when 10.2.0 publishes.
