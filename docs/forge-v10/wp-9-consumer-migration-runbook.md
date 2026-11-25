@@ -75,3 +75,9 @@ wave-1 scoreboard: **5/5 INTEGRATED.** pipelines completed parity-only (e4b0436e
 ## Plugin dependency design fix (same wave)
 
 Published plugins 1.0.1 carried exact-pinned forge dependencies (workspace rewrite artifact) — nested copies and version-lock cascades in adopters. Fixed: `@warpgogol/forge` moved to `peerDependencies: ^10.1.0` in all four plugins, republished as **1.0.2**; e2e re-verified — zero nested copies, validators pass. Consumers adopting plugins should pin `^1.0.2`.
+
+## Post-wave notes
+
+- **werkstatt evidence-mirror integration hits the inert-ignore phantom** — v9-line machinery in werkstatt counts `node_modules/.pnpm/*/node_modules/*/.gitignore` as session dirt (CX-142 over-broadness fixed in v10 forge but not in the werkstatt v9-line). Workaround: delete the phantom file before flow.integrate; permanent fix arrives with WP-8 (werkstatt itself moving to v10 machinery).
+- **hdri-frozen-v3**: absent as a standalone clone locally (exists only as a pipelines-attached worktree `hdri-frozen-v3-20261104`, detached) — confirmed skip, frozen artifact repo.
+- plugin manifest-version sync + cli-bridge + first-party e2e tests re-verified green (10/10) after the 1.0.2 peerDependency republish.
