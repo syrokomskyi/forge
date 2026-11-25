@@ -77,3 +77,17 @@ All four load through the standard v10 loader with zero special-casing
 deprecated on npm with a migration pointer per RFC-1648 rollout.
 Consumer-install verification pending npm staging propagation (~10 min lag
 observed on the 10.0.0 publish as well).
+
+## WP-6 self-host state (2026-11-25)
+
+- `.forge-selfhost/` harness pins npm-published `@warpgogol/forge` outside workspace resolution; pin-freshness and artifact-execution enforced by `test/self-host.test.ts` (3/3 green).
+- **Discovered divergence requiring migration:** the monorepo's own `.agents/skills` is a TRACKED v9 twin — and already stale (canonical `skills/fo/fo-add-tests` carries `mocking.md`/`pbt-guide.md` absent in the twin). This is the exact drift class RFC-1648 eliminates. Canonical layout: `skills/fo/*` (34) + `skills/meta/*` + `skills/shared/*` + `skills/_shared` flatten to the generated root.
+- **Remaining machinery rewrite (identified, not yet done):** v9 agents-generate/skill-agents-sync machinery assumes tracked twins — `src/tests/skill-agents-sync.test.ts`, `src/tests/agents-generate*.test.ts` and the `forge.agents.generate`/`forge.init`/`forge.upgrade` writers must be rewired to generated-untracked before the twin can be untracked here. Until then the tracked twin remains as legacy surface — documented, not silently dropped.
+
+## Outstanding program items (continuation notes)
+
+1. npm consumer-install verification of the four published plugins (staging propagation pending at writing; poller at /tmp/npm-propagation-status.txt).
+2. WP-5 depth: skills-generation machinery rewiring (see WP-6 notes above).
+3. Evidence mirroring into werkstatt `docs/forge-v10/` — wp-2/wp-4-5 evidence + completed protection-migration-map — requires a werkstatt flow session (heavy gates; schedule with fresh context).
+4. WP-7 canary (warpgogol-verbund dark-run + cutover), WP-8 werkstatt migration, WP-9 consumers — operational waves in external repos.
+5. forge 10.1.0 release carrying WP-4/5 features once the full matrix is green; self-host pin bump follows.
