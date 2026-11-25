@@ -4,7 +4,7 @@
   "private": false,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Repository-native governance for AI-assisted software development \u2014 project contracts, RFCs, ADRs, agent skills and deterministic validation.",
+  "description": "Repository-native governance for AI-assisted software development — project contracts, RFCs, ADRs, agent skills and deterministic validation.",
   "keywords": [
     "ai",
     "agent",
@@ -380,7 +380,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@warpgogol/werkstatt-engine": "workspace:*",
     "ajv": "^8.20.0",
     "linkedom": "^0.18.14",
     "picomatch": "^4.0.7",
@@ -392,7 +391,6 @@
     "@types/node": "^26.5.1",
     "@types/picomatch": "^4.0.3",
     "@vitest/coverage-v8": "^5.0.0",
-    "@warpgogol/werkstatt-shared": "workspace:*",
     "eslint": "^10.10.0",
     "fast-check": "^4.10.0",
     "typescript": "~5.9.3",
@@ -707,5 +705,6 @@
         "default": "./dist/os/adversarial/adversarial.module.js"
       }
     }
-  }
+  },
+  "packageManager": "pnpm@11.10.0"
 }
