@@ -1,0 +1,163 @@
+---
+name: fo-compass-annotate
+description: Full-lifecycle Compass header management — generate, update, audit, validate, cleanup. Replaces removed compass.annotate/clear/migrate/invariant.add commands.
+invocation: user
+category: fo
+concerns: content-mutation
+dependsOn: ['my-preferences']
+languagePolicy: ref(PREFERENCES.md)
+bindings:
+  requires: []
+  optional: [compass.fileExtensions, compass.testPatterns]
+triggerPhrases: ["manage Compass headers", "annotate source files with Compass", "audit Compass module contracts"]
+---
+
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-compass-annotate skill — Full-lifecycle Compass header management — generate, update, audit, validate, cleanup. Replaces removed compass.annotate/clear/migrate/invariant.add commands.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
+</CHANGE_SUMMARY>
+-->
+
+# fo-compass-annotate
+
+Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
+
+Manage Compass source headers across files with a full lifecycle: discover, generate, update, audit, risk-flag, validate, and cleanup. This skill replaces the removed `compass.annotate`, `compass.clear`, `compass.markup.migrate`, and `compass.invariant.add` kernel commands.
+
+## Preconditions
+
+- The workspace has source files with Compass scaffolding requirements. Check the project's invariants file for the canonical Compass markup rule.
+- `compass.validate` is available to verify headers after updates.
+
+## Flags
+
+- `--file <path>` — process a single file instead of scanning the workspace.
+- `--changed` — process only files changed in the current git diff (unstaged + staged).
+- `--packages` — scan `packages/` instead of the default workspace scope.
+- `--package <name>` — with `--packages`, scan one package.
+- `--dry-run` — report what would change without writing files.
+
+## Process
+
+### 1. Discover files
+
+Determine the scan scope:
+
+- If `--file` is given, process only that file.
+- If `--changed` is given, run `git diff --name-only HEAD` (or `git diff --name-only --cached` + `git diff --name-only`) to get the changed file list. Filter to source files matching `ref(forge.yaml bindings.compass.fileExtensions)` (default: `.ts`, `.astro`).
+- Otherwise, scan the workspace (or `packages/` with `--packages`) for all source files matching the file extension binding.
+
+Skip files that are:
+
+- Generated (carry `GENERATED` marker or are in `dist/`, `node_modules/`, `.agents/`).
+- In `spec/`, `todo/`, or folders starting with `old-` or `-`.
+- Binary or non-text.
+
+### 2. Per-file processing
+
+For each discovered file, determine the required action:
+
+#### 2a. Generate (file has no Compass headers)
+
+If the file has no `MODULE_CONTRACT` and no `CHANGE_SUMMARY` block:
+
+1. Read the file content and understand its purpose.
+2. Use `templates/header-prompt.md` to generate a `MODULE_CONTRACT` block with `<purpose>` and `<non-goals>`. The `<purpose>` must contain a file-derived token (stem segment, parent-directory segment for generic stems, or exported symbol).
+3. If the file's `riskClass` is `medium` or `high`, generate a `KEY_DECISIONS` block with 1–7 current-state design items (no governance-ID prefixes — current truth, not history).
+4. Create a `CHANGE_SUMMARY` block with a single `<item>` carrying the governing RFC/ADR/ticket ID.
+5. Insert the blocks at the top of the file in canonical order `MODULE_CONTRACT` → `KEY_DECISIONS` → `CHANGE_SUMMARY`, after any existing license/comment header but before imports.
+6. Use `reference/comment-styles.md` to determine the correct comment syntax for the file extension.
+7. If the file's `riskClass` is `high`, add at least one inline `@ai-invariant` comment in the file body using the tagged bound form (see "Invariants" below).
+
+#### 2b. Update (file has headers but content has changed)
+
+If the file has Compass headers but the content has significantly changed:
+
+1. Read the current `MODULE_CONTRACT` and compare with the file's actual purpose.
+2. Use `templates/header-prompt.md` to regenerate the `MODULE_CONTRACT` if the purpose has shifted.
+3. Rewrite `KEY_DECISIONS` items in place when the change alters a recorded decision — never append chronologically.
+4. Add a new `<item>` to `CHANGE_SUMMARY` referencing the current RFC/ADR/ticket ID. When the block exceeds 5 items, collapse the oldest IDs into the `<history>` element (comma-separated, deduplicated, per-namespace ascending).
+
+#### 2c. Audit (semantic check)
+
+For each file with Compass headers:
+
+1. Use `templates/audit-prompt.md` to audit the `MODULE_CONTRACT` (and `KEY_DECISIONS` when present) against the file's actual content.
+2. Check that `<purpose>` accurately describes what the file does.
+3. Check that `<non-goals>` lists at least one boundary the file does not cross.
+4. Check that `KEY_DECISIONS` items still describe current design truth.
+5. Flag files where the header is stale, misleading, or empty.
+
+#### 2d. Risk flag
+
+For each file with Compass headers:
+
+1. Use `reference/risk-patterns.md` to scan for deterministic risk patterns (sign, crypto, vault, migrate, publish, etc.).
+2. If a risk pattern is found, add a `<!-- risk: <pattern> -->` comment inside the `MODULE_CONTRACT` block.
+3. Risk patterns are deterministic — no LLM judgment needed.
+
+### 3. Batch-end validation
+
+After processing all files:
+
+1. Run `compass.validate` to verify all headers are well-formed. v2 rules emit warnings by default (`--mode warning`); use `--mode error` to check post-migration compliance.
+2. If any violations are found, attempt to fix them automatically (missing `<non-goals>`, empty `<purpose>`, missing `KEY_DECISIONS` on medium/high-risk files, etc.).
+3. Re-run `compass.validate` to confirm fixes.
+4. If violations persist after 3 retry attempts, report them to the operator.
+5. Run `compass.invariants.generate` to refresh the invariant index projection; a new unbound invariant fails `--shrink` — bind it or tag it before committing.
+
+#### Invariants (high-risk files)
+
+New `@ai-invariant` statements in `high`-risk files use the tagged bound form:
+
+```
+@ai-invariant[INV-<scope>-<NN>]: <statement> (checked-by: <kind>:<ref>)
+```
+
+(the line lives inside a `//`/`/* */` comment — do not copy a literal `// @ai-invariant[…]` example into a scanned file, the invariant scanner will parse it)
+
+- `<scope>` is a short lowercase-kebab domain word; `<NN>` is a 2–3 digit id unique workspace-wide (never reuse an id, even after the invariant is deleted — retired ids live in `docs/invariants.generated.yaml`).
+- `(checked-by: …)` is the trailing parenthesised group of the statement; it may wrap onto consecutive comment lines. Binding kinds: `test:<file>` and `type:<file>` and `proof:<spec>` — the workspace-relative file must exist and contain the invariant id literal; `lint:<RULE-ID>` — the rule id must exist in `docs/validator-inventory.generated.yaml`.
+- The binding is structural: it names the check that enforces the statement. Whether the check semantically enforces it stays a review concern.
+- Legacy untagged `// @ai-invariant: …` lines are grandfathered through `docs/invariants.baseline.generated.yaml` (shrink-only) — do not add new untagged invariants in high-risk files.
+
+### 4. Cleanup (optional, with `--cleanup` flag)
+
+If `--cleanup` is given:
+
+1. Remove `TODO(compass)` sentinels from files that still have them.
+2. Replace each sentinel with a real value generated using `templates/header-prompt.md`.
+3. Run `compass.validate` to confirm no sentinels remain.
+
+### 5. Report
+
+Output a summary:
+
+```
+## Compass Annotate Report
+
+### Files scanned: <N>
+### Files generated: <N>
+### Files updated: <N>
+### Files audited: <N>
+### Files risk-flagged: <N>
+### Validation: <pass | fail>
+### Sentinels replaced: <N>
+```
+
+## Completion criteria
+
+- All discovered files have `MODULE_CONTRACT` and `CHANGE_SUMMARY` blocks in canonical order; medium/high-risk files also carry `KEY_DECISIONS`.
+- Pack-declared Compass contract blocks (if any are declared in `forge.plugin.yaml` `extensionPoints.compass.contract`) are present in matching files.
+- `compass.validate` passes with zero errors.
+- No `TODO(compass)` sentinels remain (if `--cleanup` was used).
+- All changes are committed with message `compass: update headers for changed files`.

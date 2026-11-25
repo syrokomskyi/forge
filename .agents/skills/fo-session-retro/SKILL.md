@@ -1,0 +1,676 @@
+---
+name: fo-session-retro
+description: Session-end insight triage — categorize each insight and auto-route to the durable home (AGENTS.md rule, ADR, DNA invariant, forge pattern, memory) — no operator prompts.
+invocation: user
+category: fo
+concerns: document-only
+dependsOn: ['my-preferences']
+languagePolicy: ref(PREFERENCES.md)
+bindings:
+  requires: []
+  optional: [paths.invariantsFile]
+triggerPhrases: ["завершаем", "протокол завершения", "разгребаем", "трения", "friction harvest"]
+---
+
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-session-retro skill — Session-end insight triage — categorize each insight and auto-route to the durable home (AGENTS.md rule, ADR, DNA invariant, forge pattern, memory) — no operator prompts.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <item>RFC-1592: probe-or-retire ratchet for blocking check rules
+
+Every error-severity check rule now needs liveness evidence — a bound
+gate-probe fixture that has actually run — or an explicit entry in the
+shrink-only unprobed baseline, enforced by gate.probe.catalog --check
+(PROBE-06/07) and wired into the worktree gate as probe-ratchet.
+
+- probe-runs journal (docs/.index/gate-probes/runs.jsonl) records each
+  gate.probe fixture execution; shared liveness.ts joins fixtures x
+  journal for catalog + contribution report (liveness: none|fixture|fired)
+- gate.probe.catalog --check/--write-baseline: PROBE-06 unprobed error
+  rule, PROBE-07 stale baseline entry, PROBE-08 baseline growth refusal
+  (shrink-only, no file modification), PROBE-09 expired/undeclared
+  warnOnly provisional step
+- checks.contribution.report adds liveness to every rule record
+- KernelPipelineStep/RuleDescriptor gain provisionalUntil; the two
+  warnOnly pipeline steps carry future dates
+- worktree gate adds probe-ratchet step; gate-domains + forge pre-lock
+  DELTA_STEP_SPECS mirror updated
+- build-verification policy states blocking rules are probed or retired;
+  fo-session-retro preserves probe/retire evidence for escape frictions
+- baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
+  <item>RFC-1591: typed agent tool surface generated from the command manifest
+
+command.tools.generate projects docs/command-manifest.generated.yaml plus
+forge.yaml agentTools.{front,deny} into docs/agent-tools.generated.json
+(forge/agent-tools@1); forge agent-tools serve (forge-tools in .mcp.json)
+serves it over stdio MCP — three meta tools (command_search /
+command_describe / command_run) plus one typed tool per front entry.
+Agents now call kernel commands as schema-validated tools instead of
+shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
+
+- flag→JSON-Schema mapping (string/boolean/string[]/enum; flagsOpen keeps
+  additionalProperties); required list mirrors the manifest's required
+  flags; annotations derive from mutatesState
+- command_run refuses AGENT-TOOL-01 on undeclared args (RFC-1514
+  nearest-flag suggestion inlined for autonomy), AGENT-TOOL-02 on the
+  deny list, AGENT-TOOL-05 on unknown names; detachable commands spawn
+  with --detach and return the gate-run id; runner is pnpm exec
+  werkstatt run where the bin resolves, pnpm exec forge otherwise
+- generator refusals: AGENT-TOOL-03 (>40 front), AGENT-TOOL-04 (front
+  name absent from the manifest); --check fails on byte drift
+- serve regenerates the file in memory on manifestHash drift and warns;
+  agent-tools.generated.json joins the flow.integrate step-(3b) owner
+  registry
+- forge.yaml seeds 20 front + 7 deny entries; agent-operations guide
+  prefers typed tools, shell strings stay the no-server fallback
+- werkstatt-engine extract excludes build-input-set.test.ts (reads the
+  werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
+  the 'recurrences' wording the addressed-match routing test pins</item>
+  <item>RFC-1615: declare and freeze the policy surface at integration</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
+  <item>ADR-0133: forbid --detach on session-end flow.integrate (F-0301)</item>
+  <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
+  <item>RFC-1617: drop platform ADR id from fo-session-retro instruction text (SKILL-17)</item>
+  <history>ADR-0119, ADR-0121, ADR-0126, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491, RFC-1528, RFC-1531, RFC-1534, RFC-1573, RFC-1590</history>
+</CHANGE_SUMMARY>
+-->
+
+# Session Retro
+
+Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
+
+Review the current session for discoveries that other agents would benefit from knowing. Categorize each insight and route it to the appropriate durable home. This skill is the **knowledge capture entry point** — it does not duplicate the work of `fo-extract-dna`, `fo-harvest`, or `fo-idea-create-adr`; it triages and delegates.
+
+**Insight acceptance is automatic (NON-NEGOTIABLE).** The session-end protocol never asks the operator which insights to keep — every insight that survives the filtering guidance is routed. The triage table is informational visibility, not a selection gate.
+
+## When to invoke
+
+- **At session end** — after completing work, before closing the conversation. The operator runs `/fo-session-retro` to check if any insights emerged that deserve to outlive the session.
+- **After a debugging session** — when root-cause analysis revealed non-obvious behavior that others would rediscover.
+- **After exploring a new area** — when conventions or patterns were learned that are not yet documented.
+- **Inline by other skills** — `fo-doc-audit` or session-end workflows may delegate here for the "what did you learn?" step.
+
+### Session-end trigger phrases (BLOCKED GATE — NON-NEGOTIABLE)
+
+When the operator says any of the following, the agent's response is **BLOCKED** — no closing summary, no ad-hoc "session complete" message, no closing block is permitted until this skill is invoked via the `skill` tool and completes:
+
+- "Завершаем эту сессию"
+- "Завершаем сессию"
+- "Заканчиваем сессию"
+- "Завершить сессию"
+- "End session"
+- "Wrap up"
+- "Session end"
+- "/session-end"
+- "протокол завершения сессии"
+
+**The agent MUST NOT produce any session-end output (summary, closing block, "session complete" message) before this skill is invoked and its report is presented. Producing a closing summary without running this skill is a CONTRACT VIOLATION.**
+
+This skill IS the session-end protocol — it runs transcript save, temp cleanup, docs.archive, clean tree check, RFC verification, insight triage, the friction autopsy, and produces the closing block. Do not substitute it with a manual summary. The closing block comes from this skill's report, not from the agent directly.
+
+## Worktree-first preamble (NON-NEGOTIABLE on the fixed branch model)
+
+Session-end writes (transcript save, `docs.archive` moves, friction records, rule edits, retro commits) MUST NOT be produced in the primary checkout — the primary stays clean, and every tracked write rides a session worktree into `develop` through `flow.integrate`. Before Step 0, decide whether this retro will produce tracked writes:
+
+- **Writes expected** (nearly always — the Step 0 transcript alone counts when `saveSessions` is true) AND the current directory is a **primary checkout** on the fixed branch model → open a dedicated session worktree FIRST:
+
+  ```bash
+  rtk pnpm exec werkstatt run flow.open --kind session --slug session-retro-<stamp>
+  ```
+
+  `<stamp>` is `YYYYMMDD-HHMM` of the invocation moment. Detection: `flow.status` lists registered `auto/session-*` branches — when cwd is already a flow worktree (its branch is registered), skip this step; writes already land in the right place. Repositories not on the fixed branch model (`flow.status` refuses, no registered branches) skip this step silently.
+
+- **Read-only retro** (the session produced zero tracked writes and none of Steps 0–4 will create any — e.g. `saveSessions: false` with a clean tree and no insights to route) → no worktree needed; run the retro in place.
+
+When the preamble opened a worktree, every subsequent step — Step 0 transcript, archive, friction/registry writes, retro commits — runs inside it. All writes batch into a single `flow.integrate` at Step 3e. Do NOT open one worktree per write, and do NOT integrate from the primary checkout.
+
+**Artifact home (F-0105):** every retro artifact — the Step 0 transcript, memory writes, friction records, routed rules — lands in the operator's working repo (the PREFERENCES home whose `forge.yaml` resolves this run), never in the resolved skill's host repo. A skill twin resolving from another checkout does not relocate the writes.
+
+## Step 0: Save session transcript (NON-NEGOTIABLE when saveSessions is true)
+
+This step ensures the session transcript is persisted to `docs/sessions/` before any retro work begins. Without it, the transcript is lost when the conversation closes.
+
+### 0a. Check preference
+
+Read `PREFERENCES.md` at the repository root. If `saveSessions: false`, skip this step entirely and proceed to Step 1.
+
+### 0b. Construct raw ATIF file
+
+The agent reconstructs the current session's conversation from its context window and writes it as a JSON-lines ATIF file to `docs/sessions/.raw/`. Each line is a JSON object with `role`, `timestamp`, and `content` fields.
+
+**Format:**
+
+```
+{"role":"user","timestamp":"2026-08-04T12:12:00+02:00","content":"<user message>"}
+{"role":"assistant","timestamp":"2026-08-04T12:12:05+02:00","content":"<assistant response>"}
+{"role":"user","timestamp":"2026-08-04T12:15:00+02:00","content":"<next user message>"}
+...
+```
+
+**Instructions:**
+
+1. Create the directory `docs/sessions/.raw/` if it does not exist. **Synthesized timestamps MUST fall inside the real session window** — `session.save` derives the session id from the first timestamp, so a 2025-epoch placeholder produces a wrongly-dated session file and forces a redo. Anchor the first line to the session's actual start and step forward from there.
+
+2. Generate a timestamp-based filename: `<YYYY-MM-DD-HH-MM-SS>-session.atif` (use current time in the operator's timezone).
+3. Reconstruct the conversation from context — include every user message and assistant response you can recall from the current session, in chronological order. This is a best-effort reconstruction: the agent's context window is the source, not an external export tool.
+4. **Redact sensitive information** — remove API keys, passwords, PII, and secret values before writing. Replace with `<redacted>`.
+5. **Truncate very long tool outputs** — if a tool call produced thousands of lines of output, summarize it as `<tool output truncated, N lines>` in the content field. Keep the tool call name and key results.
+6. Write the file **atomically**: `write_to_file` to `docs/sessions/.raw/<timestamp>-session.atif.tmp`, then `mv` it to the same path without `.tmp` (rename is atomic). A parallel agent's `session.save` claims any `.atif` the moment it appears — this ordering guarantees it never sees a half-written transcript.
+
+### 0c. Run session.save
+
+Convert the raw file to structured markdown:
+
+```
+ref(forge.yaml bindings.commands.sessionSave)
+```
+
+This produces a file at `docs/sessions/<id>.md` with auto-extracted metadata (RFC-ids, commit hashes, file paths, commands, session types) and a `## Transcript` section.
+
+### 0d. Verify
+
+Check that the output file was created in `docs/sessions/`. If `session.save` reported "No raw files to process", the raw file was not written correctly — retry 0b.
+
+If the save succeeded, proceed to Step 1. The saved session file will be annotated later by `fo-session-save` if the operator requests it.
+
+## Pre-retro steps
+
+Before gathering insights, perform these housekeeping steps. **Steps 1–2 are latency, not dependencies** — launch them in a background shell immediately after Step 0 and run insight gathering, insight routing, and the friction autopsy while they execute; synchronize only before Step 3's first `git add` (the archive stages its moves and regenerates artifacts — committing mid-run races the index).
+
+### Step 1: Clean up test temp directories
+
+Remove leftover `tmp-*` and `tmp/` directories created by unit tests anywhere in the repo:
+
+> Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
+```bash
+# rtk find accepts only single predicates (F-0025) — locate with one
+# predicate per call, then delete the listed dirs explicitly; skip hits
+# under ./.git/** and ./node_modules/**.
+rtk find . -type d -name 'tmp-*'
+rtk find . -type d -name tmp
+# remove each listed dir (never a -not/-exec/-o compound — rtk rejects them):
+rtk rm -rf <dir> [<dir>…]
+```
+
+This is safe to auto-run.
+
+### Step 2: Archive terminal documents
+
+Run the `docs.archive` umbrella command to move terminal RFCs, ADRs, plans, audits, sessions, and missions into their respective `archive/` subdirectories:
+
+```bash
+rtk pnpm exec werkstatt run docs.archive
+```
+
+The run takes minutes on a mature tree — launch it in a **background shell** and continue with insight gathering and the friction autopsy. It touches only `docs/{audits,plans,rfcs,sessions,missions}` plus generated indexes — never the friction store, `.agents/`, or `AGENTS.md`. **Synchronization point:** wait for it to finish before Step 3's `git status`/`git add`; its staged moves and regenerated artifacts are "our" changes committed in Step 3c.
+
+Prefer the kernel host — under `werkstatt run` the archive regenerates every generated artifact invalidated by the moves (e.g. `docs/ecosystem.generated.yaml`, `docs/rfcs/index.yaml`) and reports them. Under a standalone forge install (`pnpm exec forge docs.archive`) the command still archives but regeneration is skipped with a printed note.
+
+The command is idempotent — re-running is safe. If files were moved or regenerated, commit them in step 3 as part of the clean tree check (they are "our" changes).
+
+### Step 3: Clean tree check (NON-NEGOTIABLE)
+
+Verify that this session has no uncommitted changes left in the working tree. Other agents may be working in parallel, so you MUST distinguish your changes from theirs.
+
+**3a. Collect dirty files from all git repos in the workspace:**
+
+```bash
+# Workspace root
+rtk git status --porcelain
+# All active mission workpieces (glob — safe even if no matches)
+for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk git -C "$d" status --porcelain; done
+```
+
+**3b. Classify each dirty file as "ours" or "unattributed":**
+
+- A file is "ours" if ANY of:
+  - You directly modified it via `edit`, `write_to_file`, `multi_edit`, or `edit_notebook` tools.
+  - You indirectly modified it by running a command (`run_command`) that generates or updates it (e.g. codegen pipelines, build commands, etc.).
+  - It was produced by a session-end pipeline step in THIS session: session transcripts (`docs/sessions/*.md`), review reports (`docs/reviews/**/*.md`), or `docs.archive` moves.
+  - It was created by a skill you invoked in this session (e.g. `fo-review` creating a review report, `fo-doc-audit` editing AGENTS.md, `fo-idea-create-adr` creating an ADR).
+- A file is "unattributed" if it appears dirty but you have no record of touching it in this session. Do NOT assume it belongs to a parallel agent — it may be an orphan from a previous session that was not committed. Such orphans surface in the Step 7 report — visible to the operator, never silently propagated.
+
+**3c. Commit our changes (unconditionally — never ask):**
+
+- If there are "our" dirty files in the workspace root: `git add <files>` and `git commit -m "<descriptive message>"`.
+- If there are "our" dirty files in a workpiece: `git -C missions/<missionId>/workpiece add <files>` and `git -C missions/<missionId>/workpiece commit -m "<descriptive message>"`.
+- Use descriptive commit messages that explain what the changes are, not just "session cleanup".
+- Commit unconditionally — never ask the operator whether to commit session-attributed changes.
+
+**3d. Leave unattributed dirty files untouched + report (NON-NEGOTIABLE):**
+
+- If any unattributed dirty files remain after committing ours, leave them untouched — do NOT commit them and do NOT ask the operator whether to commit. The session-end protocol never asks about commits.
+- When in doubt whether a file is ours, classify it as unattributed — leaving a file uncommitted is the safe leg; the report keeps it visible. Orphans from previous sessions surface in the report, where the operator may order a follow-up commit if desired.
+- List every unattributed file left dirty on the `### <Left untouched>` line of the Step 7 report, one per tree.
+- If the tree is now clean (or was clean from the start), proceed silently.
+
+**3e. Integrate or discard the session flow branch:**
+
+- This step applies only when the session's cwd is a flow worktree — its branch is a registered `auto/session-*` entry (check `flow.status`; repositories not on the fixed branch model have no registered branches → skip silently). When the worktree-first preamble opened a retro worktree, run the integration from that worktree — the whole session's writes ride it.
+- Before integrating, stop processes that hold files inside the session worktree — dev servers (`astro dev`, `vite dev`, `node --watch`, …) started during the session keep `node_modules`/build-output handles open and make `git worktree remove` fail with FLOW-INT-04 ("Directory not empty"): the branch still integrates, but an orphaned directory shell plus a stale server stay behind. Detect holders via `/proc` cwd links — `for d in /proc/[0-9]*/cwd; do readlink "$d"; done | grep -F "<worktree path>"` (or `lsof +D <worktree>`) — terminate them, then integrate.
+- **The session does not end without a recorded integrate verdict — NON-NEGOTIABLE.** After the clean-tree commit, run `flow.integrate` from the session worktree and wait for its terminal verdict before emitting the Step 7 report — the blocking form is the only form: `--detach` is FORBIDDEN at session end. A reported gate-run id reads as "in flight" to the operator while a refusal may already have landed, so the operator cannot tell an ended session from a dead one (F-0301). Long gate latency is awaited, never detached — when housekeeping must run in parallel, background the shell command itself and poll it to exit; the verdict is still mandatory before Step 7. A closing block that says "integrated" without the verdict is a contract violation: report `verdict: integrated (<sha>)` or `verdict: refused (<FLOW-INT-xx>) — <reason> — <named next action>`, never an unverdicted run id alone.
+- On a FLOW-INT-02 (rebase conflict) or FLOW-INT-05 (gate refusal) diagnostic, report the refusal and leave the branch for the next session — do not force-resolve inside session end.
+- A FLOW-INT-04 (worktree removal failed) means the branch already integrated — only teardown failed: stop the file-holding process, confirm the worktree is unregistered (`git worktree list`), then remove the leftover directory.
+- A FLOW-INT-01 dirty refusal is different: `data.entries` carries each path's class (`disposable`/`work`/…) — remediate via the flow.integrate remediation flags (`--auto-clean` when every entry is disposable, `--autocommit` to sweep the rest into the fixed-subject commit) or leave the branch for the next session with the classification reported.
+- When the operator said to drop the work, run `flow.discard --reason "<operator words>"` instead of `flow.integrate`.
+
+**3f. List pending outbound items (dormant when not on the fixed branch model):**
+
+- This step applies only when the repository is on the fixed branch model — `flow.digest` answers a digest instead of a not-adopted refusal. Repositories without the flow module skip silently.
+- Run `pnpm exec forge flow.digest --no-fetch --json` and read the item counts by risk category and the held entries.
+- Report them on the `### <Pending outbound>` line of the Step 7 report — e.g. `3 items (contract: 1, other: 2), 1 held`, or `none`.
+- This step never runs `flow.push`, `flow.hold` or `flow.unhold` — outbound publication stays the operator's command.
+
+### Step 4: RFC implementation verification (NON-NEGOTIABLE)
+
+If any RFC was worked on during this session (implementation, audit, enhance, plan, or fix work), verify that each such RFC is either stamped as `implemented` or has an explicit operator-acknowledged reason for remaining in a non-terminal status. This step prevents sessions from ending with silently unfinished RFCs — the agent must either complete the stamp or obtain explicit operator consent to leave the RFC as-is.
+
+**4a. Identify RFCs touched in this session:**
+
+Scan the session conversation and git log for RFC IDs that were the subject of implementation work:
+
+```bash
+# Session commits that reference RFCs (adjust --since to session start)
+rtk git log --oneline --since="today 00:00:00" --grep="RFC-" -i
+```
+
+Also scan the conversation for any `RFC-XXXX` mentions where the agent performed implementation work (code changes, test creation, validator runs, stamp commands, plan/audit/enhance steps). Exclude RFCs that were only mentioned in passing (e.g. referenced as related context but not worked on).
+
+**4b. Check each RFC's status:**
+
+For each identified RFC, read the frontmatter `status` field from `docs/rfcs/rfc-XXXX-*.md` (or `docs/rfcs/archive/implemented/rfc-XXXX-*.md` if already archived by Step 2).
+
+**4c. Classify and act:**
+
+- **Status `implemented`** — the RFC is complete. No action needed.
+- **Status `rejected` or `superseded`** — terminal status, no action needed.
+- **Status `accepted` (or any other non-terminal status)** — the RFC was worked on but not stamped as `implemented`. This is the state this step targets. For each such RFC, present the status to the operator and ask via `ask_user_question` (in `aiLanguage`):
+
+  | Option | Description |
+  | --- | --- |
+  | Complete now | The agent proceeds to finish the remaining `fo-idea-implement` steps (4.6–4.8: check acceptance criteria with evidence, stamp implemented). This may require running validators, fixing errors, and committing the stamp. |
+  | Leave as-is | The operator explicitly acknowledges the RFC remains in its current non-terminal status with unchecked acceptance criteria. No further action is taken on the RFC. |
+
+  If the operator chooses "Complete now", execute `fo-idea-implement` steps 4.6–4.8 for that RFC before proceeding. If multiple RFCs are in this state, ask about each one (or present them as a batch with `allowMultiple: true`).
+
+**4d. Report:**
+
+Include the RFC status verification result in the session retro report (Step 7). List:
+
+- RFCs verified as `implemented` (count).
+- RFCs left in non-terminal status by explicit operator choice (list with RFC IDs and operator's acknowledgment).
+
+If no RFCs were worked on in this session, skip this step silently.
+
+## What this skill is NOT
+
+- It is not `fo-doc-audit` — that skill checks whether existing docs are in sync with code changes. This skill captures **new knowledge** that does not yet exist in any doc.
+- It is not `fo-harvest` — that skill scans for portable code patterns. This skill handles all insight types, including non-code knowledge.
+- It is not `fo-extract-dna` — that skill formalizes architectural invariants through RFCs and grills the operator by contract. DNA-grade insights are recorded as pending routings in `.agents/memory/daily/<today>.md`, never delegated live during session end.
+- It is not a memory dump — memory DB is one of five routing targets, not the default. Most insights belong in version-controlled files, not ephemeral memory.
+
+## Insight categories and routing
+
+Each discovered insight is categorized into exactly one of six types. The category determines where the knowledge lives and how it reaches other agents.
+
+| Category | What it is | Destination | Mechanism |
+| --- | --- | --- | --- |
+| **Rule** | A convention or behavioral expectation that agents must follow | Nearest applicable `AGENTS.md` | Direct edit by this skill |
+| **Decision** | An architectural choice with rationale that should be preserved | `docs/adrs/` | Delegate to `fo-idea-create-adr` via its accepted-decision fast path (no grilling) |
+| **Invariant** | A cross-workspace architectural rule that warrants DNA status | `ref(forge.yaml bindings.paths.invariantsFile)` | Record pending → suggest `fo-extract-dna` |
+| **Pattern** | A reusable code pattern or abstraction worth porting to forge | `packages/forge/` | Record pending → suggest `fo-harvest` |
+| **Operator** | A preference, communication style, or behavioral insight about the operator | `.agents/operator-profile.md` | Direct edit by this skill |
+| **Context** | Session-local knowledge with no durable home | `.agents/memory/daily/<today>.md` (default) or `MEMORY.md` (when durable); Memory DB optional mirror | Direct edit (daily log append) or curated edit (MEMORY.md); Memory DB via `create_memory` tool (optional mirror) |
+
+### Category criteria
+
+**Rule** — the insight is:
+
+- A convention agents should follow (not a one-off observation).
+- Actionable: "always do X" or "never do Y", not "we learned that...".
+- Not architectural enough for DNA (local to one workspace, or not enforceable by a command).
+- Already followed in practice but not written down.
+
+**Decision** — the insight is:
+
+- A choice between alternatives with a clear rationale.
+- Architectural in nature (package boundaries, technology selection, pattern adoption).
+- Not a cross-workspace invariant — it is a point-in-time decision that future changes may revisit.
+
+**Invariant** — the insight is:
+
+- Cross-workspace (applies to multiple apps/packages, not just one).
+- Stable (not temporary or migration-period).
+- Enforceable (a command could verify it, or it is documentation-only but permanent).
+- Not already recorded in `ref(forge.yaml bindings.paths.invariantsFile)`.
+
+**Pattern** — the insight is:
+
+- A code abstraction, utility, or convention that appears in 2+ places.
+- Genuinely portable (not project-specific).
+- Worth extracting into `packages/forge/` for reuse across projects.
+
+**Context** — the insight is:
+
+- Session-local: relevant to the current task or current state, not a durable rule.
+- Not worth a version-controlled file (too specific, too ephemeral).
+- Useful for the next agent picking up this work area.
+
+**Operator** — the insight is:
+
+- About the operator's preferences, communication style, or working rhythm (not about code or architecture).
+- Cumulative: builds a profile over time that helps the agent calibrate behavior.
+- Not a rule for all agents — it is specific to this operator.
+- Examples: "prefers concise responses", "works best in morning sessions", "dislikes long explanations", "responds well to visual summaries".
+
+## Insight filtering guidance
+
+When gathering session insights, not every observation deserves to be saved. Apply this filter before presenting the triage table:
+
+**Save as insight** — the observation is:
+
+- A convention or rule that other agents would benefit from following (Rule).
+- An architectural choice with rationale worth preserving (Decision).
+- A cross-workspace invariant that could warrant DNA status (Invariant).
+- A reusable code pattern worth porting (Pattern).
+- A preference or behavioral insight about the operator (Operator).
+- Session-local context useful for the next agent picking up this work area (Context).
+
+**Do NOT save** — the observation is:
+
+- A one-off fact with no future impact (e.g. "an RFC was skipped due to a duplicate"). These are historical events, not knowledge. They do not help future agents work better.
+- A tool quirk already documented elsewhere (check `AGENTS.md` and existing memories first).
+- A transient state that will be irrelevant by the next session (e.g. "file X was dirty at session end").
+- A bug that was found and fixed in the same session with no broader lesson.
+
+When in doubt, ask: "Would another agent working in this area make a different decision if they knew this?" If the answer is no, drop it.
+
+## Process
+
+### 1. Read preferences and shared conventions
+
+Read `PREFERENCES.md` at the repository root. Use `aiLanguage` for all communication.
+
+Read `_shared/fo-pipeline-conventions.md` for commit discipline, language policy, and recoverable error handling.
+
+### 2. Gather session insights
+
+Review the current session to identify discoveries. Use in priority order:
+
+1. **Explicit operator input** — if the operator described what they learned, use that.
+2. **Session conversation** — scan for debugging discoveries, non-obvious behaviors, convention realizations, and "we always do X" moments.
+3. **Git diff** — run `git diff HEAD` and `git log --oneline -10` to see what changed; changes may reveal patterns worth recording.
+
+For each candidate, ask: "Would another agent working in this area benefit from knowing this?" If no, drop it. If yes, proceed to categorization.
+
+**No-insights shortcut:** If zero candidates survive filtering, skip Step 3 (Categorize and present) and Step 4 (Route) entirely. Do NOT ask the operator to confirm the absence of insights — proceed directly to Step 7 (Report) with a report that states "No insights found" in the insights section. This avoids a pointless confirmation round when the session produced no durable knowledge worth capturing.
+
+### 3. Categorize and present
+
+**Language requirement (NON-NEGOTIABLE):** The triage table and all inline commentary MUST be written in `PREFERENCES.md` `aiLanguage`. The English template below is structural only — translate ALL headings, column names, labels, and prose to `aiLanguage` before presenting. Only identifiers (file paths, skill names, RFC/ADR ids) stay untranslated. Example: if `aiLanguage` is `ru`, the heading is «Сортировка инсайтов сессии», column headers are «№ | Инсайт | Категория | Назначение | Действие».
+
+Present each insight with a proposed category and routing:
+
+```
+## <Triage heading in aiLanguage>
+
+| # | <Insight> | <Category> | <Destination> | <Action> |
+| --- | --- | --- | --- | --- |
+| 1 | hydrateFromArtifacts is mandatory when steps write state | Rule | packages/AGENTS.md | Direct edit |
+| 2 | Model registry chosen over hardcoded clients | Decision | docs/adrs/ | fo-idea-create-adr (fast path) |
+| 3 | Gogol ID must not equal phase ID | Invariant | ref(forge.yaml bindings.paths.invariantsFile) | Pending → fo-extract-dna |
+| 4 | Batch AI calls for large-context models | Pattern | packages/forge/ | Pending → fo-harvest |
+| 5 | Operator prefers concise responses without code blocks | Operator | .agents/operator-profile.md | Direct edit |
+| 6 | Current pipeline state for mission X | Context | `.agents/memory/daily/` or `MEMORY.md` | Direct edit |
+```
+
+**Auto-accept (NON-NEGOTIABLE):** Every insight in the triage table is accepted and routed automatically — do NOT call `ask_user_question` to ask which insights to keep, and do not wait for any acknowledgment before proceeding to Step 4. The table gives the operator visibility into what was captured and where each insight lands; it is not a gate. When the agent is unsure about a categorization, it routes its best judgment — the operator can adjust afterwards from the report.
+
+### 4. Route each insight
+
+#### 4a. Rule → AGENTS.md
+
+For each rule insight:
+
+1. **Identify the nearest applicable `AGENTS.md`** — root, `packages/AGENTS.md`, `services/AGENTS.md`, `docs/authoring/site-composition.md`, or a workspace-specific `AGENTS.md`. Use the same hierarchy rules as `fo-doc-audit` step 2a.
+2. **Read** the target file before editing.
+3. **Add the rule** in a minimal, actionable form: "Always implement `hydrateFromArtifacts` when a step writes state fields. The engine skips `validateBeforeStart` and `run()` when artifacts are valid, so downstream steps receive empty state." Include a code reference if applicable.
+4. **Do not duplicate** rules already present in the target file. If the rule extends an existing section, append to it.
+5. **Do not create `.agents/rules/*.md`** — `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill). Rules live in `AGENTS.md` files.
+
+#### 4b. Decision → ADR
+
+Invoke `fo-idea-create-adr` via the `skill` tool in **accepted-decision fast-path mode** — that skill skips grilling when the caller explicitly states the decision is already made and supplies the justification. Signal the fast path and pass the session-derived rationale as the justification text. It creates the ADR and validates without operator questions.
+
+#### 4c. Invariant → DNA (pending)
+
+Do NOT invoke `fo-extract-dna` during session end — its contract grills the operator for every candidate and requires explicit confirmation before RFC creation, which would break the no-distraction protocol. Record a **pending routing** instead:
+
+1. Append to `.agents/memory/daily/<today>.md` under a `## Pending insight routings` heading (create the file and heading if absent): `- [HH:MM] pending → fo-extract-dna: <invariant formulation>`.
+2. List it in the Step 7 report as a pending item with the suggested follow-up command (`fo-extract-dna`) so the operator can route it interactively later.
+
+#### 4d. Pattern → forge (pending)
+
+Do NOT invoke `fo-harvest` during session end — its contract grills the operator on portability per candidate ("no silent ports"). Record a **pending routing** instead:
+
+1. Append to `.agents/memory/daily/<today>.md` under `## Pending insight routings`: `- [HH:MM] pending → fo-harvest: <pattern description>`.
+2. List it in the Step 7 report as a pending item with the suggested follow-up command (`fo-harvest`).
+
+#### 4e. Operator → operator-profile.md
+
+For each operator insight:
+
+1. **Read `.agents/operator-profile.md`** if it exists. If it does not exist, create it from the template below.
+2. **Determine the target section** based on the insight type:
+   - Communication preferences → `## Communication style`
+   - Working rhythm / session patterns → `## Working rhythm`
+   - Feedback / corrections → `## Feedback history`
+   - Emotional state / mood patterns → `## Emotional rhythm`
+   - Aesthetic preferences / creative influences → `## Aesthetic preferences`
+   - General preferences → `## Preferences`
+3. **Add the entry** in a concise form with a date stamp: `- [YYYY-MM-DD] <insight>`.
+4. **Entry expiry:** Entries in `## Emotional rhythm` and `## Feedback history` expire after 90 days unless refreshed. When adding a new entry, check existing entries in these sections:
+   - If an entry is older than 90 days and has not been refreshed, mark it as `[expired YYYY-MM-DD]` (where the date is the expiry date, not today).
+   - An entry is "refreshed" if the same insight is re-confirmed in a later session (update the date stamp).
+   - Do not delete expired entries — they remain as historical context but are marked expired.
+5. **Zugangsstufen tagging:** Each section must be tagged with an access level:
+   - `[Öffentlich]` — visible to co-creators and in developer handoffs.
+   - `[Vertraulich]` — private to the operator and the agent; NOT included in developer handoff summaries.
+   - `## Emotional rhythm` and `## Feedback history` are always `[Vertraulich]`.
+   - `## Communication style`, `## Working rhythm`, `## Aesthetic preferences`, and `## Preferences` are `[Öffentlich]` by default.
+6. **Do not include operator-profile.md contents in developer handoff summaries.** Only technical architecture, decisions, and code structure belong in handoffs.
+
+**operator-profile.md template:**
+
+```markdown
+# Operator Profile
+
+Cumulative knowledge about the operator. This file is gitignored by default to protect privacy.
+
+## Communication style [Öffentlich]
+
+- [YYYY-MM-DD] <insight>
+
+## Working rhythm [Öffentlich]
+
+- [YYYY-MM-DD] <insight>
+
+## Preferences [Öffentlich]
+
+- [YYYY-MM-DD] <insight>
+
+## Aesthetic preferences [Öffentlich]
+
+- [YYYY-MM-DD] <insight>
+
+## Feedback history [Vertraulich]
+
+- [YYYY-MM-DD] <insight>
+
+## Emotional rhythm [Vertraulich]
+
+- [YYYY-MM-DD] <insight>
+```
+
+#### 4f. Context → memory layer
+
+For each context insight, pick the destination by durability — no operator confirmation:
+
+1. **Daily log (default)** — append to `.agents/memory/daily/<today>.md` (create if absent). This is the ephemeral warm store — git-ignored, append-only. Format: `- [HH:MM] <insight>`. Redact API keys, passwords, and PII before appending.
+2. **MEMORY.md (when durable)** — if the insight is useful across sessions (not just today), append to `.agents/memory/MEMORY.md` under the most relevant section (`## Current focus`, `## Decisions in flight`, or `## Environment notes`). This is the curated hot store — versioned, so keep it concise.
+3. **Memory DB (optional mirror)** — use the `create_memory` tool to save the insight with appropriate tags. This is an optional mirror of the file-based layer, not the primary store.
+
+Files are the source of truth; Memory DB is a mirror.
+
+### Friction autopsy — registry write + recurrence flags
+
+Runs after insight routing (Step 4) and before the commit (Step 5) — every session end, no operator prompts. Friction capture is separate from insight triage: an insight is reusable knowledge; a friction is a problem + price + proposed prevention. The same observation may produce both.
+
+**a. Sweep the session against the signal checklist.** Self-report — walk the list and record every hit:
+
+- A gate or validator failed and was re-run (validate → fix → validate cycles)
+- The same command was retried with different flags before succeeding
+- A command was not known — code/docs had to be searched to discover it
+- The operator corrected a choice mid-flight («нет, не так»)
+- Documentation and code disagreed — the doc was followed first, code was the truth
+- A manual recovery was needed (reconcile → resume → re-ship, manual close)
+- Environment friction — missing tooling, RTK quirks, parallel-agent dirt in the tree
+- The agent's own error — wrong command, wrong scope, mixed commit, bad assumption
+
+Negative filter: one-off external outages (registry 502s, network blips, upstream downtime) are **not** frictions unless they expose a missing guard — a transient cause with no durable lesson appends nothing.
+
+Zero hits → append nothing; the report states «трений не было» in `aiLanguage`. Do not invent frictions to fill the registry.
+
+**b. Normalize a signature per friction.** Matching is `category` + `signature` (agent judgment). Normalize: lowercase, strip volatile tokens (dates, ids, paths, session stamps), keep the mechanism noun — "validator fired late before ship", not "QUEUE-07 fired 2026-10-29 in session x".
+
+**c. Classify into the closed category set:**
+
+| Category | Slowed by | Default artifact |
+| --- | --- | --- |
+| `tooling` | missing/inconvenient command, late gate, cryptic error | RFC draft / validator |
+| `docs` | unwritten convention, lying doc | rule in AGENTS.md / doc fix |
+| `process` | repeated cycles, manual recovery | RFC / runbook |
+| `environment` | toolchain, dev-server, parallel-session dirt | env doc / script |
+| `self` | the agent's own mistake | behavior rule / skill fix |
+
+**Escapes carry a fixture.** A friction recording a gate escape — a defect that reached a rendered page, a deploy channel, or `develop` past all gates — is not complete until the known-bad case exists as a `docs/gate-probes/<contract>/<rule>/fixture.yaml` that fails for the right reason; the catching rule or probe follows it and is proven against it. The friction entry names the fixture path in `artifacts`. Recording the escape without the fixture is allowed only as an interim state — the fixture lands in the same session that found the defect.
+
+**d. Match against the friction registry.** The store is per-record files `docs/frictions/F-NNNN.yaml` (the legacy `docs/frictions.yaml` is still read until migrated — an absent registry is empty; a stale legacy file is removed once by `rtk pnpm exec werkstatt run friction.migrate`, an operator/one-time act, never a retro step). Read the files under `docs/frictions/` — never write them by hand: every write goes through `friction.add`, which reserves the id on the shared surface (safe under parallel retro worktrees) and validates before any file lands.
+
+- **No match** → record via the command:
+
+  ```bash
+  rtk pnpm exec werkstatt run friction.add --json \
+    --category <one of the five> \
+    --signature "<normalized match phrase>" \
+    --friction "<what slowed the session — one line>" \
+    --measure "<proposed prevention + artifact type>" \
+    --session <this session's id>
+  ```
+
+  A refusal exits non-zero and writes no file — fix the named vocabulary field and re-run; never retry by editing a file.
+
+- **Match on `open`** → `friction.add --recurrence-of <F-NNNN>` (increments `recurrences`, sets `lastSeen`, writes no new record); flag it in the report as a recurrence with its proposed documents («рецидив — мера ещё не применена»).
+- **Match on `addressed`** → the prevention failed → `friction.add --recurrence-of <F-NNNN>`, then set `status: escalated` on the record file: recurrences against an already-addressed entry mean the measure did not hold — leave `measure` untouched for review and NEVER append a second docs-rule measure to an entry that already has one — the entry's `measure` must name the mechanical obligation (RFC/ADR id, docs/queues item, repo path, or backticked command token). `escalated` is a holding state: the entry returns to `addressed` only when the mechanism lands, with `measureKind` and `artifacts` updated.
+- **Match on `escalated`** → the friction recurred while its mechanical fix is still pending → `friction.add --recurrence-of <F-NNNN>`, keep `status: escalated`, and flag it in the report as a recurrence pressing on the pending mechanism («рецидив — механическая мера ещё не внедрена»). Do NOT re-escalate, do NOT change `measure` — the counter pressing on an open mechanism is the escalation ladder's backlog pressure signal.
+- A friction the same session already fixed (its measure was written into `AGENTS.md`, an ADR, or a doc during this session) may be added with `--status addressed --artifacts <paths>`.
+
+**e. Self-check the write.** Run `rtk pnpm exec werkstatt run friction.validate` after recording — a `fail` must be repaired before continuing.
+
+#### Harvest mode («разгребаем» / «трения» / "friction harvest")
+
+The same skill doubles as the harvest entry point. When the operator invokes it with a harvest phrase rather than a session-end phrase:
+
+1. Read the friction registry (`docs/frictions/F-NNNN.yaml` per-record files; the legacy `docs/frictions.yaml` only if still unmigrated); group `open` entries by category. `escalated` entries are the mechanical backlog — surface them as their own group keyed to the mechanism each `measure` names (RFC/ADR id, queue item, command token), not as new artifact proposals.
+2. Present the batch as proposed documents: per group, the prevention artifacts — RFC drafts (via the `fo-idea-create-rfc` friction fast-path), ADRs (accepted-decision fast-path), rules/doc fixes (direct instruction-layer edits).
+3. Writing happens only on «пиши» (or an explicit equivalent). Until then the batch is a proposal — plan confirmation is not an implementation command.
+4. On «пиши» execute each artifact, then flip the served entries `open → addressed` in their per-record files (`docs/frictions/F-NNNN.yaml` — a single-record edit, not a registry rewrite) with `artifacts` populated with the created paths/ids, and re-run `friction.validate`.
+5. Recurrence-flagged entries (step d) jump the queue — they appear in every retro report immediately without waiting for a harvest.
+
+**Instruction-layer write allow-list.** Under an explicit «пиши» harvest command only, this skill may directly edit: `AGENTS.md` files, `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` (canonical + synced copy together), `docs/authoring/*.md`, `.agents/operator-profile.md`, `.agents/memory/**`. Everything else — code, RFCs, ADRs — goes through the owning skills; a draft RFC is created via the `fo-idea-create-rfc` friction fast-path, never written directly.
+
+### 5. Commit
+
+Commit rule edits to `AGENTS.md` files separately from any delegated skill output (ADRs, RFCs, forge ports — those skills commit their own files).
+
+```txt
+docs: add <rule description> to <AGENTS.md path>
+
+Session retro: captured <N> rule(s) from session insights.
+```
+
+Stage only the `AGENTS.md` files this skill edited. Do not stage unrelated changes. See `_shared/fo-pipeline-conventions.md` §Commit discipline.
+
+If no rule insights were routed (all were delegated, pending, or context), skip this step — the delegated skills handle their own commits.
+
+### 6. Profile note
+
+If any operator insights were routed to `.agents/operator-profile.md`, do not open a review dialogue — the profile was already updated. Mention the file path in the Step 7 report and note that the operator may review or delete it at any time; it is their personal knowledge file.
+
+### 7. Report
+
+Present a concise summary in `aiLanguage`. **ALL labels, headings, column names, and prose MUST be translated to `aiLanguage`** — the template below is structural only. Only identifiers (file paths, skill names, RFC/ADR ids, commit hashes) stay untranslated. This is non-negotiable: an English summary when `aiLanguage` is `ru` is a violation of this skill's language contract.
+
+**Engineering Checkpoint:** The closing block follows the Engineering Checkpoint protocol defined in `_shared/fo-session-summary.md`. The agent MUST:
+
+1. **Select mode** — analyze the session's changes. If the session changed architecture, runtime flow, state machines, persistence models, or public contracts, use **full mode** (6 sections). Otherwise, use **lightweight mode** (3 sections).
+2. **Diagram selection** (full mode only) — apply the diagram selection rules table from `_shared/fo-session-summary.md` to determine if a Mermaid diagram is warranted. If no structural change warrants a diagram, explicitly state "No diagram: this session did not change system structure..."
+3. **Quality test self-check** — after composing the checkpoint, ask: "Can another engineer understand the resulting system state from this checkpoint alone, without reading the full session transcript?" If no, improve the checkpoint before presenting it.
+
+```
+## <Session Retro Summary in aiLanguage>
+
+### <Insights discovered>: <N>
+### <Insights accepted>: <M> (<auto-accepted>)
+
+| # | <Insight> | <Category> | <Routed to> | <Status> |
+| --- | --- | --- | --- | --- |
+| 1 | ... | Rule | packages/AGENTS.md | committed |
+| 2 | ... | Decision | fo-idea-create-adr (fast path) | ADR-XXXX created |
+| 3 | ... | Invariant | `.agents/memory/daily/` pending → fo-extract-dna | pending |
+| 4 | ... | Pattern | `.agents/memory/daily/` pending → fo-harvest | pending |
+| 5 | ... | Operator | .agents/operator-profile.md | committed |
+| 6 | ... | Context | `.agents/memory/` | saved |
+
+### <Pending routings>: <K> — <list each pending item with its suggested follow-up command, or "none">
+### <Delegated skills invoked>: <count>
+### <Direct edits>: <count>
+### <Commit>: <hash | none — no direct edits>
+### <Left untouched>: <N unattributed dirty files — list each as "<tree>: <path>", or "none">
+### <Pending outbound>: <N unpushed items (<counts by category>), K held — or "none" when not on the fixed branch model>
+
+### <Frictions in aiLanguage>
+<appended>: <N new registry entries, one line each with id + category>
+<recurrence flags>: <K — each flagged entry id, its open/addressed match, and the proposed documents or escalation>
+<ambient>: «Открытых трений: M (category×count, …); эскалировано: K> — the open-backlog tally by category plus the escalated mechanical-backlog count, always present; on a zero-friction session: «трений не было»
+```
+
+After the summary table, emit the **Engineering Checkpoint closing block** following the format in `_shared/fo-session-summary.md` (full or lightweight mode). This closing block IS the session-end output — it replaces any ad-hoc summary.
+
+## Relationship to other session-end skills
+
+| Skill | Question | Overlap |
+| --- | --- | --- |
+| `fo-doc-audit` | "Are existing docs accurate?" | Complementary — checks accuracy of existing docs. `fo-session-retro` captures new knowledge. Run `fo-doc-audit` first, then `fo-session-retro`. |
+| `fo-handoff` | "What does the next agent need?" | Complementary — writes a handoff doc for continuity. `fo-session-retro` captures durable knowledge. A handoff doc may reference insights captured by `fo-session-retro`. |
+
+Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-handoff`.
+
+## Constraints
+
+- **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights), `.agents/memory/**` files (for context insights and pending routings), the per-record files under `docs/frictions/` for harvest status flips (new records go through `friction.add`), and — under an explicit harvest «пиши» command only — `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` plus `docs/authoring/*.md`. All other routing is via delegation to skills that own their output.
+- **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
+- **Delegation, not duplication.** Decision insights delegate to `fo-idea-create-adr` via its accepted-decision fast path; DNA and pattern insights are recorded as pending routings for `fo-extract-dna`/`fo-harvest`, never delegated live at session end. Do not create ADRs, RFCs, or forge packages directly.
+- **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. Commits are never prompted for either: session-attributed changes commit unconditionally, unattributed files are left untouched and reported (Step 3d). The only operator-facing gate that remains inside the protocol is the unrelated non-terminal RFC status prompt (Step 4c of Pre-retro steps); the PREFERENCES.md bootstrap ask at skill start is a setup exception, not a session-end gate.
+- **No interactive heavyweight routing at session end.** `fo-extract-dna` and `fo-harvest` grill the operator by contract — record pending routings in `.agents/memory/daily/<today>.md` instead of invoking them. `fo-idea-create-adr` runs only via its documented accepted-decision fast path.
+- **Minimal edits.** Add rules in the most concise actionable form. Do not rewrite existing sections.
+- **Read before edit.** Always read the target `AGENTS.md` before editing to preserve structure and avoid duplicates.
+- **Commit only your own files.** Stage only `AGENTS.md` files this skill edited. Delegated skills commit their own output. See `_shared/fo-pipeline-conventions.md` §Commit discipline.
+- **No pauses for recoverable tool errors.** See `_shared/fo-pipeline-conventions.md` §Recoverable errors.
+- **Session summary.** End every session with the closing block defined in `_shared/fo-session-summary.md`.

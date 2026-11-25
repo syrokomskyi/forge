@@ -5,7 +5,7 @@ export default defineConfig({
     environment: "node",
     // Fixture repos must never resolve to the workspace repository.
     setupFiles: ["./vitest.setup.strip-git-env.ts"],
-    include: ["src/**/*.test.ts", "os/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "os/**/*.test.ts", "test/**/*.test.ts"],
     // The standalone extract-verify suite runs git-fixture-heavy flow and
     // trust-boundary files under arbitrary machine load; 30s trips honest
     // fixture builds (repoWithOrigin, twoIntegrated, fixFlow) before any

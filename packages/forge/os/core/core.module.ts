@@ -52,13 +52,9 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 import path from "node:path";
-import { restoreTrackedLockfile, execFileSyncAdapter } from "../../src/utils/lockfile.ts";
 import {
-  closeEvidenceIndex,
-  evidenceAnchoredGit,
-  evidenceRepoPreflight,
+  
 } from "../../src/utils/verifier-git.ts";
-import { writeFileIfChanged } from "../../src/utils/fs-idempotent.ts";
 import {
   FORGE_SKILLS,
   discoverPackSkills,
@@ -93,7 +89,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
   const { runReleasePublish } = await import("./handlers/release-publish.ts");
   const { runKnowledgeCompact } = await import("./handlers/knowledge-compact.ts");
   const { runPackageHealth } = await import("./handlers/package-health.ts");
-  const { runForgeAutonomyValidate } = await import("./handlers/forge-autonomy-validate.ts");
   const { runPublicSurfaceValidate } = await import("./handlers/public-surface.ts");
   const { runFileSizeLint } = await import("./handlers/file-size-lint.ts");
   const { runCompassDocsScaffold } = await import("../compass/handlers/compass-docs-scaffold.ts");
@@ -998,25 +993,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           },
         },
         execute: runPackageHealth,
-      },
-      {
-        name: "forge.autonomy.validate",
-        mutatesState: false,
-        // RFC-1606: the FORGE-AUTONOMY-02 strip-types arm spawns tsc — the
-        // read-only IO adapter refuses exec unless the command opts in.
-        execOnReadOnly: true,
-        contract: "forge",
-        rules: [],
-        description:
-          "Scan packages/forge/os/** for forbidden @warpgogol/werkstatt-engine imports outside os/werkstatt/. " +
-          "Enforces FORGE-AUTONOMY-01 (RFC-0940, DNA-64). @warpgogol/werkstatt-shared is exempt. " +
-          "Type-only imports (import type) are exempt.",
-        scope: "workspace",
-        acceptsAllFlag: false,
-        reads: ["packages/forge/os/**/*.ts"],
-        cacheable: false,
-        flags: {},
-        execute: runForgeAutonomyValidate,
       },
       {
         name: "forge.public-surface.validate",

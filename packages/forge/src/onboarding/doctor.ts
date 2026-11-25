@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>forge.doctor — diagnoses forge state in an existing project.
 Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
-@warpgogol/* import autonomy guard, and bindings contract (RFC-0393).</purpose>
+bindings contract (RFC-0393).</purpose>
 <non-goals>
   <item>Do not modify files — doctor is read-only diagnostics.</item>
 </non-goals>
@@ -77,10 +77,6 @@ interface DoctorCheck {
   unmappedFiles?: string[];
 }
 
-interface ForbiddenImport {
-  file: string;
-  specifier: string;
-}
 
 interface BindingValidation {
   resolved: string[];
@@ -99,26 +95,6 @@ async function pathExists(target: string, io: WorkspaceIO): Promise<boolean> {
   return io.exists(target);
 }
 
-// FORGE-AUTONOMY-01 (RFC-0940, ADR-0019): `import type` statements are exempt
-// (erased at compile time); `os/werkstatt/` is the declared werkstatt-adapter
-// boundary and may import @warpgogol/*; other `os/` dirs may not import
-// @warpgogol/werkstatt-engine but may use @warpgogol/werkstatt-shared (exempt
-// shared infrastructure); `src/` and the rest of the tree may not carry any
-// runtime @warpgogol/* import. dist/, tests dirs, and *.test.ts/*.spec.ts/
-// *.d.ts are generated or fixture surfaces, not scanned source.
-const FORBIDDEN_IMPORT_PATTERN =
-  /(?:^|\n)\s*(import\s+[^;]+?\s+from\s+|require\s*\(\s*)["'`](@warpgogol\/[^"'`]+)["'`]/g;
-
-const AUTONOMY_EXCLUDE_DIRS = new Set([
-  "node_modules",
-  "dist",
-  "tests",
-  "tests-handoff",
-  "templates",
-]);
-const AUTONOMY_EXCLUDE_SUFFIXES = [".test.ts", ".spec.ts", ".d.ts"];
-const ENGINE_SPECIFIER = "@warpgogol/werkstatt-engine";
-
 // Per-check fix hints for the pretty-output failure line — a generic
 // "run 'forge create'" hint is wrong for checks create cannot repair.
 const CHECK_FIX_HINTS: Record<string, string> = {
@@ -129,58 +105,9 @@ const CHECK_FIX_HINTS: Record<string, string> = {
   "npm-token (@warpgogol)": "configure a @warpgogol npm token in .npmrc",
   "git-branch": "rename the default branch to 'main'",
   "domain-invariants": "fix the reported invariant violations",
-  "autonomy-guard":
-    "remove the flagged @warpgogol/* imports or place them behind the os/werkstatt/ adapter boundary (FORGE-AUTONOMY-01)",
   bindings: "fix the invalid forge.yaml bindings",
   "outcome-config": "declare the outcomeBuild/outcomeServe bindings or drop the outcomeSurfaces entry",
 };
-
-function isForbiddenSpecifier(specifier: string, relToForge: string): boolean {
-  if (relToForge.startsWith("os/werkstatt/")) return false;
-  if (relToForge.startsWith("os/")) {
-    return specifier === ENGINE_SPECIFIER || specifier.startsWith(`${ENGINE_SPECIFIER}/`);
-  }
-  return true;
-}
-
-async function scanForForbiddenImports(
-  dir: string,
-  forgeRoot: string,
-  workspaceRoot: string,
-  io: WorkspaceIO,
-): Promise<ForbiddenImport[]> {
-  const violations: ForbiddenImport[] = [];
-  const entries = await io.readdir(dir).catch(() => []);
-
-  for (const entry of entries) {
-    const fullPath = join(dir, entry.name);
-
-    if (entry.isDirectory) {
-      if (AUTONOMY_EXCLUDE_DIRS.has(entry.name)) continue;
-      const sub = await scanForForbiddenImports(fullPath, forgeRoot, workspaceRoot, io);
-      violations.push(...sub);
-    } else if (
-      entry.name.endsWith(".ts") &&
-      !AUTONOMY_EXCLUDE_SUFFIXES.some((suffix) => entry.name.endsWith(suffix))
-    ) {
-      const relToForge = relative(forgeRoot, fullPath).split(sep).join("/");
-      const content = await io.readFile(fullPath).catch(() => "");
-      let match: RegExpExecArray | null;
-      const pattern = new RegExp(FORBIDDEN_IMPORT_PATTERN.source, "g");
-      while ((match = pattern.exec(content)) !== null) {
-        if (/\bimport\s+type\b/.test(match[1]!)) continue;
-        const specifier = match[2]!;
-        if (!isForbiddenSpecifier(specifier, relToForge)) continue;
-        violations.push({
-          file: relative(workspaceRoot, fullPath),
-          specifier,
-        });
-      }
-    }
-  }
-
-  return violations;
-}
 
 // ---------------------------------------------------------------------------
 // Bindings validation (RFC-0393)
@@ -1481,7 +1408,7 @@ function checkPrerequisites(prerequisites: ProfilePrerequisite[]): DoctorCheck {
 export async function runDoctor(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
-): Promise<ForgeCommandResult<{ command: string; checks: DoctorCheck[]; allPass: boolean; forbiddenImports: ForbiddenImport[]; bindings: BindingValidation; domain?: DomainReport; fixes?: DoctorFixResult[] }>> {
+): Promise<ForgeCommandResult<{ command: string; checks: DoctorCheck[]; allPass: boolean; bindings: BindingValidation; domain?: DomainReport; fixes?: DoctorFixResult[] }>> {
   const { workspaceRoot, logger, outputFormat, dryRun } = context;
   const fio = resolveIo(context.io);
   const strict = input.flags["strict"] === true;
@@ -1559,7 +1486,7 @@ export async function runDoctor(
       name: "npm-token (@warpgogol)",
       status: tokenCheck.canFetch ? "pass" : "fail",
       message: tokenCheck.canFetch
-        ? `npm token fetches @warpgogol/werkstatt-engine (${tokenCheck.registry ?? "default registry"})`
+        ? `registry fetches @warpgogol/forge (${tokenCheck.registry ?? "default registry"})`
         : tokenCheck.fixHint!,
     });
   }
@@ -1567,13 +1494,16 @@ export async function runDoctor(
   // Check git branch is 'main' (not 'master')
   checks.push(checkGitBranch(workspaceRoot));
 
-  // Check @warpgogol/* forbidden imports (autonomy guard)
+
   let forgeRoot: string;
   try {
     forgeRoot = resolveForgeRoot(workspaceRoot);
   } catch {
     forgeRoot = join(workspaceRoot, "packages", "forge");
   }
+
+  // Source-scanning checks distinguish development checkouts from immutable npm installs.
+  const forgeSourceCheckout = isForgeSourceCheckout(forgeRoot);
 
   // RFC-0640: Resolve domain report for domain-aware checks
   const domainReport = resolveDomainReport(workspaceRoot, forgeRoot);
@@ -1648,23 +1578,6 @@ export async function runDoctor(
         : `${invalidProfiles.length} profile(s) invalid (advisory): ${invalidProfiles.map((p) => p.id).join(", ")}`,
   });
 
-  // Source-scanning checks only make sense on a forge development checkout —
-  // the published tarball ships src/ and os/, but an installed package's
-  // source is immutable and a finding there is not actionable for consumers.
-  const forgeSourceCheckout = isForgeSourceCheckout(forgeRoot);
-  const forbiddenImports = forgeSourceCheckout
-    ? await scanForForbiddenImports(forgeRoot, forgeRoot, workspaceRoot, fio)
-    : [];
-  checks.push({
-    name: "autonomy-guard",
-    status: forbiddenImports.length === 0 ? "pass" : "fail",
-    message:
-      forbiddenImports.length === 0
-        ? forgeSourceCheckout
-          ? "No @warpgogol/* imports in forge source"
-          : "npm-installed forge — source autonomy check skipped"
-        : `${forbiddenImports.length} @warpgogol/* import(s) found in forge source — remove them`,
-  });
 
   // Check bindings contract (RFC-0393)
   const bindingsResult = await validateBindings(workspaceRoot, fio);
@@ -1798,7 +1711,7 @@ export async function runDoctor(
   const fixFailed = fixes.some((f) => f.action === "failed");
 
   return {
-    data: { command: "forge.doctor", checks: finalChecks, allPass, forbiddenImports, bindings: bindingsResult, domain: domainReport, ...(fix ? { fixes } : {}) },
+    data: { command: "forge.doctor", checks: finalChecks, allPass, bindings: bindingsResult, domain: domainReport, ...(fix ? { fixes } : {}) },
     exitCode: hasFails || fixFailed ? 1 : 0,
     summary: allPass
       ? "forge.doctor: all checks passed"

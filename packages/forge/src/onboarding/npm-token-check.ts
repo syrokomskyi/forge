@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Non-interactive npm-token probe for the private @warpgogol registry scope (RFC-1125) — parses .npmrc for the @warpgogol scope registry and auth token presence, probes the registry via `npm view @warpgogol/werkstatt-engine version` (injectable for tests) before pnpm install runs in forge create, re-verifies post-install in forge.doctor, and returns a structured NpmTokenCheck with an actionable fixHint on failure.</purpose>
+<purpose>Non-interactive npm-token probe for the private @warpgogol registry scope (RFC-1125) — parses .npmrc for the @warpgogol scope registry and auth token presence, probes the registry via `npm view @warpgogol/forge version` (injectable for tests) before pnpm install runs in forge create, re-verifies post-install in forge.doctor, and returns a structured NpmTokenCheck with an actionable fixHint on failure.</purpose>
 <non-goals>
   <item>Do not prompt the operator — the probe is non-interactive (create.ts forbids prompts).</item>
   <item>Do not accept tokens via CLI flags — tokens must not appear in argv/history.</item>
@@ -22,7 +22,7 @@ export interface NpmTokenCheck {
   registry: string | null;
   /** A usable token is configured — NPM_TOKEN env or a real _authToken value. */
   tokenPresent: boolean;
-  /** `npm view @warpgogol/werkstatt-engine version` succeeded from workspaceRoot. */
+  /** `npm view @warpgogol/forge version` succeeded from workspaceRoot. */
   canFetch: boolean;
   /** Actionable remediation when canFetch is false; null on success. */
   fixHint: string | null;
@@ -37,7 +37,7 @@ export interface NpmTokenProbeDeps {
 }
 
 const WARPGOGOL_SCOPE = "@warpgogol";
-const PROBE_PACKAGE = "@warpgogol/werkstatt-engine";
+const PROBE_PACKAGE = "@warpgogol/forge";
 const PROBE_TIMEOUT_MS = 15_000;
 const PLACEHOLDER_TOKENS = new Set(["YOUR_NPM_TOKEN", ""]);
 

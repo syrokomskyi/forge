@@ -1,0 +1,54 @@
+# protection-migration-map.yaml — v9 → v10 protection accounting (Werkstatt RFC-1645 AC:
+# every v9 protection either maps into the v10 contract/evidence graph or is consciously
+# removed with a recorded reason; nothing disappears silently).
+#
+# Dispositions:
+#   mapped              — protection live in v10 core already (transferred with the command surface)
+#   transitional-host   — retained in core as inert host-layout awareness; extraction to a
+#                         host-port extension at WP-4/5, host plugin registration at WP-8
+#   removed-at-wp8      — studio-private; restored by the werkstatt private plugin before
+#                         the Werkstatt migration completes (WP-8) — never exposed in practice
+#                         because products are frozen until migration completes
+#   superseded          — the v9 protection's subject no longer exists in v10; the protection
+#                         is structurally absorbed or replaced by a named v10 mechanism
+#
+# Entries seeded during the WP-2b zero-dependency excision (2026-11-25). WP-3 completes
+# the inventory against the full v9 rule corpus — nothing stays pending.
+version: 1
+entries:
+  - id: PMM-0001
+    protection: "mission.archive command + mission lockfile pruning machinery (RFC-1505/1544 incl. CX-166..CX-171 counterexample hardening)"
+    v9Home: "packages/forge/os/mission"
+    disposition: removed-at-wp8
+    reason: "studio-private operations do not transfer to the public core (RFC-1645 boundary); the werkstatt private plugin re-implements mission lifecycle against host ports before WP-8 migration"
+    restoredBy: "werkstatt private studio plugin (WP-8)"
+  - id: PMM-0002
+    protection: "open-mission scan in flow preflight/peers (RFC-1537 — unreadable manifest counts as open)"
+    v9Home: "packages/forge/os/mission/open-missions.ts"
+    disposition: transitional-host
+    reason: "scan-only layout awareness, inert in repos without missions/; absorbed into os/flow/open-missions.ts until host-port extraction"
+    restoredBy: "host-port extension (WP-4/5) + studio plugin registration (WP-8)"
+  - id: PMM-0003
+    protection: "mission-importer dirt classification in flow preflight (importer-prune/importer-materialize/foreign-open-mission shapes, RFC-1528/1544)"
+    v9Home: "packages/forge/os/flow/preflight.ts + dirty-classify.ts"
+    disposition: transitional-host
+    reason: "classification arms keyed on missions/ path shapes never fire in non-studio layouts; wholesale excision would redesign the dirt taxonomy before the host-port contract exists (WP-4). Retained inert, extraction recorded."
+    restoredBy: "host-port extension (WP-4/5) + studio plugin registration (WP-8)"
+  - id: PMM-0004
+    protection: "FORGE-AUTONOMY-01 (engine-import scan) + werkstatt-lock commands"
+    v9Home: "packages/forge/os/werkstatt"
+    disposition: superseded
+    reason: "the adapter's raison d'être was the engine boundary; no engine exists in v10. Superseded by the zero-dependency contract node (RFC-1649 AC-3 test) — a stronger, simpler guarantee."
+    restoredBy: "test:packages/forge/test/no-werkstatt-deps.test.ts (permanent contract node)"
+  - id: PMM-0005
+    protection: "evidence-allowlist parity test (forge EVIDENCE_GIT_QUERIES vs werkstatt-shared READ_ONLY_GIT_QUERIES)"
+    v9Home: "packages/forge/os/flow/tests/evidence-allowlist-parity.test.ts"
+    disposition: superseded
+    reason: "the parity target was the shared package's table; v10 core owns the single canonical evidence allowlist — parity-of-two-tables is meaningless. The underlying protection (evidence channel admits only read-only argv) is pinned by isEvidenceGitQuery and verifier-git tests, which transferred."
+    restoredBy: "canonical table in core evidence machinery (WP-3 contract graph)"
+  - id: PMM-0006
+    protection: "trust-boundary counterexample cx19 (mission-importer prune anchored preflight)"
+    v9Home: "packages/forge/os/correctness/gate/trust-boundary-cx19.test.ts"
+    disposition: removed-at-wp8
+    reason: "tests mission-importer pruning that did not transfer; the GENERIC principle (anchored preflight re-proof before mutation, CX-169) remains pinned by verifier-git tests and cx18"
+    restoredBy: "werkstatt private studio plugin (WP-8)"

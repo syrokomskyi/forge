@@ -17,14 +17,12 @@ mission source stays where the command ran.
 */
 
 import { test, expect, describe, afterEach } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
-import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../src/types.ts";
 
 import { resolveStateRoots } from "../worktree-path.ts";
 import { gitExec, initRepo } from "./helpers.ts";
@@ -35,26 +33,6 @@ const dirs: string[] = [];
 afterEach(async () => {
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
 });
-
-function makeContext(workspaceRoot: string): ForgeRuntimeContext {
-  return {
-    workspaceRoot,
-    io,
-    logger: {
-      info: () => {},
-      success: () => {},
-      warn: () => {},
-      error: () => {},
-      debug: () => {},
-    },
-    outputFormat: "json",
-    dryRun: false,
-  } as unknown as ForgeRuntimeContext;
-}
-
-function makeInput(flags: Record<string, unknown> = {}): ForgeCommandInput {
-  return { commandName: "mission.archive", flags } as unknown as ForgeCommandInput;
-}
 
 describe("resolveStateRoots (RFC-1495)", () => {
   test("single-worktree repo resolves every root to itself", async () => {

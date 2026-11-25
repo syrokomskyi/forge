@@ -6,7 +6,7 @@
   "engines": {
     "node": ">=24 <25"
   },
-  "description": "Werkstatt TypeScript plugin — generic TypeScript TurboRepo stack with best-practice validators.",
+  "description": "Forge first-party TypeScript stack plugin (scaffold — v9 implementation in git history, v10 rewrite at program WP-5).",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/syrokomskyi/werkstatt-typescript.git"
@@ -35,19 +35,15 @@
     "src"
   ],
   "scripts": {
-    "lint": "pnpm exec eslint \"src/**/*.ts\"",
-    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
-    "build": "pnpm exec tsc -p tsconfig.json --noEmit",
-    "build:check": "pnpm exec tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "build": "echo scaffold-noop",
+    "lint": "echo scaffold-noop",
+    "typecheck": "echo scaffold-noop",
+    "test": "echo scaffold-noop"
   },
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "@warpgogol/forge": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^26.5.1",
     "eslint": "^10.10.0",
