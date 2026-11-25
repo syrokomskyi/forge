@@ -380,3 +380,21 @@ Sharper framing: the extraction unit is the COMMAND, not the cluster. Wave-2 sca
 | directory listing | `workspace.list` | shallow only — recursive walk needed for gc; implement in-plugin over `list` |
 
 Pattern note: kernel `WorkspaceIO` → SDK port translation is mostly mechanical for filesystem; the result-shape translation (`KernelCommandResult` → plugin verdict) is the actual rewrite work per command.
+
+## forgeState port design sketch (option B — now evidence-backed)
+
+The decisive argument for option B already exists inside the SDK: `evidence.consult` is host-implemented (`host.hooks.evidenceConsult`) and crosses the sandbox boundary cleanly — the plugin never knows where evidence lives. The journal/flow-state space is the same shape. Sketch:
+
+```typescript
+// capability: forgeState: "none" | "read" | "readwrite" — distinct dimension,
+// never a widening of filesystem
+ctx.forgeState = {
+  journal: {
+    tail(count): Promise<JournalRecord[]>   // read grant
+    // append behind readwrite — write side deferred until a mutating consumer exists
+  },
+  // flow.state, evidence mirror reads — same pattern as they extract
+}
+```
+
+Host implementation resolves the git common dir (rev-parse or pointer-file parse) once at context construction — plugins never observe paths. Open questions for the P2 decision record: journal record typing (generic jsonl rows vs typed kinds), whether tail is line-count or time-windowed, consistency semantics when the journal rotates.
