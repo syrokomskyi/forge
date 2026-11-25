@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.1.2] — 2026-11-25
+
+### Added
+
+- **Symlink ports in the plugin SDK** — `workspace.readlink`/`symlink`/`unlink` behind the filesystem grant (readlink: read; symlink/unlink: readwrite). Deploy-style atomic swaps are link re-points and `readFile` follows links invisibly, so extraction of link-based subsystems was impossible without them (RFC-1645 WP-8 wave-2 prep).
+- Regression coverage: project-local plugin `.ts` source loading (zero-build contract) — positive through the SDK loader, negative (production strip-only refusal of non-erasable syntax) through a real node subprocess because vitest transpiles in-process and masks the constraint.
+
+### Fixed
+
+- **Security — git capability bypass closed**: the mutation check inspected `args[0]` only, so `git -c user=x commit …` slipped past enforcement. The subcommand is now parsed past value-taking global flags, dual-use commands (`tag`/`branch`/`config`) are conservative-denied (ref listing belongs to `for-each-ref` plumbing), mutator coverage extended (`add`/`stash`/`worktree`/`reflog`/`fetch`/`pull`/…), and `-C`/`--git-dir`/`--work-tree` scope redirection is refused outright for reads and writes.
+
+### Security notes
+
+- `scoped()` is a textual check: a symlink whose target leaves the workspace escapes on follow. `filesystem: readwrite` is a trusted-within-workspace grant by design (it can already overwrite `forge.yaml` and hooks) — plugins needing strict containment must not receive it. This is now documented at the enforcement site.
+
 ## [10.1.1] — 2026-11-25
 
 ### Added

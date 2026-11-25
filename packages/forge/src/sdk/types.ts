@@ -85,6 +85,10 @@ export interface WorkspaceIOPort {
   readlink(path: string): Promise<string>;
   symlink(target: string, linkPath: string): Promise<void>;
   unlink(path: string): Promise<void>;
+  readFileBytes(path: string): Promise<Uint8Array>;
+  rename(from: string, to: string): Promise<void>;
+  rm(path: string, opts?: { recursive?: boolean }): Promise<void>;
+  stat(path: string): Promise<{ size: number; mtimeMs: number; isDirectory: boolean }>;
 }
 
 export interface EvidenceAccessPort {

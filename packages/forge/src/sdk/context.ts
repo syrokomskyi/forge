@@ -10,7 +10,7 @@ spawn, no git mutation. This is auditability, not a sandbox.
 <CHANGE_SUMMARY><item>RFC-1648 (WP-5): initial capability-enforcing context.</item></CHANGE_SUMMARY>
 */
 
-import { access, mkdir, readFile, readdir, readlink, symlink, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, readlink, rename, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { dirname, resolve as pathResolve } from "node:path";
 import { promisify } from "node:util";
@@ -114,6 +114,23 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
       async unlink(path) {
         if (fsGrant !== "readwrite") deny("filesystem", `unlink with filesystem:${fsGrant}`);
         await unlink(scoped(path));
+      },
+      async readFileBytes(path) {
+        if (fsGrant === "none") deny("filesystem", "readFileBytes with filesystem:none");
+        return new Uint8Array(await readFile(scoped(path)));
+      },
+      async rename(from, to) {
+        if (fsGrant !== "readwrite") deny("filesystem", `rename with filesystem:${fsGrant}`);
+        await rename(scoped(from), scoped(to));
+      },
+      async rm(path, opts) {
+        if (fsGrant !== "readwrite") deny("filesystem", `rm with filesystem:${fsGrant}`);
+        await rm(scoped(path), { recursive: opts?.recursive ?? false, force: true });
+      },
+      async stat(path) {
+        if (fsGrant === "none") deny("filesystem", "stat with filesystem:none");
+        const st = await stat(scoped(path));
+        return { size: st.size, mtimeMs: st.mtimeMs, isDirectory: st.isDirectory() };
       },
     },
     evidence: {
