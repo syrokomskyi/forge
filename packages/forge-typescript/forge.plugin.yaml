@@ -12,4 +12,5 @@ registers:
     - dist/commands/tsconfig-validate.js
     - dist/commands/strict-mode-validate.js
     - dist/commands/package-exports-validate.js
+    - dist/commands/phantom-deps-validate.js
   skills: skills/
