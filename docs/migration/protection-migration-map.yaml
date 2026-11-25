@@ -15,6 +15,165 @@
 # Entries seeded during the WP-2b zero-dependency excision (2026-11-25). WP-3 completes
 # the inventory against the full v9 rule corpus — nothing stays pending.
 version: 1
+
+# WP-3 family inventory (canonical — mirrors werkstatt docs/forge-v10 seed, completed 2026-11-25).
+# Dispositions: mapped | removed | superseded. nodeStatus: live = expressed as a graph node
+# today; staged = transferred with the command surface, anchored to a target node family as
+# its v10 home — node-ification is program-staged (WP-4 queue integration / WP-5 plugin SDK).
+# The operator sign-off at WP-3 closure signs this accounting as the no-silent-loss instrument.
+families:
+  - id: CORR-GATE
+    disposition: mapped
+    nodeStatus: staged
+    target: core.correctness.gate
+    note: "correctness gate contour transferred; becomes graph node kinds per RFC-1646 architectural fit, enforcement shape integrates with the WP-4 queue"
+  - id: CORR-AUDIT
+    disposition: mapped
+    nodeStatus: staged
+    target: core.correctness.audit
+  - id: FLOW-INT
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.integrate
+    note: "integration preflight transferred; its enforcement shape redesigns around transactional units at WP-4"
+  - id: FLOW-PUSH
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.push
+  - id: FLOW-CUT
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.cut
+  - id: FLOW-OPEN
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.open
+  - id: FLOW-GUARD
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.guard
+  - id: FLOW-ADOPT
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.adopt
+  - id: FLOW-HOLD
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.hold
+  - id: FLOW-VER
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.versioning
+  - id: FLOW-DIS
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.discipline
+  - id: FLOW-FIX
+    disposition: mapped
+    nodeStatus: staged
+    target: core.flow.repair
+  - id: RFC-IMP
+    disposition: mapped
+    nodeStatus: staged
+    target: core.rfc.implementation
+  - id: ADR-IMP
+    disposition: mapped
+    nodeStatus: staged
+    target: core.adr.implementation
+  - id: RFC-IDX
+    disposition: mapped
+    nodeStatus: staged
+    target: core.rfc.index
+  - id: SYSTEM-TASK
+    disposition: mapped
+    nodeStatus: staged
+    target: forge-system.system.task
+    note: "multi-product coordination — transfers to the forge-system plugin surface at WP-5 per the boundary decision"
+  - id: SYSTEM-MAP
+    disposition: mapped
+    nodeStatus: staged
+    target: forge-system.system.map
+  - id: SYSTEM-VS
+    disposition: mapped
+    nodeStatus: staged
+    target: forge-system.system.versionset
+  - id: SYSTEM-PRODUCTS
+    disposition: mapped
+    nodeStatus: staged
+    target: forge-system.system.products
+  - id: SYSTEM-OUTBOX
+    disposition: mapped
+    nodeStatus: staged
+    target: forge-system.system.outbox
+  - id: PROGRAM-PACKET
+    disposition: mapped
+    nodeStatus: staged
+    target: core.program.packet
+  - id: PKG-HEALTH
+    disposition: mapped
+    nodeStatus: staged
+    target: core.package.health
+  - id: COMPASS-CS
+    disposition: mapped
+    nodeStatus: staged
+    target: core.compass.source-markup
+  - id: COMPASS-INVARIANT
+    disposition: mapped
+    nodeStatus: staged
+    target: core.compass.invariants
+  - id: COMPASS-DOC
+    disposition: mapped
+    nodeStatus: staged
+    target: core.compass.docs
+  - id: AGENT-TOOL
+    disposition: mapped
+    nodeStatus: staged
+    target: core.agent.tools
+  - id: EVIDENCE-FRESH
+    disposition: superseded
+    reason: "the v9 freshness-consult machinery guarded live mutable reads; the graph's snapshot isolation makes the read surface immutable at unit creation — freshness-at-read is meaningless when there is nothing mutable left to race (RFC-1646 part 4). The evidence-git judged channel transferred for the pre-freeze world."
+  - id: FORGE-AUTONOMY
+    disposition: superseded
+    reason: "PMM-0004 — superseded by the zero-dependency contract, live as graph node core.contract.zero-werkstatt-deps"
+    target: core.contract.zero-werkstatt-deps
+    nodeStatus: live
+  - id: GATE-CMP
+    disposition: mapped
+    nodeStatus: staged
+    target: core.gate.composition
+  - id: EC
+    disposition: removed
+    reason: "engine-side in v9 (ecosystem.commit was never forge-owned — the family appeared in the v9 forge tree only inside the dead os/werkstatt adapter). The v10 commit-governance surface is designed with the transactional queue at WP-4 — commit units are the queue's native element."
+  - id: COMMIT-GOV
+    disposition: removed
+    reason: "same as EC — engine-side commit governance; v10 home is the WP-4 queue-integrated commit unit design"
+  - id: COMMIT-FGN
+    disposition: removed
+    reason: "same as EC — foreign-file guard is commit-gate machinery, engine-owned in v9"
+  - id: V
+    disposition: mapped
+    nodeStatus: staged
+    target: core.rfc.validate
+  - id: SKILL
+    disposition: mapped
+    nodeStatus: staged
+    target: core.skill.validate
+  - id: oracle-reviews
+    disposition: mapped
+    nodeStatus: staged
+    target: core.oracle.reviews
+    note: "oracle independence is a judgement-formation property — becomes the review-substrate node kind per RFC-1646 part 5"
+  - id: probe-ratchet
+    disposition: mapped
+    nodeStatus: staged
+    target: core.oracle.probe-ratchet
+  - id: evidence-consult-serialization
+    disposition: superseded
+    reason: "RFC-1633 serialization was the v9 mitigation of a structural race; snapshot isolation eliminates the race class — there is nothing mutable left to serialize against (RFC-1646 part 4, seed note)"
+  - id: reviewed-digest-attestation
+    disposition: superseded
+    reason: "RFC-1638 digest attestation is a queue-design input, not a protection to copy (seed note) — digest invalidation on foreign integrations becomes native queue semantics at WP-4"
+
 entries:
   - id: PMM-0001
     protection: "mission.archive command + mission lockfile pruning machinery (RFC-1505/1544 incl. CX-166..CX-171 counterexample hardening) + ship-inflight inflight markers incl. degraded-mode behavior (archive.test.ts, ship-inflight.test.ts, ship-inflight-degraded.test.ts)"

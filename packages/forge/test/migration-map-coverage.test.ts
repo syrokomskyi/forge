@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { loadContractGraph } from "../src/contract/graph.ts";
-import { emitCoverageProof, parseMigrationMap, type MigrationMapEntry } from "../src/contract/migration-map.ts";
+import { emitCoverageProof, emitFamiliesCoverageProof, parseMigrationMap, parseMigrationMapFull, type MigrationMapEntry } from "../src/contract/migration-map.ts";
 import type { ContractNode } from "../src/contract/types.ts";
 
 const dirs: string[] = [];
@@ -95,5 +95,37 @@ describe("migration-map coverage proof — AC-5", () => {
     expect(mappedGaps).toEqual([]);
     expect(proof.removedCount).toBe(entries.length);
     expect(proof.complete).toBe(true);
+  });
+
+  it("WP-3 closure instrument: the real map's families are fully dispositioned — nothing pending, live claims resolve", () => {
+    const realMapPath = join(__dirname, "..", "..", "..", "docs", "migration", "protection-migration-map.yaml");
+    const { families } = parseMigrationMapFull(realMapPath);
+    expect(families.length).toBeGreaterThanOrEqual(37);
+    // The graph carrying the first live node registrations — FORGE-AUTONOMY's
+    // live claim must resolve against it.
+    const liveNodes: ContractNode[] = [
+      {
+        id: "core.contract.zero-werkstatt-deps",
+        kind: "validator",
+        owner: "core",
+        inputs: [],
+        substrate: "static",
+        severity: "blocking",
+        executorRef: "e",
+        executorVersion: "1.0.0",
+        dependsOn: [],
+        cachePolicy: "content-addressed",
+        description: "live zero-dep node",
+      },
+    ];
+    const loaded = loadContractGraph([{ pluginId: "core", nodes: liveNodes }], new Set(["e"]));
+    if (!loaded.ok) throw new Error("fixture graph failed");
+    const proof = emitFamiliesCoverageProof(families, loaded.graph);
+    expect(
+      proof.gaps.map((g) => `${g.entryId}: ${g.reason}`),
+      proof.gaps.map((g) => `${g.entryId}: ${g.reason}`).join("\n"),
+    ).toEqual([]);
+    expect(proof.complete).toBe(true);
+    expect(families.every((f) => f.disposition !== "pending")).toBe(true);
   });
 });

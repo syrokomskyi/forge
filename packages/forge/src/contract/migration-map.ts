@@ -47,6 +47,11 @@ export interface CoverageProof {
 /** Dispositions that constitute a conscious, recorded removal — never silent. */
 const REMOVAL_DISPOSITIONS = new Set(["removed-at-wp8", "superseded", "transitional-host"]);
 
+export function parseMigrationMapFull(path: string): { entries: MigrationMapEntry[]; families: MigrationFamily[] } {
+  const doc = yaml.parse(readFileSync(path, "utf8")) as { entries?: MigrationMapEntry[]; families?: MigrationFamily[] };
+  return { entries: doc.entries ?? [], families: doc.families ?? [] };
+}
+
 export function parseMigrationMap(path: string): MigrationMapEntry[] {
   const doc = yaml.parse(readFileSync(path, "utf8")) as { entries?: MigrationMapEntry[] };
   return doc.entries ?? [];
@@ -94,6 +99,74 @@ export function emitCoverageProof(entries: MigrationMapEntry[], graph: ContractG
   return {
     complete: gaps.length === 0,
     entries: entries.length,
+    mappedCount,
+    removedCount,
+    gaps,
+  };
+}
+
+export interface MigrationFamily {
+  id: string;
+  disposition: string; // mapped | removed | superseded | pending
+  nodeStatus?: string; // live | staged
+  target?: string;
+  reason?: string;
+  note?: string;
+}
+
+/**
+ * Family-granularity coverage proof (WP-3 completion instrument). Rules:
+ * nothing stays pending; removed/superseded require a recorded reason;
+ * mapped requires a named target; nodeStatus 'live' additionally requires the
+ * target node present in the graph — a live claim that does not resolve is a
+ * silent-loss inversion and fails the proof.
+ */
+export function emitFamiliesCoverageProof(
+  families: MigrationFamily[],
+  graph: ContractGraph,
+): CoverageProof {
+  const gaps: CoverageGap[] = [];
+  let mappedCount = 0;
+  let removedCount = 0;
+
+  for (const fam of families) {
+    if (!fam.id) {
+      gaps.push({ entryId: "(missing id)", reason: "family lacks id" });
+      continue;
+    }
+    if (fam.disposition === "pending" || !fam.disposition) {
+      gaps.push({ entryId: fam.id, reason: "disposition pending — nothing stays pending at WP-3 closure" });
+      continue;
+    }
+    if (fam.disposition === "removed" || fam.disposition === "superseded") {
+      if (!fam.reason || fam.reason.trim().length === 0) {
+        gaps.push({ entryId: fam.id, reason: `${fam.disposition} without a recorded reason` });
+      } else {
+        removedCount += 1;
+      }
+      continue;
+    }
+    if (fam.disposition === "mapped") {
+      if (!fam.target || fam.target.trim().length === 0) {
+        gaps.push({ entryId: fam.id, reason: "mapped without a named target node family" });
+        continue;
+      }
+      if (fam.nodeStatus === "live" && !graph.nodes[fam.target]) {
+        gaps.push({
+          entryId: fam.id,
+          reason: `claims nodeStatus live but target '${fam.target}' is not in the graph`,
+        });
+        continue;
+      }
+      mappedCount += 1;
+      continue;
+    }
+    gaps.push({ entryId: fam.id, reason: `unknown disposition '${fam.disposition}'` });
+  }
+
+  return {
+    complete: gaps.length === 0,
+    entries: families.length,
     mappedCount,
     removedCount,
     gaps,

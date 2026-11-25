@@ -21,7 +21,7 @@ import { join } from "node:path";
 
 import type { Executor } from "./evaluator.ts";
 import yaml from "yaml";
-import { emitCoverageProof, type MigrationMapEntry } from "./migration-map.ts";
+import { emitCoverageProof, emitFamiliesCoverageProof, type MigrationMapEntry, type MigrationFamily } from "./migration-map.ts";
 import { scanWerkstattDeps } from "./executors/zero-deps.ts";
 import type { ContractNode } from "./types.ts";
 import type { ContractGraph } from "./graph.ts";
@@ -73,12 +73,11 @@ export function coreExecutors(graphRef: () => ContractGraph): Record<string, Exe
       return violations.length > 0 ? { status: "fail", violations } : { status: "pass" };
     },
     [CORE_EXECUTOR_MAP_COMPLETENESS]: async ({ treeRoot }) => {
-      let entries: MigrationMapEntry[] = [];
+      let full: { entries?: MigrationMapEntry[]; families?: MigrationFamily[] };
       try {
-        const doc = yaml.parse(
+        full = yaml.parse(
           readFileSync(join(treeRoot, "docs/migration/protection-migration-map.yaml"), "utf8"),
-        ) as { entries?: MigrationMapEntry[] };
-        entries = doc.entries ?? [];
+        ) as { entries?: MigrationMapEntry[]; families?: MigrationFamily[] };
       } catch {
         return {
           status: "fail",
@@ -91,7 +90,12 @@ export function coreExecutors(graphRef: () => ContractGraph): Record<string, Exe
           ],
         };
       }
-      const proof = emitCoverageProof(entries, graphRef());
+      const entryProof = emitCoverageProof(full.entries ?? [], graphRef());
+      const familyProof = emitFamiliesCoverageProof(full.families ?? [], graphRef());
+      const proof = {
+        complete: entryProof.complete && familyProof.complete,
+        gaps: [...entryProof.gaps, ...familyProof.gaps],
+      };
       return proof.complete
         ? { status: "pass" }
         : {
