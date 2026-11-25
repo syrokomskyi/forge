@@ -76,6 +76,7 @@ import {
   pruneStaleSkillDirs,
   listFilesRecursive,
   type PruneResult,
+  writeSkillMarkerSync,
 } from "./skill-markers.ts";
 import {
   planPrettierignore,
@@ -403,6 +404,71 @@ async function syncSharedConventions(
   return { updated: ["_shared"] };
 }
 
+/**
+ * RFC-1648: sync plugin-contributed skills into the generated tree. Sources are
+ * active plugins' skillsDirs resolved through the standard SDK loader — one
+ * code path for npm and project-local species. Name conflicts with forge or
+ * pack skills skip (the first writer wins, conflict is reported, never merged).
+ */
+async function syncPluginSkills(
+  workspaceRoot: string,
+  skillsDir: string,
+  dryRun: boolean,
+  io: WorkspaceIO,
+  alreadyWritten: Set<string>,
+): Promise<{ updated: string[]; skipped: SkippedSkill[] }> {
+  const updated: string[] = [];
+  const skipped: SkippedSkill[] = [];
+  const agentsSkillsDir = path.join(workspaceRoot, skillsDir);
+  let plugins: Array<{ manifest: { id: string }; skillsDir: string | null }> = [];
+  try {
+    const { loadConsumerPlugins } = await import("../sdk/cli-bridge.ts");
+    const loaded = await loadConsumerPlugins(workspaceRoot);
+    plugins = loaded.plugins;
+  } catch {
+    return { updated, skipped };
+  }
+  for (const plugin of plugins) {
+    if (!plugin.skillsDir) continue;
+    let entries: Array<{ name: string; isDirectory: boolean }> = [];
+    try {
+      const raw = await io.readdir(plugin.skillsDir);
+      entries = raw.map((e) => ({ name: e.name, isDirectory: e.isDirectory }));
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory) continue;
+      const skillSrcDir = path.join(plugin.skillsDir, entry.name);
+      if (!(await io.exists(path.join(skillSrcDir, "SKILL.md")))) continue;
+      if (alreadyWritten.has(entry.name)) {
+        skipped.push({ name: entry.name, reason: `conflict — already provided (plugin ${plugin.manifest.id})` });
+        continue;
+      }
+      const destDir = path.join(agentsSkillsDir, entry.name);
+      if (!dryRun) {
+        const written: string[] = [];
+        const walk = async (dir: string, rel: string): Promise<void> => {
+          for (const e of await io.readdir(dir)) {
+            const r = rel ? `${rel}/${e.name}` : e.name;
+            if (e.isDirectory) await walk(path.join(dir, e.name), r);
+            else {
+              await io.mkdir(path.dirname(path.join(destDir, r)));
+              await io.copyFile(path.join(dir, e.name), path.join(destDir, r));
+              written.push(r);
+            }
+          }
+        };
+        await walk(skillSrcDir, "");
+        writeSkillMarkerSync(destDir, written);
+      }
+      alreadyWritten.add(entry.name);
+      updated.push(entry.name);
+    }
+  }
+  return { updated, skipped };
+}
+
 async function syncPackSkills(
   workspaceRoot: string,
   config: ForgeConfig,
@@ -523,9 +589,22 @@ async function reconcileGeneratedSurface(
     io,
   );
 
+  const alreadyWritten = new Set([
+    ...forgeSkillsResult.updated,
+    ...packResult.updated,
+  ]);
+  const pluginResult = await syncPluginSkills(
+    workspaceRoot,
+    config.paths.skillsDir,
+    dryRun,
+    io,
+    alreadyWritten,
+  );
+
   const currentSyncSet = new Set([
     ...forgeSkillsResult.updated,
     ...packResult.updated,
+    ...pluginResult.updated,
     ...sharedKnowledgeResult.updated,
     ...sharedConventionsResult.updated,
   ]);
@@ -565,6 +644,7 @@ async function reconcileGeneratedSurface(
     updated: [
       ...forgeSkillsResult.updated,
       ...packResult.updated,
+      ...pluginResult.updated,
       ...sharedKnowledgeResult.updated,
       ...sharedConventionsResult.updated,
     ],
@@ -573,7 +653,7 @@ async function reconcileGeneratedSurface(
       ...packResult.knowledgeConflicts,
       ...sharedKnowledgeResult.knowledgeConflicts,
     ],
-    skipped: packResult.skipped,
+    skipped: [...packResult.skipped, ...pluginResult.skipped],
     prune,
     prettierignore,
     warnings,
