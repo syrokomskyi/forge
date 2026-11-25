@@ -115,3 +115,20 @@ Execution steps:
 5. Full matrix + commit + push.
 
 State at planning: forge tip 6dcaf133; all prior waves green. Canary warpgogol-verbund cut over to 10.1.0 (WP-7 complete). Werkstatt evidence mirror integrated.
+
+## WP-5 closure: consumer plugin e2e on the real npm artifact (2026-11-25)
+
+**Artifact identity proof:** local `pnpm pack` tarball sha1 `5800beaedec4177cc72f5811419bf5e4f4aab7df` — bit-for-bit identical to the registry-advertised shasum for `@warpgogol/forge@10.1.1` (version-document endpoint). The e2e below therefore verifies the published artifact itself, not a proxy.
+
+**Regression found and fixed pre-release:** SDK error classes used constructor parameter properties — non-erasable TypeScript syntax that Node strip-only mode refuses, taking the entire CLI down in source-tree invocation (32 test failures across 5 suites). Rewritten to explicit field declarations; all SDK/integration modules verified importable under `--experimental-strip-types`; affected suites re-run green (70/70). Commit `ab1e7b7`.
+
+**E2E proof (scratch consumer `/tmp/e2e-consumer`, forge.yaml `plugins: ["@warpgogol/forge-typescript"]`, install from bit-identical tarballs):**
+
+1. Plugin loaded through the standard SDK path via the CLI bridge — no special-casing.
+2. All six validators surface as first-class CLI commands (`ts.tsconfig.validate`, `ts.strict.mode.validate`, `ts.package.exports.validate`, `ts.phantom.deps.validate`, `ts.import.boundaries.validate`, `ts.barrel.validate`) — visible in `--help`.
+3. Negative polarity: `ts.tsconfig.validate` → `fail` with TS-001 blocking violation "tsconfig.base.json missing at workspace root" — honest verdict against the real consumer tree.
+4. Positive polarity: after renaming `tsconfig.json` → `tsconfig.base.json` → `pass`.
+
+**WP-5 contract complete:** SDK, capability enforcement, static scan, lifecycle-hook runtime (beforeIntegrate veto / afterIntegrate notification), CLI bridge, plugin-skills generation, four first-party plugins published (1.0.1) — all proven on the real npm artifact.
+
+sign-off: operator delegation 2026-11-25 (session scope: full program)
