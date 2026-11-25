@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import { parse as parseYaml } from "yaml";
 
 import { createPluginContext, type ContextHostServices } from "./context.ts";
-import { LIFECYCLE_HOOKS, PluginLoadError, type CommandModule, type PluginContext, type PluginManifest } from "./types.ts";
+import { LIFECYCLE_HOOKS, PluginLoadError, type CommandModule, type HookModule, type PluginContext, type PluginManifest } from "./types.ts";
 
 /** The running core version — plugins' forgeRange is checked against this. */
 export function coreVersion(): string {
@@ -65,12 +65,7 @@ export function verifyManifest(raw: unknown, pluginDir: string): PluginManifest 
       throw new PluginLoadError("capability-unknown", `unknown capability declared: ${key}`, m.id);
     }
   }
-  const hooks = m.registers?.hooks ?? [];
-  for (const h of hooks) {
-    if (!LIFECYCLE_HOOKS.includes(h as never)) {
-      throw new PluginLoadError("manifest-invalid", `unknown lifecycle hook: ${h}`, m.id);
-    }
-  }
+  // registers.hooks entries are module paths — validated at load, not here.
   void pluginDir;
   return { schema: "forge:plugin-manifest/v1", ...m } as PluginManifest;
 }
@@ -79,6 +74,7 @@ export interface LoadedPlugin {
   manifest: PluginManifest;
   ctx: PluginContext;
   commands: CommandModule[];
+  hooks: HookModule[];
   skillsDir: string | null;
   dir: string;
 }
@@ -141,8 +137,29 @@ export async function loadPlugin(entry: string, consumerRoot: string, host: Cont
     commands.push(command);
   }
 
+  // Register lifecycle-hook modules — fail-closed: each module's declared hook
+  // must be in the closed vocabulary; duplicates within one plugin refuse.
+  const hooks: HookModule[] = [];
+  const seenHooks = new Set<string>();
+  for (const hookPath of manifest.registers.hooks ?? []) {
+    const abs = join(dir, hookPath);
+    if (!existsSync(abs)) {
+      throw new PluginLoadError("registration-refused", `hook module missing: ${hookPath}`, manifest.id);
+    }
+    const mod = (await import(pathToFileURL(abs).href)) as { default?: HookModule; hook?: HookModule };
+    const hookMod = mod.default ?? mod.hook;
+    if (!hookMod || typeof hookMod.run !== "function" || !LIFECYCLE_HOOKS.includes(hookMod.hook)) {
+      throw new PluginLoadError("registration-refused", `hook module ${hookPath} does not implement HookModule`, manifest.id);
+    }
+    if (seenHooks.has(hookMod.hook)) {
+      throw new PluginLoadError("registration-refused", `duplicate hook implementation: ${hookMod.hook}`, manifest.id);
+    }
+    seenHooks.add(hookMod.hook);
+    hooks.push(hookMod);
+  }
+
   const skillsDir = manifest.registers.skills ? join(dir, manifest.registers.skills) : null;
-  return { manifest, ctx, commands, skillsDir, dir };
+  return { manifest, ctx, commands, hooks, skillsDir, dir };
 }
 
 /** Plugin dependency resolution — refuse-on-conflict across the active set. */

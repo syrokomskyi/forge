@@ -31,6 +31,8 @@ import {
   type GitExec,
   defaultGitExec,
 } from "./gitops.ts";
+import { invokeLifecycleHook, type HookInvocationError } from "../sdk/hooks.ts";
+import type { LoadedPlugin } from "../sdk/loader.ts";
 import { acquireLease, type LeaseHandle } from "./lease.ts";
 import type { QueueStore } from "./store.ts";
 import { isTerminal, type IntegrationUnit, type QueueJournalEntry } from "./types.ts";
@@ -48,6 +50,10 @@ export interface DrainOptions {
   git?: GitExec;
   /** Test hook — a drain that evaluates without an evidence store round trip. */
   treeMaterializer?: (repoDir: string, treeDigest: string) => string;
+  /** Active plugins — lifecycle hooks fire around integration when present. */
+  plugins?: LoadedPlugin[];
+  /** Collector — afterIntegrate errors surface here (post-hoc, cannot veto). */
+  hookErrors?: HookInvocationError[];
 }
 
 export interface DrainReport {
@@ -210,6 +216,39 @@ async function processUnit(
     return;
   }
 
+  // Lifecycle veto — beforeIntegrate hooks execute against the green candidate.
+  // A throwing hook means the integration environment cannot vouch: the unit
+  // requeues under the same bounded infra semantics as evaluation failures —
+  // never a silent skip, never an unbounded hang.
+  if (options.plugins && options.plugins.length > 0) {
+    const before = await invokeLifecycleHook(options.plugins, "beforeIntegrate", {
+      unitId: unit.id,
+      data: { candidateCommit: replay.candidateCommit, governedRef },
+    });
+    if (before.errors.length > 0) {
+      unit.attempts += 1;
+      if (unit.attempts > MAX_INFRA_REQUEUE_ATTEMPTS) {
+        transition(
+          store,
+          unit,
+          {
+            status: "refused",
+            reason: {
+              nodeId: "core.integration.hooks",
+              summary: `beforeIntegrate hook failed ${unit.attempts} times: ${before.errors.map((e) => `${e.pluginId}: ${e.error}`).join("; ")}`,
+              violations: 0,
+            },
+            evidenceKey: "",
+          },
+          actor,
+        );
+        return;
+      }
+      transition(store, unit, { status: "queued" }, actor);
+      return;
+    }
+  }
+
   // Green evaluation — integrate the candidate into the governed ref (single write point).
   integrateCandidate(git, repoDir, governedRef, replay.candidateCommit);
   transition(
@@ -222,6 +261,19 @@ async function processUnit(
     },
     actor,
   );
+
+  // afterIntegrate is post-hoc notification — errors cannot veto a landed unit,
+  // so they surface loudly in the drain report instead.
+  if (options.plugins && options.plugins.length > 0) {
+    const after = await invokeLifecycleHook(options.plugins, "afterIntegrate", {
+      unitId: unit.id,
+      outcome: "integrated",
+      data: { commitSha: replay.candidateCommit, governedRef },
+    });
+    if (after.errors.length > 0) {
+      options.hookErrors = [...(options.hookErrors ?? []), ...after.errors];
+    }
+  }
 }
 
 /**

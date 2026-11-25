@@ -54,6 +54,25 @@ export interface CommandModule {
 export type LifecycleHook = "onActivate" | "onDeactivate" | "beforeIntegrate" | "afterIntegrate";
 export const LIFECYCLE_HOOKS: readonly LifecycleHook[] = ["onActivate", "onDeactivate", "beforeIntegrate", "afterIntegrate"];
 
+/**
+ * Hook module — self-describing like CommandModule: the default export names
+ * the hook it implements and carries the handler. `registers.hooks` entries are
+ * module paths relative to the plugin dir; fail-closed: the module's declared
+ * hook must be in the closed vocabulary, and duplicate hook implementations
+ * within one plugin refuse registration.
+ */
+export interface HookModule {
+  hook: LifecycleHook;
+  run(ctx: PluginContext, payload: HookPayload): Promise<void>;
+}
+
+/** Payload passed to lifecycle hooks — the integration payload carries the unit id and outcome. */
+export interface HookPayload {
+  unitId?: string;
+  outcome?: string;
+  data?: Record<string, unknown>;
+}
+
 // ---- SDK ports — the ONLY platform access surface for plugin code. ----
 
 export interface WorkspaceIOPort {
