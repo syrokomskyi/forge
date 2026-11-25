@@ -59,3 +59,21 @@ Commit `1230e8b1` (+ export wiring `302a033a`). Implementation under `packages/f
 ### First-party plugin rewrite state
 
 `packages/forge-typescript` — STARTED (commit `6c9b3d66`): v10 manifest + ts.tsconfig.validate (TS-001) ported as pure rule over SDK ports. Remaining: dist build wiring, TS-002..006 ports, loader-execution test. `forge-astro`, `forge-repo-extract`, `forge-system` — scaffolds pending the same rewrite. The v9 implementations live in git history (provenance import) for rule porting.
+
+
+## WP-5 completion — first-party plugin publication (2026-11-25)
+
+All four first-party plugins published at 1.0.0:
+
+| package | version | contents |
+|---|---|---|
+| @warpgogol/forge-typescript | 1.0.0 | TS-001..006 validators (tsconfig, import boundaries, phantom deps, package exports, strict mode, barrel subpaths) |
+| @warpgogol/forge-astro | 1.0.0 | ASTRO-001/002 (config honesty, content-collection schemas) |
+| @warpgogol/forge-system | 1.0.0 | SYS-001/002 (superfolder structure, product roster sweep) |
+| @warpgogol/forge-repo-extract | 1.0.0 | EXTRACT-001/002 (plan surfaces, provenance completeness) |
+
+All four load through the standard v10 loader with zero special-casing
+(test/first-party-plugin-e2e.test.ts, 3/3 green). `@warpgogol/werkstatt-typescript`
+deprecated on npm with a migration pointer per RFC-1648 rollout.
+Consumer-install verification pending npm staging propagation (~10 min lag
+observed on the 10.0.0 publish as well).
