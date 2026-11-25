@@ -76,3 +76,10 @@ prettier normalization required before commit; pnpm-exec json noise — use dire
 - pkill patterns matching vitest can kill the invoking shell chain — kill by exact pid, verify after.
 - Killing a matrix parent pid does NOT kill vitest workers — they reparent and keep burning CPU alongside the replacement run (the competing-matrix anomaly recurred). Kill the whole tree bottom-up or use the process group; verify with ps that exactly one tree remains.
 - Compat verification for the git hardening: all four first-party plugins declare gitMutation false and none call ctx.git — zero regression surface.
+
+## Thread-3 final: forge 10.1.2 PUBLISHED
+
+- npm publish succeeded: @warpgogol/forge@10.1.2 (carries git-capability security fix, symlink+extended fs ports, env port, .ts-loading regression coverage).
+- Matrix analysis: 5383 total / 5379 passed / 3 failed — all three explained, none a regression: (1) self-host pin — designed post-release chore, bumped to 10.1.2 in 2c118f6; (2) PKG-HEALTH-10 — my own probe literal, restructured in 774d3cd; (3) FLOW-BM-02 backmerge timeout — proven pre-existing environment flake via identical failure on pre-change tree 709b9efd, NOT caused by SDK changes. Filing as known-flake for separate investigation.
+- Version-doc endpoint propagation in progress at this writing (npm replication lag, same pattern as 10.1.1 — verify then close).
+- Self-host pin bumped 10.1.0 → 10.1.2 (post-release chore complete).
