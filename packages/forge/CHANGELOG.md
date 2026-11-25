@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.1.0] — 2026-11-25
+
+### Added
+
+- **Transactional integration queue** (Werkstatt RFC-1647): immutable units with atomic enqueue, single-logical-writer drain with boot-id-fenced leases, plumbing-only commit-chain replay, candidate-tree evaluation through the contract graph, idempotent crash recovery, poison-pill protection.
+- **Plugin SDK** (Werkstatt RFC-1648): typed PluginContext ports with runtime capability enforcement (default-deny), fail-closed loader with strict forgeRange, static capability-bypass scan, dependency-direction scan, untracked content-hashed skills generation with canonical layout resolution.
+- Export surfaces: `@warpgogol/forge/sdk`, `/sdk/context`, `/sdk/loader`, `/integration`.
+
+### Fixed
+
+- probe-batch vitest resolution through package-local bin (v10 monorepo topology).
+
 ## [10.0.0] — 2026-11-25
 
 _Clean v10 governance line (Werkstatt RFC-1645/RFC-1649): forge is now authored in its own monorepo as an autonomous, self-hosted platform — zero runtime imports of werkstatt packages, no compat shims, no re-exports. The v9 maintenance line continues in the werkstatt monorepo until consumer migration completes._
