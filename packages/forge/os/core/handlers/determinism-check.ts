@@ -13,12 +13,13 @@
 
 import { exec } from "../../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { collectFiles } from "../../../src/utils/fs.ts";
+import { byteHashFile } from "../../../src/utils/hash.ts";
 import { promisify } from "node:util";
 
 import { existsSync } from "../../../src/utils/sync-fs.ts";
 import { join, relative, dirname } from "node:path";
 import { createHash } from "node:crypto";
-import { loadWorkspaceDeps } from "../../werkstatt/handlers/workspace-deps.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -95,7 +96,6 @@ function matchesGlob(filePath: string, patterns: string[]): boolean {
 }
 
 async function computeInputHash(workspaceRoot: string, inputPatterns: string[]): Promise<string> {
-  const { collectFiles, byteHashFile } = await loadWorkspaceDeps();
   const allFiles = await collectFiles(workspaceRoot, {
     ignore: (name) =>
       name.startsWith("-") ||
@@ -292,7 +292,6 @@ export async function runDeterminismCheck(
     const absOutputPath = join(workspaceRoot, outputPath);
 
     try {
-      const { byteHashFile } = await loadWorkspaceDeps();
       await execAsync(produceCommand, { cwd: workspaceRoot, timeout: 60_000 });
       const firstHash = await byteHashFile(absOutputPath);
 

@@ -89,7 +89,7 @@ import { isFlowAdopted } from "../../flow/index.ts";
 import { renderManagedPreCommit } from "../../flow/guard-files.ts";
 import { collectFlowCheck } from "../../flow/handlers/flow-check.ts";
 import { runCompassAuditValidate } from "../../compass/handlers/compass-audit-handler.ts";
-import { restoreTrackedLockfile } from "../../mission/lockfile.ts";
+import { restoreTrackedLockfile } from "../../../src/utils/lockfile.ts";
 import { runValidate as runProgramPacketValidate } from "../../program/handlers/validate.ts";
 import { runAdrImplementStamp } from "../../adr/handlers/implement-stamp.ts";
 import { runAdrValidate } from "../../adr/handlers/validate.ts";

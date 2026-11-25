@@ -22,7 +22,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
-import { openMissionsIn } from "../../mission/open-missions.ts";
+import { openMissionsIn } from "../open-missions.ts";
 import { commonGitDir, INTEGRATE_LOCK_RELATIVE_PATH, readRegistry } from "../registry.ts";
 import { requireGit, topLevel } from "../git.ts";
 import { describeHeldLock } from "../locks.ts";

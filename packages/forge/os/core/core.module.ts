@@ -52,7 +52,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 import path from "node:path";
-import { restoreTrackedLockfile, execFileSyncAdapter } from "../mission/lockfile.ts";
+import { restoreTrackedLockfile, execFileSyncAdapter } from "../../src/utils/lockfile.ts";
 import {
   closeEvidenceIndex,
   evidenceAnchoredGit,
@@ -1071,7 +1071,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         coverage: "operator" as const,
         description:
           "Umbrella command that runs rfc.archive, adr.archive, plan.archive, " +
-          "audit.archive, session.archive, and mission.archive in sequence. " +
+          "audit.archive, and session.archive in sequence. " +
           "Passes --dry-run and --status through to all sub-commands. Not atomic " +
           "— if one sub-command fails, prior moves are not rolled back. " +
           "Owner generators of every generated artifact invalidated by the " +
@@ -1093,8 +1093,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "docs/audits/archive/**",
           "docs/sessions/*.md",
           "docs/sessions/archive/**",
-          "missions/*",
-          "missions/archive/**",
           "docs/specs/live/*.md",
           "pnpm-lock.yaml",
           // RFC-1528: owner-regen writes the generated artifacts invalidated by
@@ -1110,7 +1108,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "docs/audits/**/*.md",
           "docs/sessions/**/*.md",
           "docs/specs/live/*.md",
-          "missions/**",
         ],
         cacheable: false,
         flags: {
@@ -1160,7 +1157,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           const { runPlanArchive } = await import("../plan/handlers/archive.ts");
           const { runAuditArchive } = await import("../audit/handlers/archive.ts");
           const { runSessionArchive } = await import("../session/handlers/archive.ts");
-          const { runMissionArchive } = await import("../mission/handlers/archive.ts");
 
           type ArchiveHandler = (
             input: ForgeCommandInput,
@@ -1173,7 +1169,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             { name: "plan.archive", fn: runPlanArchive as ArchiveHandler },
             { name: "audit.archive", fn: runAuditArchive as ArchiveHandler },
             { name: "session.archive", fn: runSessionArchive as ArchiveHandler },
-            { name: "mission.archive", fn: runMissionArchive as ArchiveHandler },
           ];
 
           for (const { name: cmdName, fn } of subCommands) {
@@ -1304,51 +1299,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             }
           }
 
-          // RFC-1505: post-loop lockfile restore — safety net for mission.archive's
-          // own restore. Only mission moves run `pnpm install` and can churn the
-          // lockfile; gating on them alone means an rfc/adr/plan-only archive run
-          // never touches a locally edited pnpm-lock.yaml. Restore HEAD bytes
-          // instead of staging — mission churn is never committed.
-          const missionData = results["mission.archive"] as { moved?: unknown[] } | undefined;
-          const missionMoved = Array.isArray(missionData?.moved) ? missionData.moved.length : 0;
-          if (!dryRun && missionMoved > 0) {
-            try {
-              const restored = await restoreTrackedLockfile(routedContext.workspaceRoot, {
-                ...execFileSyncAdapter(),
-                writeFile: async (target, content) => {
-                  await writeFileIfChanged(target, content);
-                },
-              });
-              if (restored) {
-                // RFC-1602 (F-0245): index-side counterpart — the restore put
-                // HEAD back on disk; without unstaging, the pre-restore prune
-                // stays staged and the lockfile sits MM. Anchored mutation:
-                // ambient exec inherits session GIT_* and could reset a
-                // foreign index (CX-170).
-                const lockPreflight = await evidenceRepoPreflight(routedContext.workspaceRoot);
-                if (lockPreflight !== null) {
-                  try {
-                    await evidenceAnchoredGit(
-                      routedContext.workspaceRoot,
-                      ["reset", "-q", "--", "pnpm-lock.yaml"],
-                      { preflight: lockPreflight },
-                    );
-                  } finally {
-                    closeEvidenceIndex(lockPreflight);
-                  }
-                }
-                if (outputFormat === "pretty") {
-                  logger.info("  docs.archive: restored pnpm-lock.yaml to HEAD (safety net)");
-                }
-              }
-            } catch (refreshErr) {
-              if (outputFormat === "pretty") {
-                logger.warn(
-                  `  docs.archive: lockfile safety-net restore failed — run 'pnpm install' manually: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
-                );
-              }
-            }
-          }
+
 
           // ── RFC-1602 (F-0212): owner-regen is DEFERRED to the integrate
           // fold — archive returns in seconds; flow.integrate regenerates the

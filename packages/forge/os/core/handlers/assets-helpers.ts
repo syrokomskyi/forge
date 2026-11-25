@@ -13,7 +13,8 @@
 
 import { join, relative, extname } from "node:path";
 import { ambientIo } from "../../../src/utils/io.ts";
-import { loadWorkspaceDeps } from "../../werkstatt/handlers/workspace-deps.ts";
+import { collectFiles } from "../../../src/utils/fs.ts";
+import { byteHashFile } from "../../../src/utils/hash.ts";
 import type { ProfileAsset, ProfileAssetType } from "../../../src/profiles/profile-schema.ts";
 
 // Ambient default for helper fns without a context param — handlers override
@@ -43,7 +44,6 @@ export async function scanAssets(
   assetsConfig: ProfileAsset,
   options: { dryRun?: boolean; typeFilter?: string } = {},
 ): Promise<AssetEntry[]> {
-  const { collectFiles, byteHashFile } = await loadWorkspaceDeps();
   const assetsDir = join(workspaceRoot, assetsConfig.dir);
   const allFiles = await collectFiles(assetsDir, {
     ignore: (name) => name.startsWith("-") || name.startsWith("old-") || name === ".DS_Store",
@@ -92,8 +92,6 @@ export async function extractReferences(
   compositionExtensions: string[],
 ): Promise<Map<string, string[]>> {
   const refMap = new Map<string, string[]>();
-
-  const { collectFiles } = await loadWorkspaceDeps();
   const allFiles = await collectFiles(workspaceRoot, {
     extensions: compositionExtensions,
     ignore: (name) =>

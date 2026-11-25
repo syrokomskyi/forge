@@ -16,6 +16,8 @@
 
 import { join, basename, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { collectFiles } from "../../../src/utils/fs.ts";
+import { byteHashFile } from "../../../src/utils/hash.ts";
 import { createHash } from "node:crypto";
 import type {
   ForgeCommandInput,
@@ -23,7 +25,6 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { resolveActiveProfile, resolveLifecycleFlags } from "./profile-resolve.ts";
-import { loadWorkspaceDeps } from "../../werkstatt/handlers/workspace-deps.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type { ProfileRelease } from "../../../src/profiles/profile-schema.ts";
 
@@ -76,7 +77,6 @@ async function findBuiltArtifacts(
   produceOutput?: string,
 ): Promise<string[]> {
   if (produceOutput) {
-    const { collectFiles } = await loadWorkspaceDeps();
     const outputPattern = produceOutput.replace("{composition}", "*");
     const basePattern = basename(outputPattern);
     const isGlob = basePattern.includes("*");
@@ -102,7 +102,6 @@ async function findBuiltArtifacts(
     );
     return files.filter((f) => regex.test(basename(f)));
   }
-  const { collectFiles } = await loadWorkspaceDeps();
   const distDir = join(workspaceRoot, "dist");
   return collectFiles(distDir, {
     extensions,
@@ -218,7 +217,6 @@ export async function runReleasePrepare(
       let size = 0;
 
       if (!dryRun) {
-        const { byteHashFile } = await loadWorkspaceDeps();
         hash = await byteHashFile(builtFile);
         const stats = await io.stat(builtFile);
         size = stats.size;

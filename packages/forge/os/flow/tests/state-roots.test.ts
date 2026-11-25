@@ -27,7 +27,6 @@ import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../src/types.ts";
 
 import { resolveStateRoots } from "../worktree-path.ts";
-import { runMissionArchive } from "../../mission/handlers/archive.ts";
 import { gitExec, initRepo } from "./helpers.ts";
 
 const io = ambientIo;
@@ -100,28 +99,4 @@ describe("resolveStateRoots (RFC-1495)", () => {
     });
   });
 
-  test("mission.archive run in a session worktree lands in the primary archive", async () => {
-    const repo = await initRepo({ prefix: "state-roots-" });
-    dirs.push(repo);
-    const wt = join(dirname(repo), `${basename(repo)}@session-y`);
-    const add = await gitExec(repo, ["worktree", "add", "-b", "session-y", wt]);
-    expect(add.exitCode).toBe(0);
-    dirs.push(wt);
-
-    // A closed mission exists in the session worktree only.
-    const missionId = "acme-m000001";
-    const missionDir = join(wt, "missions", missionId);
-    await mkdir(missionDir, { recursive: true });
-    await writeFile(join(missionDir, "mission.yaml"), `missionId: ${missionId}\nstate: closed\n`);
-
-    const result = await runMissionArchive(makeInput(), makeContext(wt));
-    expect(result.exitCode ?? 0).toBe(0);
-
-    // Durable target: the primary's missions/archive/closed/, never the wt's.
-    expect(existsSync(join(repo, "missions", "archive", "closed", missionId, "mission.yaml"))).toBe(
-      true,
-    );
-    expect(existsSync(join(wt, "missions", "archive"))).toBe(false);
-    expect(existsSync(missionDir)).toBe(false);
-  });
 });

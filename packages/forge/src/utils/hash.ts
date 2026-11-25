@@ -23,8 +23,13 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 */
 
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 export function byteHash(bytes: Uint8Array | string): string {
   const input = typeof bytes === "string" ? Buffer.from(bytes, "utf8") : bytes;
   return `sha256:${createHash("sha256").update(input).digest("hex")}`;
+}
+
+export async function byteHashFile(absPath: string): Promise<string> {
+  return byteHash(await readFile(absPath));
 }

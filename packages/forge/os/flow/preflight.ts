@@ -35,7 +35,7 @@ import type {
 } from "../../src/types.ts";
 import { loadLiveCommandInventory } from "../../src/utils/command-inventory.ts";
 import { isGeneratedContent, isGeneratedPathName, REGEN_FLAGS } from "../core/archive-regen.ts";
-import { openMissionsIn } from "../mission/open-missions.ts";
+import { openMissionsIn } from "./open-missions.ts";
 import {
   classifyDirtyPath,
   FOREIGN_PRIMARY_DIRT_HINT,
