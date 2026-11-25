@@ -450,3 +450,13 @@ export default {
 ```
 
 Translation rules: (1) `context.io.X` → `ctx.workspace.X` one-to-one except `readSymlinkBasename` which becomes direct `readlink`; (2) `exitCode: 0/1` → `status: pass/fail` with violations carried in `data` when the kernel shape embedded them; (3) `nextSteps` drop — plugin results are machine-consumed by the CLI bridge, operator guidance lives in `message`; (4) absolute-path helpers (`currentSymlinkPath(root)`) become root-relative literals because the SDK sandbox re-roots anyway. Estimated per-command effort: small — the largest deploy file is 138 lines.
+
+## Wave-2 first extraction — PARITY PROVEN (2026-11-26)
+
+studio.deploy.status extracted and verified in the wave-2 session worktree:
+
+- **semantic proof**: readlink resolution through the 10.1.2 host — fixture symlink current→abcdef1234567890 resolved, manifest gitSha deadbeefcafe parsed, previous link read
+- **parity EXACT**: engine deploy.status and studio.deploy.status produce identical verdicts on the same fixture (current/sha/previous byte-equal) — the WP-9 dark-run quality bar holds for extraction
+- translation effort confirmed mechanical: 83-line kernel handler → ~60-line plugin module in one pass, no design decisions needed beyond the documented pattern
+- host-version sensitivity discovered: the plugin needs host 10.1.2 at RUNTIME (readlink port) — plugin type-only imports mean version coupling is a host-runtime concern, not a compile-time one; the forgeRange manifest field is the enforcement surface
+- npm two-stage replication reconfirmed: version-doc 200 preceded tarball 200 by ~15 minutes; publish pipeline staging showed 409-on-retry as the tell that the first publish landed server-side
