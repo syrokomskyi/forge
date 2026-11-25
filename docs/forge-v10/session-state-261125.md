@@ -43,3 +43,34 @@ prettier normalization required before commit; pnpm-exec json noise — use dire
 2. forgeState port design decision (option B direction) — blocks journal-dependent extraction.
 3. Wave-2 scan: enumerate deploy-cluster commands expressible against current ports.
 4. verbund bump: warpgogol-verbund lockfile resolved 10.1.0 — should track ^10.1.1 for the inert-ignore fix (minor).
+
+## Thread-3 update (2026-11-25 late, post-midnight UTC)
+
+### Closed this thread
+- **WP-8 P1 COMPLETE** — werkstatt develop `439e7133c` carries both scaffold commits; worktree/branch cleaned. Post-integration smoke: `studio.journal.tail` reads the real journal in primary (total: 1026 records) — semantic analysis confirmed: primary works, worktrees degrade until forgeState port.
+- **T-0023** in verbund queue (pipelines plugin adoption, sanctioned path).
+- **forge 10.1.2 release prep complete** — changelog + version bump committed (`e2bc2b6`+`653b94e`), final matrix running on `653b94e`.
+
+### forge develop additions since 10.1.1 (all in 10.1.2)
+1. `f667c98` — regression test: .ts source loading contract (positive + subprocess negative).
+2. `a3c627c` — SECURITY: git capability bypass closed (global-flag indirection, dual-use conservative denial, scope redirection refusal).
+3. `1e491d4` — symlink ports (readlink/symlink/unlink).
+4. `e2bc2b6` — extended fs ports (readFileBytes/rename/rm/stat) + release prep.
+5. `653b94e` — env port enforcing envKeys allowlist.
+6. Inventory: wave-2 capability surface COMPLETE for deploy cluster; translation pattern reference concrete; journal typing measured (event discriminator).
+
+### In flight
+- **Final matrix on `653b94e`** (`/tmp/matrix-1012.json` output) — gate for 10.1.2 publish. SDK freeze self-imposed until matrix completes.
+- On green: `npm publish` 10.1.2, verify version-document endpoint, record evidence.
+
+### Next session entry points (priority order)
+1. Publish 10.1.2 if matrix green (or diagnose failures).
+2. WP-8 wave-2: deploy extraction into werkstatt-studio — mechanical per the translation pattern; first command `studio.deploy.status` (pure read), then swap/rollback pair, gc, verify, build last (envKeys-sensitive). Each extraction is a werkstatt flow session with integrate cycle.
+3. forgeState port implementation when journal-consuming extraction begins (wave-3: fleet/sichtpass/hygiene) — design sketch + journal typing already in inventory.
+4. First-party plugins peerDep note: PluginContext type additions are additive-only (new port fields) — non-breaking for 1.0.2 plugins.
+
+### Key operational facts
+- werkstatt integrate gates run tens of minutes; commit gates about 10 min — detached + poll is the only sane pattern.
+- Direct git commits in werkstatt are blocked by flow-guard — everything through ecosystem.commit.
+- flow.open sweeps untracked files into the session worktree (observed in verbund — files vanished from primary, appeared in worktree).
+- pkill patterns matching vitest can kill the invoking shell chain — kill by exact pid, verify after.
