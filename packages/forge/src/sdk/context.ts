@@ -10,7 +10,7 @@ spawn, no git mutation. This is auditability, not a sandbox.
 <CHANGE_SUMMARY><item>RFC-1648 (WP-5): initial capability-enforcing context.</item></CHANGE_SUMMARY>
 */
 
-import { access, mkdir, readFile, readdir, readlink, rename, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, readFile, readdir, readlink, rename, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { dirname, resolve as pathResolve } from "node:path";
 import { promisify } from "node:util";
@@ -53,6 +53,32 @@ export function gitSubcommand(args: string[]): string | undefined {
     return a;
   }
   return undefined;
+}
+
+/* Resolve the git COMMON dir without spawning git: in a primary checkout .git is the
+   dir itself; in a worktree it is a pointer file (`gitdir: <common>/worktrees/<name>`)
+   and the common dir is two levels up. Returns null when no git state exists. */
+export async function resolveGitCommonDir(workspaceRoot: string): Promise<string | null> {
+  const dotGit = pathResolve(workspaceRoot, ".git");
+  try {
+    const st = await lstat(dotGit);
+    if (st.isDirectory()) return dotGit;
+    if (!st.isFile()) return null;
+  } catch {
+    return null;
+  }
+  try {
+    const content = await readFile(dotGit, "utf8");
+    const m = content.match(/^gitdir:\s*(.+)$/m);
+    if (!m) return null;
+    const gitdirPath = pathResolve(workspaceRoot, m[1].trim());
+    // <common>/worktrees/<name> — strip the two trailing segments.
+    const parts = gitdirPath.split("/").filter((p) => p.length > 0);
+    if (parts.length < 3) return null;
+    return "/" + parts.slice(0, -2).join("/");
+  } catch {
+    return null;
+  }
 }
 
 /** Build a capability-enforcing PluginContext for one activated plugin. */
@@ -189,6 +215,43 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
         if (!caps.network) deny("network", `fetch refused: ${url}`);
         const res = await fetch(url, init);
         return { status: res.status, body: await res.text() };
+      },
+    },
+    forgeState: {
+      journal: {
+        async tail(count) {
+          if ((caps.forgeState ?? "none") === "none") deny("forgeState", "journal.tail with forgeState:none");
+          const common = await resolveGitCommonDir(host.workspaceRoot);
+          if (!common) return [];
+          const journalPath = pathResolve(common, "forge", "journal.jsonl");
+          let text: string;
+          try {
+            text = await readFile(journalPath, "utf8");
+          } catch {
+            return [];
+          }
+          const lines = text.split("\n").filter((l) => l.trim().length > 0);
+          const records = [];
+          for (const line of lines.slice(-count)) {
+            try {
+              records.push(JSON.parse(line));
+            } catch {
+              records.push({ event: "torn-line" });
+            }
+          }
+          return records;
+        },
+        async size() {
+          if ((caps.forgeState ?? "none") === "none") deny("forgeState", "journal.size with forgeState:none");
+          const common = await resolveGitCommonDir(host.workspaceRoot);
+          if (!common) return 0;
+          try {
+            const text = await readFile(pathResolve(common, "forge", "journal.jsonl"), "utf8");
+            return text.split("\n").filter((l) => l.trim().length > 0).length;
+          } catch {
+            return 0;
+          }
+        },
       },
     },
     env: {

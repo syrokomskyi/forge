@@ -23,6 +23,9 @@ export interface PluginManifest {
     processSpawn?: boolean;
     gitMutation?: boolean;
     envKeys?: string[];
+    /* forge's own state space (.git/forge/) lives outside the workspace sandbox in
+       worktrees — access is a distinct grant, never a widening of filesystem. */
+    forgeState?: "none" | "read";
   };
   registers: {
     commands?: string[];
@@ -138,6 +141,29 @@ export interface PluginContext {
   log: LoggerPort;
   paths: PathResolverPort;
   env: EnvPort;
+  forgeState: ForgeStatePort;
+}
+
+/* The journal record shape is open-ended by design — the flow machinery evolves
+   the schema; the measured discriminator is `event` (never `kind`). */
+export interface JournalRecord {
+  at?: string;
+  event?: string;
+  branch?: string;
+  sha?: string;
+  detail?: string;
+  [key: string]: unknown;
+}
+
+/* Host-implemented reads of forge's own state space — plugins never observe
+   gitdir layout, matching the evidence.consult pattern. */
+export interface ForgeStatePort {
+  journal: {
+    /* Last count records, oldest-first; empty when no journal exists. */
+    tail(count: number): Promise<JournalRecord[]>;
+    /* Total line count — cheaper than reading when only existence matters. */
+    size(): Promise<number>;
+  };
 }
 
 /* Env access is allowlist-enforced: the manifest's envKeys declares exactly which
