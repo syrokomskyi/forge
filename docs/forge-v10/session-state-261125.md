@@ -83,3 +83,10 @@ prettier normalization required before commit; pnpm-exec json noise — use dire
 - Matrix analysis: 5383 total / 5379 passed / 3 failed — all three explained, none a regression: (1) self-host pin — designed post-release chore, bumped to 10.1.2 in 2c118f6; (2) PKG-HEALTH-10 — my own probe literal, restructured in 774d3cd; (3) FLOW-BM-02 backmerge timeout — proven pre-existing environment flake via identical failure on pre-change tree 709b9efd, NOT caused by SDK changes. Filing as known-flake for separate investigation.
 - Version-doc endpoint propagation in progress at this writing (npm replication lag, same pattern as 10.1.1 — verify then close).
 - Self-host pin bumped 10.1.0 → 10.1.2 (post-release chore complete).
+
+## Thread-4 update (2026-11-26 early)
+
+- **forge 10.1.2 FULLY PROPAGATED** — tarball 200 after staging delay (~35 min total; the 409-on-republish is the tell the first publish landed server-side).
+- **wave-2 first extraction LANDED**: studio.deploy.status in werkstatt develop (a54569734 + rebase regen 2c559b5fc), worktree cleaned. Exact parity proven before commit.
+- **forgeState port IMPLEMENTED** in forge develop (bb9dc6a) — option B, 8/8 tests including decisive worktree boundary proof. Ships with next minor.
+- npm two-stage replication: version-doc 200 preceded tarball 200 by ~15 min; pnpm install fails on tarball 404 mid-window — sequence installs after tarball replication.
