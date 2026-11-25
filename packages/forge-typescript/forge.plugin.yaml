@@ -13,4 +13,6 @@ registers:
     - dist/commands/strict-mode-validate.js
     - dist/commands/package-exports-validate.js
     - dist/commands/phantom-deps-validate.js
+    - dist/commands/import-boundaries-validate.js
+    - dist/commands/barrel-validate.js
   skills: skills/
