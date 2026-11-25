@@ -689,8 +689,8 @@
         "default": "./dist/os/adversarial/adversarial.module.js"
       },
       "./sdk": {
-        "types": "./dist/sdk/types.d.ts",
-        "default": "./dist/sdk/types.js"
+        "types": "./dist/src/sdk/types.d.ts",
+        "default": "./dist/src/sdk/types.js"
       },
       "./sdk/context": {
         "types": "./dist/sdk/context.d.ts",

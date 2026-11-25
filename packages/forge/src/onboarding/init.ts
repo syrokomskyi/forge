@@ -35,6 +35,7 @@ import { resolveWorkspaceTypes } from "./workspace-discovery.ts";
 import { defaultForgeConfig, loadForgeConfig, resolveForgeRoot, type ForgeConfig } from "../config/forge-config.ts";
 import { listStackProfiles, detectStack } from "../profiles/stack-profile.ts";
 import { scaffoldTrustBoundary } from "./trust-boundary.ts";
+import { ensureGitignoreEntry } from "../utils/gitignore-entry.ts";
 
 export interface SkippedSkill {
   name: string;
@@ -271,6 +272,9 @@ export function runInit(
   }
 
   // 3. Copy forge skills to .agents/skills/<name>/ for IDE discovery
+  // RFC-1648: the skills tree is a generated view — untracked by construction,
+  // so the writer self-ensures gitignore coverage (nothing tracked to drift).
+  ensureGitignoreEntry(workspaceRoot, `${config.paths.skillsDir}/`);
   const agentsSkillsDir = path.join(workspaceRoot, config.paths.skillsDir);
   for (const skill of FORGE_SKILLS) {
     const srcPath = path.join(forgeRoot, skill.path);

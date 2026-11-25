@@ -8,3 +8,8 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 *.tgz
+.agents/skills/
+
+# forge-agent-memory
+.agents/memory/daily/
+# /forge-agent-memory

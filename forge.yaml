@@ -14,3 +14,19 @@ paths:
   specsDir: docs/specs
   skillsDir: .agents/skills
   sessionsDir: docs/sessions
+forge:
+  syncedVersion: 10.1.0
+policy:
+  mutable:
+    - project
+    - forge
+    - moves
+  additive:
+    - bindings
+    - paths
+    - loopMetrics
+  freezeFiles:
+    - hooks/**
+    - .github/workflows/**
+    - .github/CODEOWNERS
+    - .forge/pinned.yaml

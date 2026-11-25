@@ -48,6 +48,7 @@ scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
 </CHANGE_SUMMARY>
 */
 
+import { ensureGitignoreEntry } from "../utils/gitignore-entry.ts";
 import type { WorkspaceIO } from "../types.ts";
 import { resolveIo } from "../utils/io.ts";
 import { hasGeneratedMarker, mergeEditableGenerated } from "../utils/index.ts";
@@ -282,6 +283,8 @@ async function syncForgeSkills(
 ): Promise<{ updated: string[]; knowledgeConflicts: string[] }> {
   const updated: string[] = [];
   const knowledgeConflicts: string[] = [];
+  // RFC-1648: generated view — untracked by construction (see init.ts).
+  if (!dryRun) ensureGitignoreEntry(workspaceRoot, `${skillsDir}/`);
   const agentsSkillsDir = path.join(workspaceRoot, skillsDir);
 
   for (const skill of FORGE_SKILLS) {
