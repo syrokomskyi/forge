@@ -18,6 +18,7 @@ For the full commit history, see the [GitHub releases page](https://github.com/s
 ### Fixed
 
 - `./sdk` publish export paths corrected for the `dist/src/` build layout.
+- SDK error classes rewritten to erasable syntax — constructor parameter properties broke Node strip-only mode, taking the entire CLI down in source-tree invocation (32 test failures across 5 suites); all SDK/integration modules now verified importable under `--experimental-strip-types`.
 - Inert ignore-rule exclusion: `.gitignore` files inside ignored directories (npm packages ship them) no longer count as session-authored dirt in FLOW dirty classification — git never reads them; the CX-142 protection is preserved for visible paths.
 
 ## [10.1.0] — 2026-11-25

@@ -132,23 +132,27 @@ export interface PluginContext {
 
 /** Typed incompatibility error — fail-closed, no degraded modes. */
 export class PluginLoadError extends Error {
+  readonly kind: "forgerange-violation" | "manifest-invalid" | "capability-unknown" | "dependency-conflict" | "registration-refused";
+  readonly pluginId?: string;
   constructor(
-    public readonly kind: "forgerange-violation" | "manifest-invalid" | "capability-unknown" | "dependency-conflict" | "registration-refused",
+    kind: "forgerange-violation" | "manifest-invalid" | "capability-unknown" | "dependency-conflict" | "registration-refused",
     message: string,
-    public readonly pluginId?: string,
+    pluginId?: string,
   ) {
     super(message);
     this.name = "PluginLoadError";
+    this.kind = kind;
+    this.pluginId = pluginId;
   }
 }
 
 export class CapabilityViolation extends Error {
-  constructor(
-    public readonly capability: string,
-    public readonly pluginId: string,
-    detail: string,
-  ) {
+  readonly capability: string;
+  readonly pluginId: string;
+  constructor(capability: string, pluginId: string, detail: string) {
     super(`capability violation: plugin "${pluginId}" has no ${capability} grant — ${detail}`);
     this.name = "CapabilityViolation";
+    this.capability = capability;
+    this.pluginId = pluginId;
   }
 }
