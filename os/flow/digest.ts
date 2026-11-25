@@ -20,11 +20,11 @@ stay empty by construction.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close r20 counterexamples CX-173 through CX-177</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <item>RFC-1633: review round 1 — digest envInputs, package-wide bestEffort scan, holder command, serialized standalone preflight</item>
   <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
   <item>RFC-1638: review round 1 — payload preimage binding, fail-closed coverage scan, FLOW-PUSH-15</item>
+  <item>RFC-1643: committed verifier-review baseline for flow.push</item>
   <history>RFC-1491, RFC-1498, RFC-1503, RFC-1580, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -950,8 +950,10 @@ export async function observeDigestInputs(
     };
     const [head, developLocal, mainLocal, developRemote, mainRemote] = await Promise.all([
       revParse(repoRoot, io, "HEAD"),
-      revParse(repoRoot, io, "develop"),
-      revParse(repoRoot, io, "main"),
+      // RFC-1643: fully qualified — a shadow `refs/tags/develop` or
+      // `refs/develop` wins a bare-name lookup and would plant the tip.
+      revParse(repoRoot, io, "refs/heads/develop"),
+      revParse(repoRoot, io, "refs/heads/main"),
       revParse(repoRoot, io, "refs/remotes/origin/develop"),
       revParse(repoRoot, io, "refs/remotes/origin/main"),
     ]);
@@ -1129,7 +1131,9 @@ export async function collectDigest(
   let preflight: EvidencePreflight | null;
   try {
     preflight = await withEvidenceConsultLock(repoRoot, { command: "flow.digest preflight" }, () =>
-      evidencePreflight(repoRoot),
+      // RFC-1644: diagnostic-only — read for refusedKeys/shapeViolations,
+      // never armed against, so the worktree baseline is skipped.
+      evidencePreflight(repoRoot, undefined, { worktreeSurface: "skip" }),
     );
   } catch (error) {
     if (error instanceof LockTimeoutError) {
@@ -1339,8 +1343,11 @@ export async function collectDigest(
   // branch — the strictly stronger judgment.
   const fetched = false;
 
-  const developLocal = await revParse(repoRoot, io, "develop");
-  const mainLocal = await revParse(repoRoot, io, "main");
+  // RFC-1643: branch tips resolve fully qualified — git's bare-name order
+  // (`refs/<name>`, `refs/tags/<name>`, then `refs/heads/<name>`) lets a
+  // shadow ref plant an unintegrated commit as the reviewed tip.
+  const developLocal = await revParse(repoRoot, io, "refs/heads/develop");
+  const mainLocal = await revParse(repoRoot, io, "refs/heads/main");
   // The "remote" tips are always the session-mutable tracking refs —
   // verified remote tips cannot exist (CX-132). A planted
   // `refs/remotes/origin/*` can hide commits from the tail exactly like
@@ -1355,9 +1362,11 @@ export async function collectDigest(
   const developTailRead =
     developLocal === null
       ? []
-      : await unpushedCommits(repoRoot, io, "develop", developRemote, false, null);
+      : await unpushedCommits(repoRoot, io, developLocal, developRemote, false, null);
   const mainTailRead =
-    mainLocal === null ? [] : await unpushedCommits(repoRoot, io, "main", mainRemote, false, null);
+    mainLocal === null
+      ? []
+      : await unpushedCommits(repoRoot, io, mainLocal, mainRemote, false, null);
 
   // --- items: journal-attributed segments of the develop tail ---------------
   // Segments follow develop's first-parent chain: a back-merge brings main's
@@ -1366,7 +1375,7 @@ export async function collectDigest(
   const developChainRead =
     developLocal === null
       ? []
-      : await unpushedCommits(repoRoot, io, "develop", developRemote, true, null);
+      : await unpushedCommits(repoRoot, io, developLocal, developRemote, true, null);
   // A null tail/chain means the enumeration itself is unverifiable —
   // degrading to [] would run the verifier trailer scan over NOTHING
   // (CX-174). Fail the digest as unverifiable; the lists stay empty so

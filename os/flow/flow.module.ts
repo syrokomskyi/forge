@@ -9,11 +9,11 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: declare subprocess env inputs and drop pull_request trigger</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <item>RFC-1633: review round 1 — digest envInputs, package-wide bestEffort scan, holder command, serialized standalone preflight</item>
   <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
   <item>RFC-1638: review round 1 — payload preimage binding, fail-closed coverage scan, FLOW-PUSH-15</item>
+  <item>RFC-1643: committed verifier-review baseline for flow.push</item>
   <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589, RFC-1592, RFC-1597, RFC-1599, RFC-1600, RFC-1616, RFC-1626</history>
 </CHANGE_SUMMARY>
 */
@@ -833,6 +833,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-PUSH-07", severity: "error" },
           { id: "FLOW-PUSH-08", severity: "error" },
           { id: "FLOW-PUSH-15", severity: "error" },
+          { id: "FLOW-PUSH-16", severity: "warning" },
+          { id: "FLOW-PUSH-17", severity: "warning" },
           { id: "FLOW-PUB-01", severity: "error" },
           { id: "PKG-HEALTH-10", severity: "error" },
           { id: "FLOW-07", severity: "error" },
@@ -875,7 +877,10 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
               "trailers (X-Expectation-Origin / X-Verifier-Report / " +
               "X-Correctness-Weakening / X-Policy-Digest). Required when the " +
               "unpushed range contains any (FLOW-PUSH-08), unless the repo " +
-              "opts out with push.requireVerifierReview: false (RFC-1616).",
+              "opts out with push.requireVerifierReview: false (RFC-1616). " +
+              "Trailer commits that are ancestors of a committed " +
+              "push.verifierReviewedThrough baseline do not require it " +
+              "(RFC-1643) — only the operator moves that baseline.",
           },
           recount: {
             kind: "boolean",

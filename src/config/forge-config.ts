@@ -6,11 +6,11 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
   <item>RFC-1639: revert container-scope contracts — superfolder governance moves to the system hub</item>
+  <item>RFC-1643: committed verifier-review baseline for flow.push</item>
   <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580, RFC-1591, RFC-1596, RFC-1615, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -458,6 +458,14 @@ export const forgeConfigSchema = z
       .object({
         requireVerifierReview: z.boolean().optional(),
         /**
+         * RFC-1643: committed review baseline — a full commit sha. Trailer
+         * commits that are ancestors of it no longer stop FLOW-PUSH-08
+         * (still scanned and reported). Loosely typed on purpose: shape is
+         * judged at push time (FLOW-PUSH-16), a malformed value must not
+         * brick every command that loads forge.yaml.
+         */
+        verifierReviewedThrough: z.string().optional(),
+        /**
          * RFC-1616 r5 (CX-80): the declared trusted remote — the anchor
          * outside session-writable config that `flow.push` parity checks
          * compare `remote.origin.url` against. Undeclared means remote
@@ -532,7 +540,11 @@ export interface ForgeConfig {
   /** RFC-1578: raw `correctness:` section — validated by correctness.manifest.validate (CORR-02). */
   correctness?: Record<string, unknown>;
   /** RFC-1616 (Q-5): push-time trust-boundary controls — `requireVerifierReview` defaults to true; `expectedRemote` anchors the trusted remote. */
-  push?: { requireVerifierReview?: boolean; expectedRemote?: string };
+  push?: {
+    requireVerifierReview?: boolean;
+    verifierReviewedThrough?: string;
+    expectedRemote?: string;
+  };
   /** RFC-1615: the declared policy surface — judged frozen by correctness.gate. */
   policy?: ForgePolicy;
 }
