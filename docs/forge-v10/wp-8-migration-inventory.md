@@ -406,3 +406,18 @@ Host implementation resolves the git common dir (rev-parse or pointer-file parse
 ### Journal record typing — measured against the real journal
 
 The live journal (`.git/forge/journal.jsonl`, 1026 records in werkstatt) is the flow machinery's audit log: `{at, event, branch, sha, detail, rule?, toleratedDirt?, toleratedState?}` — discriminator `event` (values observed: `open`, `integrate-refusal`, …), not the pilot's assumed `kind`. The forgeState port types records as `{at: string; event: string; branch?: string; sha?: string; detail?: string; [k: string]: unknown}` — open-ended by design since the machinery evolves the schema.
+
+## Wave-2 capability surface — COMPLETE (forge 10.1.2, pending matrix+publish)
+
+Per-command extraction table for the deploy cluster against the completed SDK:
+
+| command | ports needed | status |
+|---|---|---|
+| deploy.status | readFile, exists, readlink, stat | **extractable now** — pure read |
+| atomic.swap | + symlink, unlink, rename, processSpawn | extractable — write-backed |
+| atomic.rollback | same as swap | extractable — write-backed |
+| artifact.gc | + rm recursive, list walk | extractable — write-backed |
+| artifact.verify | + envKeys (signing pubkey), verify primitive copied | extractable — env allowlist |
+| artifact.build | + envKeys (signing secret), processSpawn heavy | extractable — the secrets-sensitive one; envKeys allowlist is exactly the transparency boundary |
+
+SDK additions in 10.1.2 closing the surface: symlink triple (readlink/symlink/unlink), extended fs (readFileBytes/rename/rm/stat), env port enforcing the envKeys allowlist, git capability hardening. Remaining per-command work is mechanical translation (kernel result shape → plugin verdict shape) plus copying two pure primitives (byteHash, ed25519 verify) — no further SDK design needed for the deploy wave.
