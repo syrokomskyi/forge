@@ -11,7 +11,7 @@
     "type": "git",
     "url": "git+https://github.com/syrokomskyi/werkstatt-typescript.git"
   },
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
     ".": {
@@ -35,10 +35,10 @@
     "src"
   ],
   "scripts": {
-    "build": "echo scaffold-noop",
-    "lint": "echo scaffold-noop",
-    "typecheck": "echo scaffold-noop",
-    "test": "echo scaffold-noop"
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "echo lint-pending",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo tests-pending"
   },
   "publishConfig": {
     "access": "public"
