@@ -398,3 +398,7 @@ ctx.forgeState = {
 ```
 
 Host implementation resolves the git common dir (rev-parse or pointer-file parse) once at context construction — plugins never observe paths. Open questions for the P2 decision record: journal record typing (generic jsonl rows vs typed kinds), whether tail is line-count or time-windowed, consistency semantics when the journal rotates.
+
+## P1 closure evidence (2026-11-25 late)
+
+**WP-8 P1 COMPLETE.** werkstatt develop `439e7133c` carries `f08a52209` (scaffold) + `c17c00de6` (strip-type .ts zero-build modules); session worktree/branch cleaned by the flow machinery. Post-integration smoke in primary: `studio.journal.tail` executes through the v10 CLI bridge and reads the real journal — `total: 1026, count: 5` — confirming the semantic analysis: primary checkout works (`.git` is a real directory inside the sandbox), worktrees degrade (`total: 0`) until the forgeState port decision lands. Observation for journal-record typing: records render `kind: unknown` — the journal schema's discriminator field differs from the pilot's assumption; correct typing belongs to the forgeState port design.
