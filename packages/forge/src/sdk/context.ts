@@ -29,6 +29,32 @@ export interface ContextHostServices {
   };
 }
 
+/* Dual-use commands (tag/branch/config) are conservative-denied: listing refs
+   belongs to for-each-ref plumbing, config reads to file parsing. A security
+   boundary refuses false negatives at the cost of false-positive friction. */
+const MUTATING_GIT_OPS = new Set(["commit", "push", "update-ref", "checkout", "reset", "rebase", "merge", "cherry-pick", "apply", "commit-tree", "tag", "branch", "am", "stash", "rm", "mv", "clean", "gc", "fetch", "pull", "clone", "init", "add", "notes", "replace", "filter-branch", "update-index", "write-tree", "symbolic-ref", "worktree", "reflog", "config"]);
+
+/* Git global flags consuming a separate value token — the subcommand is the first
+   positional after these are skipped. `--flag=value` forms self-skip. */
+const GIT_VALUE_FLAGS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--exec-path"]);
+
+export function gitSubcommand(args: string[]): string | undefined {
+  let i = 0;
+  while (i < args.length) {
+    const a = args[i];
+    if (GIT_VALUE_FLAGS.has(a)) {
+      i += 2;
+      continue;
+    }
+    if (a.startsWith("-")) {
+      i += 1;
+      continue;
+    }
+    return a;
+  }
+  return undefined;
+}
+
 /** Build a capability-enforcing PluginContext for one activated plugin. */
 export function createPluginContext(manifest: PluginManifest, host: ContextHostServices): PluginContext {
   const caps = manifest.capabilities ?? {};
@@ -91,8 +117,17 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
     },
     git: {
       async exec(args) {
-        if (!caps.gitMutation && ["commit", "push", "update-ref", "checkout", "reset", "rebase", "merge", "cherry-pick", "apply"].some((m) => args[0] === m)) {
-          deny("gitMutation", `mutating git op refused: git ${args[0]}`);
+        // Redirection flags escape the workspace scope for reads AND writes — refused outright.
+        for (const a of args) {
+          if (a === "-C" || a === "--git-dir" || a === "--work-tree" || a.startsWith("--git-dir=") || a.startsWith("--work-tree=")) {
+            deny("filesystem", `git scope redirection refused: ${a}`);
+          }
+        }
+        if (!caps.gitMutation) {
+          const subcommand = gitSubcommand(args);
+          if (subcommand && MUTATING_GIT_OPS.has(subcommand)) {
+            deny("gitMutation", `mutating git op refused: git ${subcommand}`);
+          }
         }
         const { stdout } = await execFileAsync("git", args, { cwd: host.workspaceRoot });
         return stdout;
