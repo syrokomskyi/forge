@@ -468,3 +468,13 @@ The wave-2 integrate refused on node_modules/.pnpm/robots-parser .gitignore phan
 ## forgeState port — DECISION RESOLVED, implemented (forge develop bb9dc6a)
 
 Option B implemented as designed: resolveGitCommonDir parses the worktree pointer file without spawning git (primary layout and worktree layout both covered), journal.tail/size behind the distinct forgeState manifest grant. 8/8 tests green including the decisive boundary proof: worktree journal readable through the port while ctx.workspace correctly cannot see it. Ships with the next minor (10.2.0 — additive minor surface, not patch). Wave-3 journal-consuming extraction is unblocked at the SDK level; the werkstatt-studio pilot journal-tail migrates to the port when 10.2.0 publishes.
+
+### Wave-2b open decision: signature-verification primitives sourcing
+
+artifact.verify/swap need ed25519 verification over canonical-json — consensus-critical byte-compat. Three sourcing options:
+
+1. **Copy canonical-json + use @noble/ed25519 as plugin dep** — copies of consensus-critical canonicalization are a divergence hazard: a plugin/engine drift fails signatures falsely.
+2. **Depend on @warpgogol/werkstatt-shared/signing** — werkstatt-shared is npm-published; the signing subpath is pure primitives. Cost: reintroduces a limited shared dependency the extraction is escaping — but scoped to one subpath, arguably legitimate as a versioned library dependency rather than the scopeless bag.
+3. **Host crypto port** () — moves verification behind the SDK boundary; the host owns canonicalization. Cost: crypto is pure computation, no host privilege needed — port-ifying it contradicts the inventory's own copy-pure-primitives guidance, but consensus-critical code is arguably different from byteHash.
+
+Recommendation direction: option 2 as the pragmatic middle — one versioned subpath dep, zero copied consensus code. Decision belongs to the wave-2b session with artifact.verify in hand. Hash-only verification (unsigned artifacts) needs NO crypto at all and can proceed in any case.
