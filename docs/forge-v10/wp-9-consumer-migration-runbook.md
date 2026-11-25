@@ -59,3 +59,15 @@ Hazards earned this wave:
 - `pnpm exec forge` inside the worktree triggers pnpm implicit-install noise that corrupts `--json` capture — direct dist invocation only.
 - dater pre-commit enforces prettier — run `prettier --write` on the touched yaml before committing.
 - dialogue-steward/lagebild/metads/dater migrations are parity-only (no plugin adoption) — plugins are a deliberate later adoption per consumer; pipelines adopted forge-typescript because it is a pure typescript turbo monorepo.
+
+## Wave-1 integration results (2026-11-25)
+
+| consumer | verdict | notes |
+| --- | --- | --- |
+| lagebild | **INTEGRATED** | develop at 3d008f7, worktree cleaned |
+| dialogue-steward | **INTEGRATED** | develop at eec8f10 |
+| metads | **INTEGRATED** | after prettier-normalize fix — forge/pnpm yaml writers do not emit prettier-canonical bytes; consumer gates running `prettier --check .` refuse. Wave-1 protocol addition: always `prettier --write forge.yaml pnpm-workspace.yaml` before committing the migration |
+| dater | **INTEGRATED** | the largest consumer (11 workspaces, chrome-extension+cloudflare+astro stack) — pass/143 corpus preserved exact |
+| pipelines | in flight | first attempt refused CORR-GATE-02: the new top-level `plugins` key was not declared in `policy.mutable` — fixed by declaring `plugins` mutable (operator-controlled config, same class as `project`); re-integrating |
+
+wave-1 scoreboard: 4/5 integrated, pipelines in final gate.
