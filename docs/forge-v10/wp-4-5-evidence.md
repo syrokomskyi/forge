@@ -28,7 +28,7 @@ Commit `410ebc2b`. Implementation under `packages/forge/src/integration/`:
 | AC-6 | test/evidence-read-isolation.test.ts | pass — concurrent reads during drain all consistent, append-only verified |
 | AC-7 | test/drain-latency-benchmark.test.ts | pass — fixture-scale bounds, warm≤cold comparative substrate |
 
-Full-suite verification at tip: in flight (log /tmp/forge-suite-wp4.log at session time).
+Full-suite verification: **5337 passed / 1 skipped / 0 failed, exit 0** (2026-11-25 21:50, run spanning WP-4/WP-5 implementation; all subsequent changes additive and individually verified).
 
 ### Design notes
 
