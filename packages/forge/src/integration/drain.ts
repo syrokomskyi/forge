@@ -35,6 +35,9 @@ import { acquireLease, type LeaseHandle } from "./lease.ts";
 import type { QueueStore } from "./store.ts";
 import { isTerminal, type IntegrationUnit, type QueueJournalEntry } from "./types.ts";
 
+/** Bound on infra-failure requeues before terminal refusal — poison-pill protection. */
+export const MAX_INFRA_REQUEUE_ATTEMPTS = 5;
+
 export interface DrainOptions {
   store: QueueStore;
   repoDir: string;
@@ -155,8 +158,27 @@ async function processUnit(
       treeRoot,
     });
   } catch (err) {
-    // Evaluation infrastructure failure is NOT a refusal — requeue for a later drain.
+    // Evaluation infrastructure failure is NOT a verdict — requeue for a later drain.
+    // Bounded: a poison-pill unit must not hang the queue forever — after the bound,
+    // terminal refusal carries the error as evidence of an unhealthy system.
     unit.attempts += 1;
+    if (unit.attempts > MAX_INFRA_REQUEUE_ATTEMPTS) {
+      transition(
+        store,
+        unit,
+        {
+          status: "refused",
+          reason: {
+            nodeId: "core.integration.infra",
+            summary: `evaluation infrastructure failed ${unit.attempts} times: ${err instanceof Error ? err.message : String(err)}`,
+            violations: 0,
+          },
+          evidenceKey: "",
+        },
+        actor,
+      );
+      return;
+    }
     transition(store, unit, { status: "queued" }, actor);
     return;
   }
