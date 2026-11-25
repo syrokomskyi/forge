@@ -17,7 +17,7 @@
 version: 1
 entries:
   - id: PMM-0001
-    protection: "mission.archive command + mission lockfile pruning machinery (RFC-1505/1544 incl. CX-166..CX-171 counterexample hardening)"
+    protection: "mission.archive command + mission lockfile pruning machinery (RFC-1505/1544 incl. CX-166..CX-171 counterexample hardening) + ship-inflight inflight markers incl. degraded-mode behavior (archive.test.ts, ship-inflight.test.ts, ship-inflight-degraded.test.ts)"
     v9Home: "packages/forge/os/mission"
     disposition: removed-at-wp8
     reason: "studio-private operations do not transfer to the public core (RFC-1645 boundary); the werkstatt private plugin re-implements mission lifecycle against host ports before WP-8 migration"

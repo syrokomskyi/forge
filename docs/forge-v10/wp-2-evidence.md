@@ -54,6 +54,15 @@ RFC-1649 part 3 / RFC-1645 part 1 obligation: which generic runtime roles must l
 - **Not present standalone, by design** — the kernel-grade pieces the CLI never owned: module registry with scoped resolution, populated `invoke` port (cross-command governed invocation), kernel-managed cache, telemetry ports. v9 made these optional ports (`invoke?:`, `io?:`), so standalone operation is honest degradation, not breakage.
 - **Redesign targets, continuous with program work packages**: contract/evidence graph + cache (WP-3, RFC-1646) — the cache that makes integrate cheap; transactional queue (WP-4, RFC-1647) — serialization of integration units; kernel-grade module registry + invoke port + plugin host (WP-5, RFC-1648) — the SDK the first-party plugins compile against. None of these are copy-paste transfers; the RFCs define them as redesigns, and no standalone-CLI consumer is blocked on them today.
 
+## WP-3b migration-map completeness inventory (2026-11-25)
+
+Method: extracted all rule-id families (97 distinct) from the v9 werkstatt `packages/forge` source, same for the v10 tree (96), diffed. Result — exactly two absent families, both accounted:
+
+- **SHIP-INFLIGHT** — genuinely forge-owned, lived in the excised `os/mission`: covered by PMM-0001, whose protection text now names ship-inflight + degraded mode + the three excised test files explicitly.
+- **COMMIT-FGN** — never forge-owned: referenced in v9 only inside the dead `os/werkstatt` adapter and the removed doctor-autonomy test. The family belongs to engine-side `ecosystem.commit` in werkstatt — outside the forge transfer scope; its v10 home is decided at WP-5/8 with the kernel/plugin split, not a silent loss.
+
+The excised-module test inventory is exactly three files (archive/ship-inflight/ship-inflight-degraded), all inside the PMM-0001 family. Every other v9 protection family transferred with the command surface by construction. **Inventory conclusion: the map is complete at family granularity — 7 entries, zero unaccounted losses.**
+
 ## Remaining gates (operator-owned)
 
 - force-push mainline replacement of `syrokomskyi/forge` (develop → main; the v9 line remains tagged `v9.7.1` + archived in the bundle)
