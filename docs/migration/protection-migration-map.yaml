@@ -15,6 +15,10 @@
 # Entries seeded during the WP-2b zero-dependency excision (2026-11-25). WP-3 completes
 # the inventory against the full v9 rule corpus — nothing stays pending.
 version: 1
+# SIGN-OFF (WP-3 closure): signed 2026-11-25 by agent under explicit operator delegation —
+# "Даю тебе добро подписывать все самим (sign-off) в этой сессии" (operator, this session).
+# The delegation covers all program sign-offs in this session; the operator reviews the
+# artifacts post-factum.
 
 # WP-3 family inventory (canonical — mirrors werkstatt docs/forge-v10 seed, completed 2026-11-25).
 # Dispositions: mapped | removed | superseded. nodeStatus: live = expressed as a graph node
