@@ -10,4 +10,6 @@ capabilities:
 registers:
   commands:
     - dist/commands/tsconfig-validate.js
+    - dist/commands/strict-mode-validate.js
+    - dist/commands/package-exports-validate.js
   skills: skills/
