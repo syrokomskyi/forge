@@ -402,3 +402,7 @@ Host implementation resolves the git common dir (rev-parse or pointer-file parse
 ## P1 closure evidence (2026-11-25 late)
 
 **WP-8 P1 COMPLETE.** werkstatt develop `439e7133c` carries `f08a52209` (scaffold) + `c17c00de6` (strip-type .ts zero-build modules); session worktree/branch cleaned by the flow machinery. Post-integration smoke in primary: `studio.journal.tail` executes through the v10 CLI bridge and reads the real journal — `total: 1026, count: 5` — confirming the semantic analysis: primary checkout works (`.git` is a real directory inside the sandbox), worktrees degrade (`total: 0`) until the forgeState port decision lands. Observation for journal-record typing: records render `kind: unknown` — the journal schema's discriminator field differs from the pilot's assumption; correct typing belongs to the forgeState port design.
+
+### Journal record typing — measured against the real journal
+
+The live journal (`.git/forge/journal.jsonl`, 1026 records in werkstatt) is the flow machinery's audit log: `{at, event, branch, sha, detail, rule?, toleratedDirt?, toleratedState?}` — discriminator `event` (values observed: `open`, `integrate-refusal`, …), not the pilot's assumed `kind`. The forgeState port types records as `{at: string; event: string; branch?: string; sha?: string; detail?: string; [k: string]: unknown}` — open-ended by design since the machinery evolves the schema.
