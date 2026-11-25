@@ -80,6 +80,11 @@ export interface WorkspaceIOPort {
   writeFile(path: string, content: string): Promise<void>;
   exists(path: string): Promise<boolean>;
   list(dir: string, pattern?: string): Promise<string[]>;
+  /* Symlink primitives — atomic deploy swaps and artifact layouts are link-based;
+     readFile follows links and can never observe the link itself. */
+  readlink(path: string): Promise<string>;
+  symlink(target: string, linkPath: string): Promise<void>;
+  unlink(path: string): Promise<void>;
 }
 
 export interface EvidenceAccessPort {

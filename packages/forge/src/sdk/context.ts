@@ -10,7 +10,7 @@ spawn, no git mutation. This is auditability, not a sandbox.
 <CHANGE_SUMMARY><item>RFC-1648 (WP-5): initial capability-enforcing context.</item></CHANGE_SUMMARY>
 */
 
-import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, readlink, symlink, unlink, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { dirname, resolve as pathResolve } from "node:path";
 import { promisify } from "node:util";
@@ -97,6 +97,23 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
       async list(dir) {
         if (fsGrant === "none") deny("filesystem", "list with filesystem:none");
         return readdir(scoped(dir));
+      },
+      async readlink(path) {
+        if (fsGrant === "none") deny("filesystem", "readlink with filesystem:none");
+        return readlink(scoped(path));
+      },
+      async symlink(target, linkPath) {
+        if (fsGrant !== "readwrite") deny("filesystem", `symlink with filesystem:${fsGrant}`);
+        // The link PATH is sandboxed; the link TARGET is not re-validated — scoped()
+        // is a textual check, so a link pointing outside the root escapes on follow.
+        // readwrite is a trusted-within-workspace grant (it can already overwrite
+        // forge.yaml and hooks); symlink creation is consistent with that trust level.
+        // Plugins needing strict containment must not receive readwrite.
+        await symlink(target, scoped(linkPath));
+      },
+      async unlink(path) {
+        if (fsGrant !== "readwrite") deny("filesystem", `unlink with filesystem:${fsGrant}`);
+        await unlink(scoped(path));
       },
     },
     evidence: {
