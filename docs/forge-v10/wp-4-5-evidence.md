@@ -102,3 +102,16 @@ observed on the 10.0.0 publish as well).
 - Plugins republished at 1.0.1 — manifest/package version sync enforced by `test/plugin-manifest-version-sync.test.ts` (the 0.1.0-manifest-in-1.0.0-artifact drift class is now impossible).
 
 **WP-6 verdict: COMPLETE** — full self-host release cycle green: forge 10.1.0 built, published, pin-verified against itself in the monorepo consumer harness.
+
+## WP-5-depth skills-machinery rewiring — execution plan (2026-11-25 session-3)
+
+Target state per RFC-1648: `.agents/skills` is a GENERATED-UNTRACKED view in every repo (forge monorepo dogfoods it). Single source: `packages/forge/skills/` canonical + plugin skillsDirs.
+
+Execution steps:
+1. Read `src/onboarding/agents-generate.ts` skills-table surface + `forge.init`/`forge.upgrade` writers; identify every write path to `.agents/skills`.
+2. Rewire writers to `src/sdk/skills-gen.ts generateSkillsTree` + `resolveCanonicalSkillSources`; add gitignore-entry management (`.agents/skills/` ignored) to init/upgrade.
+3. Invert `src/tests/skill-agents-sync.test.ts` semantics: generated output must equal canonical resolution — no tracked twin to sync.
+4. Untrack `.agents/skills` in the monorepo itself (`git rm -r --cached`), add gitignore entry, regenerate via the new path, verify agents-generate goldens.
+5. Full matrix + commit + push.
+
+State at planning: forge tip 6dcaf133; all prior waves green. Canary warpgogol-verbund cut over to 10.1.0 (WP-7 complete). Werkstatt evidence mirror integrated.
