@@ -336,3 +336,17 @@ foundation (extract last): journal(21, but already a shim — real logic in werk
 **Design tensions filed for SDK iteration**:
 1. ~~project-local plugins require pre-built dist~~ — **DISSOLVED (verified 2026-11-25)**: the SDK loader imports whatever path the manifest declares, and Node 24 strip-types handles `.ts` directly — project-local plugins can declare `src/commands/x.ts` with zero build step. Constraint: erasable-syntax-only (no enums/parameter properties — same as the forge CLI itself); type-only imports are erased so no runtime SDK resolution is needed. npm-published plugins stay compiled (portability).
 2. `.git/forge/` state access through workspace-scoped fs port works but is conventionally invisible — studio ops need a declared forge-state SDK port (evidence access port exists; journal/state surface review needed).
+
+## SDK gap discovered in P1: forge-state reachability (P2 design blocker)
+
+The workspace port sandboxes every path to the workspace root (`scoped()` in `sdk/context.ts` denies escape). Consequence for studio extraction:
+
+- **Primary checkout**: `.git` is a real directory inside root → `.git/forge/journal.jsonl` reachable through `filesystem: read`.
+- **Session worktree**: `.git` is a 124-byte pointer file (`gitdir: <common>/.git/worktrees/<name>`); the journal lives in the COMMON git dir — outside the worktree root — and is **unreachable through current SDK ports**. The pilot's `pass/total:0` in the worktree is this boundary, not broken semantics.
+
+Design decision needed before journal-dependent extraction (journal is needed-by-21, bordbuch/flow evidence share the space):
+
+1. **Option A — gitdir-aware workspace extension**: the workspace port resolves `.git/...` through git-common-dir indirection (parse the pointer file). Small surface, but plugins learn git layout.
+2. **Option B — `ctx.forgeState` host port** (preferred direction): the host exposes journal/evidence/flow-state reads as named port methods; plugins never know `.git` layout at all. Matches the port-and-capability philosophy — the sandbox boundary stays absolute while forge's own state space becomes a first-class capability.
+
+Either way the capability model needs a distinct grant (`forgeState: read`?) rather than widening `filesystem` — the sandbox escape denial is a load-bearing security invariant and must not weaken.
