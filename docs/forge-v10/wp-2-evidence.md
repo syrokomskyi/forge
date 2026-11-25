@@ -30,7 +30,7 @@ Scaffold commit `8856325f` separated from the imported history: pnpm workspace, 
 - Absorbed generic pieces: lockfile hygiene → `src/utils/lockfile.ts`; open-mission scan → `os/flow/open-missions.ts` (transitional host-layout awareness, host-port extraction at WP-4/5/8).
 - Removed: `forge.autonomy.validate` command (superseded by the permanent contract test), doctor autonomy-guard diagnostic, dead-module tests.
 - `forge-typescript` scaffolded down: v9 plugin implementation remains in provenance; its kernel types are exactly what the RFC-1648 SDK redefines at WP-5.
-- Protection migration map seeded at `docs/migration/protection-migration-map.yaml` — 6 entries, zero silent losses.
+- Protection migration map seeded at `docs/migration/protection-migration-map.yaml` — 7 entries, zero silent losses.
 
 ## AC-2/AC-3: contract nodes green (2026-11-25)
 
@@ -38,10 +38,25 @@ Scaffold commit `8856325f` separated from the imported history: pnpm workspace, 
 - `packages/forge/test/no-werkstatt-deps.test.ts` — zero import-syntax edges + zero manifest deps on `werkstatt-engine`/`werkstatt-shared` across all packages: **green**.
 - typecheck (`tsc --noEmit`): **0 errors**. build (`tsc -p tsconfig.build.json` emit): **green**.
 
-## Remaining for WP-2 completion
+## Full verification matrix green (2026-11-25, commit `65159f28`)
 
-- full vitest suite green (monorepo-bound test triage in progress)
-- lint green
-- tarball smoke on Node 24 (`test:tarball:node24`)
-- kernel runtime transfer assessment (the deep RFC-1646/1647/1648-aligned rewrite — continuous with WP-3/4/5)
-- operator gates: force-push mainline replacement, npm trusted-publishing configuration, first `10.0.0` publish
+- **full vitest suite: 478/478 files, 5282 passed / 1 skipped, exit 0.** Monorepo-bound triage: 6 failures analyzed, 3 fixed forward (measure walk-up resolution — vitest NODE_PATH no longer leaks typescript availability; release-lines asserts the v10 monorepo truth; validate-corpus AC-9 parity on a synthesized diverse-YAML corpus), 3 removed as kernel-coupled (RFC-1391 ac8-ac9 acceptance → PMM-0007). One additional failure in the first run did not reproduce in two subsequent full runs — flake-watch item, no reproducible instance.
+- **lint: green. typecheck: 0 errors. build: green.**
+- **tarball smoke (`test:tarball:node24`): PASS** — the package builds, packs, installs offline into a clean Node-24 consumer, CLI exercised end-to-end.
+- CLI smoke: `forge --help` boots, 167 commands registered.
+- release line cut: `@warpgogol/forge` version **10.0.0**, engines **>=24** (FI-3/FI-9), dead exports of excised modules removed, CHANGELOG `[10.0.0]` documents the break.
+
+## Kernel runtime transfer assessment (2026-11-25)
+
+RFC-1649 part 3 / RFC-1645 part 1 obligation: which generic runtime roles must land in core as RFC-1646/1647/1648-aligned redesigns. Findings:
+
+- **Already transferred with the command surface** (v9 had port-shaped them): gate-run orchestration + durable records (`os/gate-run/`), detach mechanics (`os/gate-run/detach.ts`), WorkspaceIO ambient implementation and recording-aware call sites, evidence-git judged channel machinery (`src/utils/verifier-git.ts` + consult locks). These are functional in the standalone CLI today.
+- **Not present standalone, by design** — the kernel-grade pieces the CLI never owned: module registry with scoped resolution, populated `invoke` port (cross-command governed invocation), kernel-managed cache, telemetry ports. v9 made these optional ports (`invoke?:`, `io?:`), so standalone operation is honest degradation, not breakage.
+- **Redesign targets, continuous with program work packages**: contract/evidence graph + cache (WP-3, RFC-1646) — the cache that makes integrate cheap; transactional queue (WP-4, RFC-1647) — serialization of integration units; kernel-grade module registry + invoke port + plugin host (WP-5, RFC-1648) — the SDK the first-party plugins compile against. None of these are copy-paste transfers; the RFCs define them as redesigns, and no standalone-CLI consumer is blocked on them today.
+
+## Remaining gates (operator-owned)
+
+- force-push mainline replacement of `syrokomskyi/forge` (develop → main; the v9 line remains tagged `v9.7.1` + archived in the bundle)
+- npm trusted-publishing (OIDC) configuration for `@warpgogol/forge`
+- first `10.0.0` publish, then self-host conversion of the forge repo itself (program WP-6)
+- evidence mirroring into werkstatt `docs/forge-v10/` per the program plan
