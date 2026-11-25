@@ -365,3 +365,18 @@ The leaf-first heuristic (zero inbound cluster deps) is necessary but not suffic
 | hygiene | evidence, kernel, mission, sternsystem, werkstatt | heaviest leaf — late wave |
 
 Sharper framing: the extraction unit is the COMMAND, not the cluster. Wave-2 scan enumerates commands inside deploy/fleet/hygiene whose implementation touches only filesystem/git-read/process — those extract against current SDK ports immediately; commands needing journal/bordbuch/mission semantics wait for the forgeState port decision (P2 design blocker above).
+
+## Wave-2 port-gap analysis: deploy cluster (concrete)
+
+`deploy.status`/`artifact-verify`/`artifact-gc` semantics mapped against current SDK ports:
+
+| need | current SDK | gap |
+|---|---|---|
+| read files inside workspace | `workspace.readFile` | none |
+| symlink target resolution (`readlink`) | — | **missing port** — deploy is atomic symlink swaps; `readFile` follows links, cannot read the link itself |
+| symlink creation for atomic swap | — | **missing port** — belongs behind `filesystem: readwrite` |
+| byteHash tree hashing | — | pure function, copy into plugin (no port needed) |
+| ed25519 signature verify (artifact-verify) | — | decision: copy verification primitive into plugin vs `ctx.crypto` port — verification is pure/readonly, copying defensible |
+| directory listing | `workspace.list` | shallow only — recursive walk needed for gc; implement in-plugin over `list` |
+
+Pattern note: kernel `WorkspaceIO` → SDK port translation is mostly mechanical for filesystem; the result-shape translation (`KernelCommandResult` → plugin verdict) is the actual rewrite work per command.
