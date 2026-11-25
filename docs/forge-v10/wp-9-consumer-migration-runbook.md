@@ -39,3 +39,23 @@ Per-consumer protocol, distilled from the warpgogol-verbund canary execution. Ea
 - pnpm `minimumReleaseAgeExclude` may need the new version appended (pnpm handles it on `pnpm add` — verify the diff).
 - `flow.open` refuses when the primary carries uncommitted changes — migrate inside the worktree from the start, never in the primary.
 - npm propagation: verify install at the version-document endpoint, not dist-tag.
+
+## Execution wave 1 (2026-11-25, forge 10.1.1)
+
+Kernel-compat de-risk: all 11 `os/*` export surfaces consumed by consumer `tools/kernel.config.ts` loaders are preserved in v10 (`./os/core`, `./os/rfc-module`, `./os/adr-module`, `./os/plan-module`, `./os/audit-module`, `./os/compass`, `./os/naming-module`, `./os/workflow-module`, `./os/queue-module`, `./os/notes`, `./os/plugin`) — the kernel path survives migration intact.
+
+| consumer | baseline (v9.7.1) | v10 dark-run | parity | upgrade | commit |
+| --- | --- | --- | --- | --- | --- |
+| pipelines | rfc fail/175 (exact sigs), adr fail/54, spec fail/3-specs | identical | **exact — 1396/1396 rfc sigs, adr 54=54, spec exact** | pass 9.7.1→10.1.1 | 42cb245 + forge-typescript adopted (4 pass / 2 fail — new governance visibility) |
+| dialogue-steward | rfc fail/40 | fail/40 | **exact — 33/33 sigs** | pass | eec8f10 |
+| lagebild | rfc fail/27 | fail/27 | **exact** | pass | 3d008f7 |
+| metads | rfc pass/1 | pass/1 | **exact (green stays green)** | pass | 347f0bc |
+| dater | rfc pass/143 | pass/143 | **exact** | pass | d99ee35 |
+
+Hazards earned this wave:
+- `flow.open --kind` accepts only `session|task` — `chore` refuses FLOW-OPEN-10.
+- flow.open under a `timeout` wrapper still completes the worktree+branch but the CLI output is lost — verify via `git worktree list`, never re-run blindly (creates duplicate sessions).
+- Session worktrees carry `.gitignore` files mode 444 — the upgrade's gitignore self-ensurance needs a documented intentional `chmod u+w` first; the edit is auditable in the migration commit diff.
+- `pnpm exec forge` inside the worktree triggers pnpm implicit-install noise that corrupts `--json` capture — direct dist invocation only.
+- dater pre-commit enforces prettier — run `prettier --write` on the touched yaml before committing.
+- dialogue-steward/lagebild/metads/dater migrations are parity-only (no plugin adoption) — plugins are a deliberate later adoption per consumer; pipelines adopted forge-typescript because it is a pure typescript turbo monorepo.
