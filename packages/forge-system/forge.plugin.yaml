@@ -1,6 +1,6 @@
 schema: forge:plugin-manifest/v1
 id: forge-system
-version: 0.1.0
+version: 1.0.1
 forgeRange: ">=10.0.0"
 capabilities:
   filesystem: read

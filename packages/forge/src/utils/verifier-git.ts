@@ -8566,8 +8566,23 @@ export async function sessionIgnoreRulePaths(
     }
   }
   if (found.length === 0) return [];
-  const trackedSet = await tracked(found, root);
-  return trackedSet === null ? found : found.filter((p) => !trackedSet.has(p));
+  // Inert-rule exclusion: git never reads `.gitignore` files inside
+  // ignored directories — traversal stops at the excluded parent, so a
+  // rule file under `node_modules/` (npm packages ship them routinely)
+  // can hide nothing and is not session-authored dirt. `check-ignore`
+  // reproduces git's own traversal verdict exactly; a failed read fails
+  // closed (every candidate counts).
+  let effective = found;
+  const ci = await verifierGit(root, ["check-ignore", "--stdin", "-z"], {
+    input: Buffer.from(found.map((p) => `${p}\0`).join(""), "utf8"),
+  });
+  if (ci.exitCode === 0 || ci.exitCode === 1) {
+    const inert = new Set(ci.stdout.split("\0").filter((p) => p.length > 0));
+    effective = found.filter((p) => !inert.has(p));
+  }
+  if (effective.length === 0) return [];
+  const trackedSet = await tracked(effective, root);
+  return trackedSet === null ? effective : effective.filter((p) => !trackedSet.has(p));
 }
 
 /**
