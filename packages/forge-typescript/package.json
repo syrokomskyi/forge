@@ -1,6 +1,6 @@
 {
   "name": "@warpgogol/forge-typescript",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": false,
   "type": "module",
   "engines": {
@@ -12,7 +12,7 @@
     "url": "git+https://github.com/syrokomskyi/werkstatt-typescript.git"
   },
   "main": "./dist/index.js",
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -32,7 +32,10 @@
     }
   },
   "files": [
-    "src"
+    "dist",
+    "forge.plugin.yaml",
+    "skills",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -52,5 +55,6 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "8.70.0",
     "vitest": "^5.0.0"
-  }
+  },
+  "license": "MIT"
 }
