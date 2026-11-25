@@ -10,6 +10,7 @@ For the full commit history, see the [GitHub releases page](https://github.com/s
 
 ### Added
 
+- **Lifecycle-hook runtime** — hook modules self-describe (`{hook, run}`), load fail-closed (closed vocabulary, duplicate refusal), and execute through the single invocation surface: `beforeIntegrate` vetoes integration in the drain under bounded infra semantics, `afterIntegrate` notifies post-hoc with errors loud in the drain report (RFC-1648).
 - **Plugin-CLI bridge** — consumer plugins discovered from `forge.yaml plugins[]` load through the standard SDK path and register as first-class CLI commands; load failures surface loudly on stderr, never silent absence (RFC-1648 WP-6).
 - **Plugin-contributed skills join the generated tree** — `forge.upgrade` syncs active plugins' `skills/` dirs into `.agents/skills` through the SDK loader with conflict-skip and prune protection; generation is untracked by construction and writers self-ensure the `.gitignore` entry (RFC-1648).
 - `.agents/skills` is now a generated-untracked view in the forge monorepo itself (dogfooding; the tracked v9 twin is gone).

@@ -316,6 +316,6 @@ agent, plugin, flow, gate, gate-run, correctness, adversarial, codebase, conform
 
 ## SDK gaps blocking studio extraction (found 2026-11-25, iteration 1)
 
-1. **Lifecycle-hook runtime absent** — `LifecycleHook` vocabulary is declared (`onActivate`/`onDeactivate`/`beforeIntegrate`/`afterIntegrate`) and the loader validates manifest entries, but no invocation surface exists anywhere. Design decision needed: hook-handler registration shape (module-path entries like commands vs single hooks-module with named exports). Required before WP-8 P2 — studio integration-pipeline behavior hooks into beforeIntegrate/afterIntegrate. Not needed for WP-9 CLI-only consumers.
+1. ~~Lifecycle-hook runtime absent~~ — **CLOSED 2026-11-25**: hook modules self-describe and load fail-closed; `beforeIntegrate` vetoes in the drain, `afterIntegrate` notifies (commit 0db0f482). Design: module-path entries in `registers.hooks`, self-describing exports, duplicate refusal.
 2. **Pipeline-step contributions** — werkstatt pipelines (build.post, validate.postbuild) compose steps; v10 has no plugin-contributed pipeline-step surface. Triage whether studio extraction needs it or whether pipelines become plugin commands outright.
 3. **`init` does not sync plugin skills** (upgrade does) — marginal edge case (plugins rarely precede init); documented, not a blocker.
