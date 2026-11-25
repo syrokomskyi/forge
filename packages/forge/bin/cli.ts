@@ -102,6 +102,7 @@ import { renderNextSteps, renderIdeRecommendation, generateHelp } from "../src/c
 import { resolveCliFlags } from "../src/cli-flags.ts";
 import type { ForgeModuleRegistry, ForgePipelineStep } from "../src/forge-module.ts";
 import { loadForgeCommandModules } from "../src/command-modules.ts";
+import { adaptCommand, loadConsumerPlugins } from "../src/sdk/cli-bridge.ts";
 import { resolveIo } from "../src/utils/io.ts";
 import { commonGitDir } from "../os/flow/registry.ts";
 import { GATE_RUN_ID_ENV, detachPointerLines, detachSelf } from "../os/gate-run/detach.ts";
@@ -173,6 +174,22 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     for (const pipe of mod.pipelines) {
       registry.registerPipeline(pipe.name, pipe.steps);
     }
+  }
+
+  // RFC-1648 WP-6 — consumer plugins load through the standard SDK path and
+  // register as first-class commands. Failures are loud on stderr, never silent.
+  try {
+    const { plugins, report } = await loadConsumerPlugins(process.cwd());
+    for (const plugin of plugins) {
+      for (const cmd of plugin.commands) {
+        registry.registerCommand(adaptCommand(cmd, plugin.ctx, plugin.manifest.id));
+      }
+    }
+    for (const failure of report.failed) {
+      process.stderr.write(`[forge] plugin load failed: ${failure.entry} — ${failure.error}\n`);
+    }
+  } catch (err) {
+    process.stderr.write(`[forge] plugin discovery error: ${err instanceof Error ? err.message : String(err)}\n`);
   }
 
   return registry;
