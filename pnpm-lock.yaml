@@ -61,53 +61,49 @@ importers:
         version: 5.1.1(@types/node@26.6.6)(@vitest/coverage-v8@5.1.1)(vite@8.3.8(@types/node@26.6.6)(yaml@2.9.1))
 
   packages/forge-astro:
-    dependencies:
-      '@warpgogol/forge':
-        specifier: workspace:*
-        version: link:../forge
     devDependencies:
       '@types/node':
         specifier: ^26.5.1
         version: 26.6.6
+      '@warpgogol/forge':
+        specifier: workspace:*
+        version: link:../forge
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
 
   packages/forge-repo-extract:
-    dependencies:
-      '@warpgogol/forge':
-        specifier: workspace:*
-        version: link:../forge
     devDependencies:
       '@types/node':
         specifier: ^26.5.1
         version: 26.6.6
+      '@warpgogol/forge':
+        specifier: workspace:*
+        version: link:../forge
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
 
   packages/forge-system:
-    dependencies:
-      '@warpgogol/forge':
-        specifier: workspace:*
-        version: link:../forge
     devDependencies:
       '@types/node':
         specifier: ^26.5.1
         version: 26.6.6
+      '@warpgogol/forge':
+        specifier: workspace:*
+        version: link:../forge
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
 
   packages/forge-typescript:
-    dependencies:
-      '@warpgogol/forge':
-        specifier: workspace:*
-        version: link:../forge
     devDependencies:
       '@types/node':
         specifier: ^26.5.1
         version: 26.6.6
+      '@warpgogol/forge':
+        specifier: workspace:*
+        version: link:../forge
       eslint:
         specifier: ^10.10.0
         version: 10.15.0

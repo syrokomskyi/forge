@@ -1,6 +1,6 @@
 {
   "name": "@warpgogol/forge-typescript",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": false,
   "type": "module",
   "engines": {
@@ -46,15 +46,16 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "@warpgogol/forge": "workspace:*"
-  },
   "devDependencies": {
     "@types/node": "^26.5.1",
     "eslint": "^10.10.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "8.70.0",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "@warpgogol/forge": "workspace:*"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "peerDependencies": {
+    "@warpgogol/forge": "^10.1.0"
+  }
 }
