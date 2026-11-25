@@ -1,0 +1,6 @@
+schema: forge/plugin@1
+id: forge-repo-extract
+version: 0.0.0
+forgeRange: ">=10.0.0 <11.0.0"
+capabilities: []
+status: scaffold

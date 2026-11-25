@@ -1,0 +1,16 @@
+schema: forge/config@1
+project:
+  name: forge
+  consumer: forge
+  stack:
+    - typescript
+    - pnpm-monorepo
+  packageManager: pnpm
+paths:
+  rfcsDir: docs/rfcs
+  adrsDir: docs/adrs
+  plansDir: docs/plans
+  auditsDir: docs/audits
+  specsDir: docs/specs
+  skillsDir: .agents/skills
+  sessionsDir: docs/sessions

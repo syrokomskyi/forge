@@ -1,0 +1,30 @@
+name: publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "workspace package dir to publish (e.g. forge, forge-typescript)"
+        required: true
+        type: string
+
+# npm trusted publishing: no static tokens — the workflow authenticates via OIDC.
+# Requires the package on npmjs.com to trust this repo + workflow (operator-configured).
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter "@warpgogol/${{ inputs.package }}" run build
+      - run: npm install -g npm@latest
+      - run: pnpm --filter "@warpgogol/${{ inputs.package }}" exec npm publish --access public --provenance

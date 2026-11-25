@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.coverage/
+*.log
+.cache/
+.turbo/
+.DS_Store
+*.tsbuildinfo
