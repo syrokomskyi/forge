@@ -334,5 +334,5 @@ middle: nachweis(2), evidence(2), leitstand(4), integrity(4), release(6)
 foundation (extract last): journal(21, but already a shim — real logic in werkstatt-shared), mission(24), sternsystem(47), bordbuch(61)
 
 **Design tensions filed for SDK iteration**:
-1. project-local plugins require pre-built dist (loader consumes compiled artifacts) — strip-type .ts loading is the natural fit since the forge CLI itself runs strip-mode; candidate for forge 10.2.
+1. ~~project-local plugins require pre-built dist~~ — **DISSOLVED (verified 2026-11-25)**: the SDK loader imports whatever path the manifest declares, and Node 24 strip-types handles `.ts` directly — project-local plugins can declare `src/commands/x.ts` with zero build step. Constraint: erasable-syntax-only (no enums/parameter properties — same as the forge CLI itself); type-only imports are erased so no runtime SDK resolution is needed. npm-published plugins stay compiled (portability).
 2. `.git/forge/` state access through workspace-scoped fs port works but is conventionally invisible — studio ops need a declared forge-state SDK port (evidence access port exists; journal/state surface review needed).
