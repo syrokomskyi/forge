@@ -24,11 +24,11 @@ substituted object, a redirected repository, or a shim binary's output
   <item>Short-cluster argv models must walk EVERY optarg/required-arg short, not just the flag being hunted — the first valued short in a cluster eats the remainder as its value, so a hunted flag inside that tail is not a flag at all (`status -Muno` = `-M` "uno", no `-u` exists — CX-r43-F1). `indexOf` on a cluster is never a parse; status's optarg shorts are `-u` AND `-M`, ls-files's required-arg shorts are `-x`/`-X`, and any cluster char outside the modeled set must leave the walk armed, never narrow it.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
   <item>RFC-1616: close r41 trust-boundary counterexamples — per-argv ignored-dir prune, file-valued argv strip/forbid, unconditional upstream pins</item>
   <item>RFC-1616: close r42 trust-boundary counterexamples — classifier parses spawned argv (last-wins/OPTARG/valued-consumption), envPins carry =-bearing config keys</item>
   <item>RFC-1616: status cluster walk treats -M as optarg — -Muno's tail is a similarity value, not a -u mode</item>
+  <item>RFC-1644: skip the worktree-surface capture for consults whose arm consumes none</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -611,6 +611,23 @@ export interface EvidencePreflight {
    * refuses via `worktreeArmPlan` returning null.
    */
   worktreeSurface?: WorktreeSurface;
+  /**
+   * RFC-1644: `true` when the preflight was asked to skip the worktree
+   * baseline (`worktreeSurface: "skip"`) — `worktreeSurface` is then
+   * `undefined`, which every consumer already treats as fail-closed.
+   */
+  worktreeSurfaceSkipped?: true;
+}
+
+/**
+ * RFC-1644: per-call preflight options. `worktreeSurface: "skip"` leaves
+ * the CX-r38-W1 worktree baseline uncaptured — only per-spawn preflights
+ * whose argv `consultReadsWorktreeSurface` classifies false may pass it.
+ * Cached/anchored preflights serve argv they cannot see and keep the
+ * default `"capture"`.
+ */
+export interface EvidencePreflightOptions {
+  worktreeSurface?: "capture" | "skip";
 }
 
 /**
@@ -5505,6 +5522,20 @@ export function consultDescendsIgnoredDirs(args: readonly string[]): boolean {
  * everything else adds nothing. `null` = the required surface is
  * unverifiable and the consult must refuse.
  */
+/**
+ * RFC-1644: whether a consult's worktree arm consumes the capture-instant
+ * worktree surface (CX-r38-W1). `resolveWorktreeArm` branches on THIS
+ * predicate, and the per-spawn preflights skip the capture exactly when it
+ * is false — the skip and the arm can never disagree. "Consumes no
+ * surface" describes the ARM, not git's I/O: a bare rev token without
+ * `--` still makes git probe a same-named worktree file (pre-existing
+ * CX-r39-A1 miss, F-0396) — unarmed before and after this predicate.
+ */
+export function consultReadsWorktreeSurface(args: readonly string[]): boolean {
+  const scope = worktreeConsultScope(args);
+  return scope === "tracked" || scope === "tracked+untracked" || args[0] === "check-ignore";
+}
+
 export function resolveWorktreeArm(
   args: readonly string[],
   preflight: EvidencePreflight,
@@ -5515,6 +5546,10 @@ export function resolveWorktreeArm(
   extraWatch: readonly string[] | undefined;
 } | null {
   const scope = worktreeConsultScope(args);
+  // RFC-1644: the single gate both the preflight skip and the arm read.
+  if (!consultReadsWorktreeSurface(args)) {
+    return { scope, wtPlan: null, extraWatch: extraWatchPaths };
+  }
   if (scope === "tracked" || scope === "tracked+untracked") {
     // CX-r41-F1: prune the ignored-dir set only when the consult argv
     // provably never reads those interiors (`status -uall`/`--ignored`
@@ -6441,6 +6476,7 @@ export type EvidenceGitRunner = (
 export async function evidenceRepoPreflight(
   repoRoot: string,
   prior?: EvidenceFingerprint | null,
+  options?: EvidencePreflightOptions,
 ): Promise<EvidencePreflight | null> {
   // Indirection → resolves → fingerprint, fused so the ordering contract
   // (CX-134/135) cannot be misordered: `.git` gitfile/commondir bytes are
@@ -6573,7 +6609,12 @@ export async function evidenceRepoPreflight(
   // the capture-instant state, so a flip/hide landing between capture
   // and arm reads as drift (the `.git` fingerprint's own semantics)
   // instead of being silently adopted as the pin baseline.
-  if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
+  // RFC-1644: a per-spawn preflight whose argv's worktree arm consumes no
+  // surface (`consultReadsWorktreeSurface` false) skips the baseline — no
+  // reader exists for it, and an arm that needs it refuses on `undefined`.
+  if (options?.worktreeSurface === "skip") {
+    preflight.worktreeSurfaceSkipped = true;
+  } else if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
     const wt = fingerprint.workTree;
     const surface = captureWorktreeSurface(wt, preflight.index.names);
     // CX-r39 reliability, CX-r41-F1: directories git reports ignored
@@ -7740,7 +7781,12 @@ async function verifierGitSpawn(
       };
     }
   } else {
-    preflight = await evidenceRepoPreflight(cwd);
+    // RFC-1644: the skip decision rides the consult's own immutable argv —
+    // every re-preflight below re-derives the same value.
+    const surfaceOpt: EvidencePreflightOptions = {
+      worktreeSurface: consultReadsWorktreeSurface(args) ? "capture" : "skip",
+    };
+    preflight = await evidenceRepoPreflight(cwd, undefined, surfaceOpt);
     // Re-prove the fingerprint right before the spawn, and keep re-
     // preflighting while the surface drifts — a session write racing the
     // judgment→spawn window reads as drift and the bounded loop re-judges
@@ -7759,7 +7805,7 @@ async function verifierGitSpawn(
       // steer re-resolution into a forged common dir (CX-143).
       const priorFp = preflight.fingerprint;
       closeEvidenceIndex(preflight);
-      preflight = attempt >= 2 ? null : await evidenceRepoPreflight(cwd, priorFp);
+      preflight = attempt >= 2 ? null : await evidenceRepoPreflight(cwd, priorFp, surfaceOpt);
     }
     // The spawn-window watch (CX-r22): every check above ends at its
     // own `lstat`/read — the judged child opens `.git` metadata inside
@@ -7812,7 +7858,9 @@ async function verifierGitSpawn(
         windowWatch = null;
         closeEvidenceIndex(preflight);
         preflight =
-          armAttempt >= 1 ? null : await evidenceRepoPreflight(cwd, preflight.fingerprint);
+          armAttempt >= 1
+            ? null
+            : await evidenceRepoPreflight(cwd, preflight.fingerprint, surfaceOpt);
       }
     }
   }

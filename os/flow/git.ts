@@ -13,11 +13,11 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist; removers delete tolerated paths right before worktree removal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: totalize the worktree arm — anchored reads, compare-under-arm, check-ignore, embedded-gitdir refusal</item>
   <item>RFC-1616: admit-list ls-files worktree scope and pin internal check-ignore consults (RFC-1616 r40)</item>
   <item>RFC-1616: close r41 trust-boundary counterexamples — per-argv ignored-dir prune, file-valued argv strip/forbid, unconditional upstream pins</item>
   <item>RFC-1633: serialize evidence consults + bestEffort reader mode (RFC-1633)</item>
   <item>RFC-1638: persist reviewed digests + attest pushed state by input hash</item>
+  <item>RFC-1644: skip the worktree-surface capture for consults whose arm consumes none</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -56,6 +56,8 @@ import {
   resolveWorktreeArm,
   type EvidenceFingerprint,
   type EvidencePreflight,
+  type EvidencePreflightOptions,
+  consultReadsWorktreeSurface,
   EVIDENCE_REFUSED_PREFIX,
   isEvidenceGitQuery,
   isIndexConsultingRead,
@@ -111,6 +113,16 @@ export const MIN_GIT_VERSION = "2.33";
  */
 export const consultProbe: {
   current: ((argv: readonly string[], channel: "evidence" | "session") => void) | null;
+} = { current: null };
+
+/**
+ * RFC-1644 test seam: observes every completed `evidencePreflight` so the
+ * surface-skip suite can assert which consults captured
+ * the worktree baseline. Production paths never set it.
+ */
+export const preflightProbe: {
+  current:
+    ((preflight: EvidencePreflight | null, options?: EvidencePreflightOptions) => void) | null;
 } = { current: null };
 
 export interface FlowWorktree {
@@ -311,7 +323,14 @@ async function gitEvidenceAttempt(
   // preflight enumerates through this same channel (preflight:false
   // breaks the recursion), so every subprocess on the evidence path stays
   // inside this argv-judged body.
-  let preflight = opts?.preflight === false ? null : await evidencePreflight(repoRoot);
+  // RFC-1644: the worktree baseline is captured only when this consult's
+  // arm consumes it — derived from the immutable argv, so every
+  // re-preflight below re-derives the same value.
+  const surfaceOpt: EvidencePreflightOptions = {
+    worktreeSurface: consultReadsWorktreeSurface(args) ? "capture" : "skip",
+  };
+  let preflight =
+    opts?.preflight === false ? null : await evidencePreflight(repoRoot, undefined, surfaceOpt);
   // Re-prove the fingerprint right before the spawn, and keep re-
   // preflighting while the surface drifts — the LAST check is always
   // immediate before the spawn (R13-D1: a one-shot reprove+reflight
@@ -326,7 +345,7 @@ async function gitEvidenceAttempt(
     // steer re-resolution into a forged common dir (CX-143).
     const priorFp = preflight.fingerprint;
     closeEvidenceIndex(preflight);
-    preflight = attempt >= 2 ? null : await evidencePreflight(repoRoot, priorFp);
+    preflight = attempt >= 2 ? null : await evidencePreflight(repoRoot, priorFp, surfaceOpt);
   }
   const preflightBreach = evidenceBudgetBreach(
     args,
@@ -376,7 +395,10 @@ async function gitEvidenceAttempt(
       await windowWatch.settle();
       windowWatch = null;
       closeEvidenceIndex(preflight);
-      preflight = armAttempt >= 1 ? null : await evidencePreflight(repoRoot, preflight.fingerprint);
+      preflight =
+        armAttempt >= 1
+          ? null
+          : await evidencePreflight(repoRoot, preflight.fingerprint, surfaceOpt);
     }
   }
   const armBreach = evidenceBudgetBreach(
@@ -569,6 +591,7 @@ async function gitEvidenceAttempt(
 export async function evidencePreflight(
   repoRoot: string,
   prior?: EvidenceFingerprint | null,
+  options?: EvidencePreflightOptions,
 ): Promise<EvidencePreflight | null> {
   // Indirection files first (CX-134/135): the `.git` gitfile/commondir
   // state the `--git-path` resolves depend on must be captured BEFORE
@@ -703,7 +726,11 @@ export async function evidencePreflight(
   // the capture-instant state, so a flip/hide landing between capture
   // and arm reads as drift (the `.git` fingerprint's own semantics)
   // instead of being silently adopted as the pin baseline.
-  if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
+  // RFC-1644: skipped exactly when the consult's worktree arm consumes no
+  // surface — `worktreeSurface` stays `undefined` (fail-closed for arms).
+  if (options?.worktreeSurface === "skip") {
+    preflight.worktreeSurfaceSkipped = true;
+  } else if (preflight.index?.names !== undefined && fingerprint.workTree !== null) {
     const wt = fingerprint.workTree;
     const surface = captureWorktreeSurface(wt, preflight.index.names);
     // CX-r39 reliability, CX-r41-F1: directories git reports ignored
@@ -739,6 +766,7 @@ export async function evidencePreflight(
     markIgnoredDirs(surface, ignored);
     preflight.worktreeSurface = surface;
   }
+  preflightProbe.current?.(preflight, options);
   return preflight;
 }
 
