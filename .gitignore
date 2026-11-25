@@ -7,3 +7,4 @@ coverage/
 .turbo/
 .DS_Store
 *.tsbuildinfo
+*.tgz

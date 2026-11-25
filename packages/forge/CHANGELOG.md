@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.0.0] — 2026-11-25
+
+_Clean v10 governance line (Werkstatt RFC-1645/RFC-1649): forge is now authored in its own monorepo as an autonomous, self-hosted platform — zero runtime imports of werkstatt packages, no compat shims, no re-exports. The v9 maintenance line continues in the werkstatt monorepo until consumer migration completes._
+
+### Breaking
+
+- **Zero werkstatt dependency** — all runtime imports of `@warpgogol/werkstatt-engine` and `@warpgogol/werkstatt-shared` are gone, enforced by the blocking contract test `test/no-werkstatt-deps.test.ts`. The `os/werkstatt` adapter module and the studio-private `os/mission` module did not transfer; their publish exports (`./os/werkstatt`, `./os/mission`, `./os/mission/lockfile`, `./os/mission-module`) are removed.
+- **Node engine range is now `>=24`** (was `>=24 <25`).
+- **ForgeModule kernel integration is port-shaped** — `context.invoke`, `context.io` and friends remain optional ports; the standalone CLI populates what it owns. The full v10 kernel runtime lands as a redesign under RFC-1646/1647/1648 contracts in later work packages.
+
+### Added
+
+- **Monorepo authoring layout (RFC-1649)** — `packages/forge` plus first-party plugin scaffolds `forge-typescript`, `forge-astro`, `forge-repo-extract`, `forge-system`, each carrying a `forge/plugin@1` manifest with a strict `forgeRange`.
+- **Zero-dependency contract test + monorepo-layout contract test** — permanent contract nodes pinning AC-2/AC-3 of the conversion RFC.
+- **Protection migration map** — `docs/migration/protection-migration-map.yaml` accounts for every v9 protection displaced by the transfer; nothing disappears silently.
+
+### Changed
+
+- **forge-typescript is a provenance-preserving scaffold** — its v9 implementation depended on kernel types the v10 plugin SDK (WP-5) will redefine; the history is kept, the package republishes when the SDK lands.
+- **codebase.measure resolves TypeScript by explicit node_modules walk-up** from the measured workspace — deterministic regardless of the host harness (vitest NODE_PATH no longer leaks typescript availability into measurements).
+
+### Removed
+
+- `os/werkstatt` module (engine adapter) and `os/mission` module (studio-private mission mechanics) — protections displaced per the migration map, restored by the werkstatt private studio plugin before consumer migration (WP-8).
+- `forge.autonomy.validate` and the doctor autonomy-guard — superseded by the stronger, simpler zero-dependency contract.
+- RFC-1391 kernel-registry reachability acceptance tests — hard-coupled to v9 kernel internals, redesigned in WP-5 (PMM-0007).
+
 ## [9.7.1] — 2026-11-25
 
 _Push-path performance release: judged evidence consults stop walking the worktree when their argv never arms it, flow.push reads its verifier-trailer scan in batched consults and honors a committed review baseline, and flow.digest/flow.push attest a reviewed digest by input hash instead of recounting._

@@ -1,6 +1,6 @@
 {
   "name": "@warpgogol/forge",
-  "version": "9.7.1",
+  "version": "10.0.0",
   "private": false,
   "type": "module",
   "license": "Apache-2.0",
@@ -88,10 +88,6 @@
       "types": "./os/rfc/rfc.module.ts",
       "default": "./os/rfc/rfc.module.ts"
     },
-    "./os/werkstatt": {
-      "types": "./os/werkstatt/index.ts",
-      "default": "./os/werkstatt/index.ts"
-    },
     "./os/workflow": {
       "types": "./os/workflow/index.ts",
       "default": "./os/workflow/index.ts"
@@ -135,18 +131,6 @@
     "./os/session-module": {
       "types": "./os/session/session.module.ts",
       "default": "./os/session/session.module.ts"
-    },
-    "./os/mission": {
-      "types": "./os/mission/index.ts",
-      "default": "./os/mission/index.ts"
-    },
-    "./os/mission/lockfile": {
-      "types": "./os/mission/lockfile.ts",
-      "default": "./os/mission/lockfile.ts"
-    },
-    "./os/mission-module": {
-      "types": "./os/mission/mission.module.ts",
-      "default": "./os/mission/mission.module.ts"
     },
     "./os/exploration": {
       "types": "./os/exploration/index.ts",
@@ -398,7 +382,7 @@
     "vitest": "^5.0.0"
   },
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=24"
   },
   "publishConfig": {
     "access": "public",
@@ -456,10 +440,6 @@
         "types": "./dist/os/rfc/rfc.module.d.ts",
         "default": "./dist/os/rfc/rfc.module.js"
       },
-      "./os/werkstatt": {
-        "types": "./dist/os/werkstatt/index.d.ts",
-        "default": "./dist/os/werkstatt/index.js"
-      },
       "./os/workflow": {
         "types": "./dist/os/workflow/index.d.ts",
         "default": "./dist/os/workflow/index.js"
@@ -503,18 +483,6 @@
       "./os/session-module": {
         "types": "./dist/os/session/session.module.d.ts",
         "default": "./dist/os/session/session.module.js"
-      },
-      "./os/mission": {
-        "types": "./dist/os/mission/index.d.ts",
-        "default": "./dist/os/mission/index.js"
-      },
-      "./os/mission/lockfile": {
-        "types": "./dist/os/mission/lockfile.d.ts",
-        "default": "./dist/os/mission/lockfile.js"
-      },
-      "./os/mission-module": {
-        "types": "./dist/os/mission/mission.module.d.ts",
-        "default": "./dist/os/mission/mission.module.js"
       },
       "./os/exploration": {
         "types": "./dist/os/exploration/index.d.ts",
