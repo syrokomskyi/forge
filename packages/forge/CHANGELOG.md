@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.7.1] — 2026-11-25
+
+_Push-path performance release: judged evidence consults stop walking the worktree when their argv never arms it, flow.push reads its verifier-trailer scan in batched consults and honors a committed review baseline, and flow.digest/flow.push attest a reviewed digest by input hash instead of recounting._
+
+### Added
+
+- **Committed verifier-review baseline (RFC-1643)** — `push.verifierReviewedThrough: "<full sha>"` in the committed `forge.yaml`. flow.push reads it together with `push.requireVerifierReview` from `<digest.develop.local>:forge.yaml`, never the worktree or `HEAD`. Verifier/audit trailer commits that are ancestors of the baseline stay listed but no longer stop FLOW-PUSH-08. New warnings: **FLOW-PUSH-16** reports an unusable baseline with the reason; **FLOW-PUSH-17** lists every parsed-value change of the key and the newly exempted commits. Only the operator moves the baseline.
+- **Persisted reviewed digests (RFC-1638)** — `flow.digest` writes `.git/forge/digests/<digestId>.json` (`forge/persisted-digest@1`). `flow.push --digest` attests by input hash without a recount, `--recount` forces the full path, and **FLOW-PUSH-15** refuses a missing, unknown or non-preimaging record.
+- **Evidence-consult serialization + `bestEffort` reader mode (RFC-1633)** — judged consults serialize per common git dir under a bounded lock and consult budget. Non-verdict readers opt into the degraded `bestEffort` mode.
+
+### Changed
+
+- **Judged consults skip the worktree-surface capture when the consult's arm consumes none (RFC-1644)** — the shared predicate `consultReadsWorktreeSurface`. Measured: a judged `log -1` drops from 4.2 s to 0.42 s (werkstatt) and from 9.1 s to 0.17 s (pipelines); pipelines `collectDigest` drops from 7.5 min to 11.6 s. Worktree-reading consults capture exactly as before.
+- **flow.push verifier-trailer scan is batched (F-0394)** — two judged consults per range instead of two per commit, with an exact per-commit fallback whenever the batch framing cannot be proven (≈85 h → 35 s on an 18k-commit branch).
+- **flow.digest resolves `refs/heads/develop` / `refs/heads/main` fully qualified (RFC-1643)** — a shadow `refs/tags/develop` or `refs/develop` can no longer stand in for the reviewed tip.
+- **The digestId drops mutable tracking refs (RFC-1638)** — `refs/remotes/origin/*` and the derived `ahead` counts are display-only.
+- **System hub registration (RFC-1639/RFC-1641)** — `system.products.status`, `system.product.register`, `friction.add --level folder`, and friction-record provenance fields.
+
+### Fixed
+
+- RFC-1642: the probe ratchet is reproducible — a bound fixture counts as liveness, and mutating rules are exempt.
+- Decision-log generated files classify as owned generated rebase conflicts.
+- `rfc.create` degrades its session hint when the enclosing repo is unverifiable.
+- Consumer-surface fixes P6/P7: pinned-move pairing, archive opt-out, `adr --related` (F-0004/F-0005).
+
 ## [9.7.0] — 2026-11-23
 
 _Verification-hardening release: every governed git consult now runs through a judged evidence channel (RFC-1616), the declared policy surface is frozen and attested at integration (RFC-1615), the correctness contour ships its manifest, auditor, and gate — plus a typed agent tool surface generated from the command manifest._
