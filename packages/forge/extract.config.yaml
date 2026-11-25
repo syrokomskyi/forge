@@ -27,6 +27,12 @@ ci:
   publish: true
   nodeVersion: 24
   provenance: true
+  # RFC-0175 (pipelines) / repo-extract >=1.6.0: the export-side suite re-run
+  # only re-verifies what the monorepo gates already ran — 474 files, ~200
+  # cpu-min, outgrew any sane CI timeout and cancelled the 9.7.1 publish twice.
+  # install/build/lint/typecheck stay as the extraction-fidelity gate; the
+  # publish-chain consumer smoke (test:tarball:node24) is untouched.
+  skipTests: true
 
 ignoreDirs:
   - .turbo
