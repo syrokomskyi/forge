@@ -74,3 +74,5 @@ prettier normalization required before commit; pnpm-exec json noise — use dire
 - Direct git commits in werkstatt are blocked by flow-guard — everything through ecosystem.commit.
 - flow.open sweeps untracked files into the session worktree (observed in verbund — files vanished from primary, appeared in worktree).
 - pkill patterns matching vitest can kill the invoking shell chain — kill by exact pid, verify after.
+- Killing a matrix parent pid does NOT kill vitest workers — they reparent and keep burning CPU alongside the replacement run (the competing-matrix anomaly recurred). Kill the whole tree bottom-up or use the process group; verify with ps that exactly one tree remains.
+- Compat verification for the git hardening: all four first-party plugins declare gitMutation false and none call ctx.git — zero regression surface.
