@@ -421,3 +421,32 @@ Per-command extraction table for the deploy cluster against the completed SDK:
 | artifact.build | + envKeys (signing secret), processSpawn heavy | extractable — the secrets-sensitive one; envKeys allowlist is exactly the transparency boundary |
 
 SDK additions in 10.1.2 closing the surface: symlink triple (readlink/symlink/unlink), extended fs (readFileBytes/rename/rm/stat), env port enforcing the envKeys allowlist, git capability hardening. Remaining per-command work is mechanical translation (kernel result shape → plugin verdict shape) plus copying two pure primitives (byteHash, ed25519 verify) — no further SDK design needed for the deploy wave.
+
+## Translation pattern (wave-2 reference — deploy.status concrete)
+
+Kernel shape → plugin shape is a three-part mechanical translation:
+
+```typescript
+// BEFORE (kernel handler): runDeployStatus(input, context)
+//   context.io.readFile/exists — ambient workspace io
+//   readSymlinkBasename(currentSymlinkPath(root), io) — helper over io
+//   return { data, exitCode: 0, summary, nextSteps }
+
+// AFTER (plugin command module):
+export default {
+  id: "studio.deploy.status",
+  scope: "repo",
+  description: "Report current platform deployment status",
+  async run(ctx) {
+    const cur = await readlinkOrNull(ctx, ".werkstatt/artifacts/platform/current");
+    const prev = await readlinkOrNull(ctx, ".werkstatt/artifacts/platform/previous");
+    let gitSha = null, builtAt = null;
+    if (cur && await ctx.workspace.exists(artifactManifest(cur))) {
+      try { const m = JSON.parse(await ctx.workspace.readFile(artifactManifest(cur))); gitSha = m.gitSha ?? null; builtAt = m.builtAt ?? null; } catch {}
+    }
+    return { status: "pass", data: { currentHash: cur, previousHash: prev, currentGitSha: gitSha, deployedAt: builtAt } };
+  },
+}
+```
+
+Translation rules: (1) `context.io.X` → `ctx.workspace.X` one-to-one except `readSymlinkBasename` which becomes direct `readlink`; (2) `exitCode: 0/1` → `status: pass/fail` with violations carried in `data` when the kernel shape embedded them; (3) `nextSteps` drop — plugin results are machine-consumed by the CLI bridge, operator guidance lives in `message`; (4) absolute-path helpers (`currentSymlinkPath(root)`) become root-relative literals because the SDK sandbox re-roots anyway. Estimated per-command effort: small — the largest deploy file is 138 lines.
