@@ -1,0 +1,9 @@
+{
+  "name": "forge-selfhost-harness",
+  "private": true,
+  "version": "0.0.0",
+  "description": "WP-6 self-host pin — the forge monorepo is governed by the npm-published forge artifact, never its own workspace build. Bump the pin after every forge release.",
+  "dependencies": {
+    "@warpgogol/forge": "10.0.0"
+  }
+}
