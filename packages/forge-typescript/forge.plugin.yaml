@@ -1,6 +1,13 @@
-schema: forge/plugin@1
+schema: forge:plugin-manifest/v1
 id: forge-typescript
-version: 0.0.0
-forgeRange: ">=10.0.0 <11.0.0"
-capabilities: []
-status: scaffold
+version: 0.1.0
+forgeRange: ">=10.0.0"
+capabilities:
+  filesystem: read
+  processSpawn: true
+  network: false
+  gitMutation: false
+registers:
+  commands:
+    - dist/commands/tsconfig-validate.js
+  skills: skills/
