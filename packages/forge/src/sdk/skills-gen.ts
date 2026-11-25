@@ -49,15 +49,19 @@ export function generateSkillsTree(targetDir: string, sources: Array<{ pluginId:
   rmSync(targetDir, { recursive: true, force: true });
   mkdirSync(targetDir, { recursive: true });
   let written = 0;
-  for (const { skillsDir } of sources) {
+  for (const source of sources) {
+    const { skillsDir } = source;
     if (!existsSync(skillsDir)) continue;
+    // flatten: contents merge at the generated root; otherwise the directory
+    // itself becomes a top-level entry (the _shared support contract).
+    const rootPrefix = (source as { flatten?: boolean }).flatten === false ? source.skillsDir.split("/").pop()! : "";
     const walk = (d: string, rel: string): void => {
       for (const entry of readdirSync(d)) {
         const p = join(d, entry);
         const r = rel ? join(rel, entry) : entry;
         if (statSync(p).isDirectory()) walk(p, r);
         else {
-          const target = join(targetDir, r);
+          const target = join(targetDir, rootPrefix, r);
           mkdirSync(join(target, ".."), { recursive: true });
           copyFileSync(p, target);
           written += 1;
@@ -69,4 +73,32 @@ export function generateSkillsTree(targetDir: string, sources: Array<{ pluginId:
   const digest = inputHash.digest("hex");
   writeFileSync(join(targetDir, ".generated.json"), JSON.stringify({ inputHash: digest, at: new Date().toISOString() }));
   return { written, inputHash: digest, targetDir };
+}
+
+/**
+ * Canonical forge skill-layout resolution: the canonical tree carries category
+ * subtrees (fo/, meta/, shared/) that flatten to the generated root; _shared
+ * passes through as-is. One source, one generated view — the v10 layout contract.
+ */
+export interface SkillSource {
+  pluginId: string;
+  skillsDir: string;
+  /** flatten: contents merge at root; false: the dir itself becomes a top-level entry. */
+  flatten: boolean;
+}
+
+export function resolveCanonicalSkillSources(coreSkillsDir: string): SkillSource[] {
+  const sources: SkillSource[] = [];
+  for (const category of ["fo", "meta", "shared"]) {
+    const dir = join(coreSkillsDir, category);
+    if (existsSync(dir)) {
+      // Each category subtree flattens: skills/<cat>/<skill>/ -> <skill>/
+      sources.push({ pluginId: `core-${category}`, skillsDir: dir, flatten: true });
+    }
+  }
+  const sharedSupport = join(coreSkillsDir, "_shared");
+  if (existsSync(sharedSupport)) {
+    sources.push({ pluginId: "core-_shared", skillsDir: sharedSupport, flatten: false });
+  }
+  return sources;
 }
