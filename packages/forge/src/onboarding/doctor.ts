@@ -27,7 +27,7 @@ import {
   commentStyleForPath,
 } from "../utils/index.ts";
 import { readFileSync, existsSync } from "../utils/sync-fs.ts";
-import { join, relative, dirname, resolve, sep } from "node:path";
+import { join, relative, dirname, resolve } from "node:path";
 import picomatch from "picomatch";
 import { parse as parseYaml } from "yaml";
 import { forgePluginManifestSchema } from "../plugin/forge-plugin-manifest.ts";
