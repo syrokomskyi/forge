@@ -475,6 +475,6 @@ artifact.verify/swap need ed25519 verification over canonical-json — consensus
 
 1. **Copy canonical-json + use @noble/ed25519 as plugin dep** — copies of consensus-critical canonicalization are a divergence hazard: a plugin/engine drift fails signatures falsely.
 2. **Depend on @warpgogol/werkstatt-shared/signing** — werkstatt-shared is npm-published; the signing subpath is pure primitives. Cost: reintroduces a limited shared dependency the extraction is escaping — but scoped to one subpath, arguably legitimate as a versioned library dependency rather than the scopeless bag.
-3. **Host crypto port** () — moves verification behind the SDK boundary; the host owns canonicalization. Cost: crypto is pure computation, no host privilege needed — port-ifying it contradicts the inventory's own copy-pure-primitives guidance, but consensus-critical code is arguably different from byteHash.
+3. **Host crypto port** (`ctx.crypto.verifyEd25519`) — moves verification behind the SDK boundary; the host owns canonicalization. Cost: crypto is pure computation, no host privilege needed — port-ifying it contradicts the inventory's own copy-pure-primitives guidance, but consensus-critical code is arguably different from byteHash.
 
 Recommendation direction: option 2 as the pragmatic middle — one versioned subpath dep, zero copied consensus code. Decision belongs to the wave-2b session with artifact.verify in hand. Hash-only verification (unsigned artifacts) needs NO crypto at all and can proceed in any case.
