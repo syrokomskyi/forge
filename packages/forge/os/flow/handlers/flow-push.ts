@@ -115,13 +115,21 @@ function refuse(ruleId: string, message: string, fixHint?: string): FlowPushData
  */
 /**
  * RFC-1616 (AC-6): list commits in `range` whose message carries a verifier /
- * audit trailer. Reads are delimiter-free: commit SHAs enumerate via
- * `rev-list` (hex-only output) and each commit's trailers arrive through
- * git's OWN `%(trailers:only)` parser — \x1e framing cannot hide a record
- * (CX-33), and `x-verifier-report:`/`X-Verifier-Report :` spellings count
- * exactly as `git interpret-trailers` counts them (CX-60). The channel is
+ * audit trailer. Commit SHAs enumerate via `rev-list` (hex-only output) and
+ * each commit's trailers arrive through git's OWN `%(trailers:only)` parser —
+ * `x-verifier-report:`/`X-Verifier-Report :` spellings count exactly as
+ * `git interpret-trailers` counts them (CX-60). The channel is
  * `gitEvidence`: session GIT_* variables and refs/replace cannot redirect
  * or substitute what the scan sees (CX-48).
+ *
+ * F-0394: the range is the whole local branch (CX-82/CX-132), and every
+ * judged consult re-runs the full evidence preflight (seconds each), so a
+ * per-commit read pair walked tens of thousands of consults — ~85 h on an
+ * 18k-commit repo. The scan now reads the range in TWO batched judged
+ * consults (`batchedCommitReads`) and falls back to the exact per-commit
+ * reads whenever the batch cannot be proven to frame one record per
+ * enumerated sha (CX-33) — the per-record judgment is byte-identical on
+ * both paths.
  */
 async function scanVerifierTrailers(
   repoRoot: string,
@@ -134,60 +142,135 @@ async function scanVerifierTrailers(
   // the trailer scan over nothing (CX-174's shape inside the push gate
   // itself); null lets the caller refuse loudly.
   if (list.exitCode !== 0) return null;
-  const wanted = new Set(VERIFIER_TRAILERS.map((t) => t.toLowerCase()));
-  const canonical = new Map(VERIFIER_TRAILERS.map((t) => [t.toLowerCase(), t]));
-  const hits: Array<{ sha: string; trailers: string[] }> = [];
-  for (const sha of list.stdout
+  const shas = list.stdout
     .split("\n")
     .map((s) => s.trim())
-    .filter(Boolean)) {
-    // `%e` rides along — a commit declaring a non-default `encoding:`
-    // header RECODES this very output, so %(trailers) over it is already
-    // garbage: the header lives in the object and no -c pin reaches it
-    // (CX-102). An encoded commit's trailers are unverifiable — flag it.
-    const parsed = await gitEvidence(repoRoot, [
-      "log",
-      "-1",
-      "--format=%(trailers:only,separator=%x00)%x00%e",
-      sha,
-    ]);
-    assertJudgedEvidence(parsed);
-    if (parsed.exitCode !== 0) {
-      // An enumerated commit whose trailer read fails is unverifiable —
-      // flag it like the encoding case instead of silently dropping its
-      // provenance under a surgical refusal.
-      hits.push({ sha, trailers: ["x-unverifiable-commit"] });
-      continue;
-    }
-    const parsedParts = parsed.stdout.split("\x00");
-    const declaredEncoding = (parsedParts.pop() ?? "").trim();
-    const found = new Set<string>();
-    if (declaredEncoding.length > 0 && !/^utf-?8$/i.test(declaredEncoding)) {
-      found.add(`x-unverifiable-encoding: ${declaredEncoding}`);
-    }
-    for (const t of parseGitTrailers(parsedParts.join("\x00").replaceAll("\x00", "\n"))) {
-      const c = canonical.get(t.key);
-      if (wanted.has(t.key) && c && t.value.length > 0) found.add(c);
-    }
-    // A trailer-shaped SUBJECT is not a git trailer on every version — but it
-    // looks exactly like provenance text, so flag it anyway (stricter is
-    // safe, CX-23). `%s` is one line — no delimiter to smuggle.
-    const subj = await gitEvidence(repoRoot, ["log", "-1", "--format=%s", sha]);
-    assertJudgedEvidence(subj);
-    if (subj.exitCode === 0) {
-      const m = /^([^:\s][^:]*?)\s*:\s*(.*)$/.exec(subj.stdout.trim());
-      if (m) {
-        const c = canonical.get(m[1]!.trim().toLowerCase());
-        if (c && m[2]!.trim().length > 0) found.add(c);
-      }
-    } else {
-      // The subject-shaped-trailer check could not run — flag the sha
-      // rather than assume no trailer-shaped subject.
-      found.add("x-unverifiable-commit");
-    }
-    if (found.size > 0) hits.push({ sha, trailers: [...found].sort() });
+    .filter(Boolean);
+  if (shas.length === 0) return [];
+  const batched = await batchedCommitReads(repoRoot, range, shas);
+  const hits: Array<{ sha: string; trailers: string[] }> = [];
+  for (const sha of shas) {
+    const reads = batched?.get(sha) ?? (await perCommitReads(repoRoot, sha));
+    const found = judgeVerifierTrailers(reads);
+    if (found.length > 0) hits.push({ sha, trailers: found });
   }
   return hits;
+}
+
+/** One commit's two judged reads: `null` = that read failed (unverifiable). */
+interface CommitReads {
+  /** stdout of `log -1 --format=%(trailers:only,separator=%x00)%x00%e <sha>`. */
+  trailers: string | null;
+  /** stdout of `log -1 --format=%s <sha>`. */
+  subject: string | null;
+}
+
+const TRAILER_READ_FORMAT = "%(trailers:only,separator=%x00)%x00%e";
+
+/** The exact pre-F-0394 per-commit reads — two judged consults per sha. */
+async function perCommitReads(repoRoot: string, sha: string): Promise<CommitReads> {
+  // `%e` rides along — a commit declaring a non-default `encoding:`
+  // header RECODES this very output, so %(trailers) over it is already
+  // garbage: the header lives in the object and no -c pin reaches it
+  // (CX-102). An encoded commit's trailers are unverifiable — flag it.
+  const parsed = await gitEvidence(repoRoot, ["log", "-1", `--format=${TRAILER_READ_FORMAT}`, sha]);
+  assertJudgedEvidence(parsed);
+  // `%s` is one line — no delimiter to smuggle.
+  const subj = await gitEvidence(repoRoot, ["log", "-1", "--format=%s", sha]);
+  assertJudgedEvidence(subj);
+  return {
+    trailers: parsed.exitCode === 0 ? parsed.stdout : null,
+    subject: subj.exitCode === 0 ? subj.stdout : null,
+  };
+}
+
+/**
+ * F-0394: both reads for every commit of `range` in two judged consults.
+ * Each record is `\x1e<sha>\x00<per-commit read output>` — the payload
+ * after the sha prefix is exactly what `perCommitReads` would have read.
+ * A \x1e or forged `<sha>\x00` inside a message can only ADD records
+ * (separators are never consumed), so the batch is accepted only when
+ * every record carries an enumerated sha, no sha repeats, and the record
+ * count equals the `rev-list` count (CX-33). Any mismatch, failure or
+ * refusal returns null and the caller reads per commit — slow but exact,
+ * never a narrower scan.
+ */
+export async function batchedCommitReads(
+  repoRoot: string,
+  range: string,
+  shas: readonly string[],
+): Promise<Map<string, CommitReads> | null> {
+  const trailerRecords = await batchedRecords(repoRoot, range, TRAILER_READ_FORMAT, shas);
+  if (trailerRecords === null) return null;
+  const subjectRecords = await batchedRecords(repoRoot, range, "%s", shas);
+  if (subjectRecords === null) return null;
+  const out = new Map<string, CommitReads>();
+  for (const sha of shas) {
+    out.set(sha, { trailers: trailerRecords.get(sha)!, subject: subjectRecords.get(sha)! });
+  }
+  return out;
+}
+
+async function batchedRecords(
+  repoRoot: string,
+  range: string,
+  format: string,
+  shas: readonly string[],
+): Promise<Map<string, string> | null> {
+  const r = await gitEvidence(repoRoot, ["log", `--format=%x1e%H%x00${format}`, range]);
+  assertJudgedEvidence(r);
+  if (r.exitCode !== 0) return null;
+  const expected = new Set(shas);
+  const parts = r.stdout.split("\x1e");
+  // The output starts with the separator — anything before it is foreign.
+  if (parts.shift() !== "") return null;
+  if (parts.length !== expected.size) return null;
+  const records = new Map<string, string>();
+  for (const part of parts) {
+    const nul = part.indexOf("\x00");
+    if (nul <= 0) return null;
+    const sha = part.slice(0, nul);
+    if (!expected.has(sha) || records.has(sha)) return null;
+    records.set(sha, part.slice(nul + 1));
+  }
+  return records.size === expected.size ? records : null;
+}
+
+/** Verifier/audit trailers one commit's reads carry, sorted; [] = clean. */
+function judgeVerifierTrailers(reads: CommitReads): string[] {
+  const wanted = new Set(VERIFIER_TRAILERS.map((t) => t.toLowerCase()));
+  const canonical = new Map(VERIFIER_TRAILERS.map((t) => [t.toLowerCase(), t]));
+  if (reads.trailers === null) {
+    // An enumerated commit whose trailer read fails is unverifiable —
+    // flag it like the encoding case instead of silently dropping its
+    // provenance under a surgical refusal.
+    return ["x-unverifiable-commit"];
+  }
+  const parsedParts = reads.trailers.split("\x00");
+  const declaredEncoding = (parsedParts.pop() ?? "").trim();
+  const found = new Set<string>();
+  if (declaredEncoding.length > 0 && !/^utf-?8$/i.test(declaredEncoding)) {
+    found.add(`x-unverifiable-encoding: ${declaredEncoding}`);
+  }
+  for (const t of parseGitTrailers(parsedParts.join("\x00").replaceAll("\x00", "\n"))) {
+    const c = canonical.get(t.key);
+    if (wanted.has(t.key) && c && t.value.length > 0) found.add(c);
+  }
+  // A trailer-shaped SUBJECT is not a git trailer on every version — but it
+  // looks exactly like provenance text, so flag it anyway (stricter is
+  // safe, CX-23).
+  if (reads.subject !== null) {
+    const m = /^([^:\s][^:]*?)\s*:\s*(.*)$/.exec(reads.subject.trim());
+    if (m) {
+      const c = canonical.get(m[1]!.trim().toLowerCase());
+      if (c && m[2]!.trim().length > 0) found.add(c);
+    }
+  } else {
+    // The subject-shaped-trailer check could not run — flag the sha
+    // rather than assume no trailer-shaped subject.
+    found.add("x-unverifiable-commit");
+  }
+  return [...found].sort();
 }
 
 export async function pushFlow(
@@ -385,7 +468,8 @@ export async function pushFlow(
             ruleId: "FLOW-PUSH-08",
             severity: "error",
             message:
-              `${trailerHits.length} unpushed commit(s) carry a verifier/audit trailer ` +
+              `${trailerHits.length} commit(s) on the scanned local branches carry a verifier/audit trailer ` +
+              `(the scan covers the whole branch — tracking refs cannot prove what is already pushed, CX-82) ` +
               `(${trailerHits.map((h) => `${h.sha.slice(0, 9)}[${h.trailers.join(",")}]`).join("; ")}) — ` +
               `verifier evidence must be reviewed before it leaves the machine`,
             fixHint:
