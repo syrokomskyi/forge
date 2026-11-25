@@ -4,7 +4,7 @@
   "private": false,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Repository-native governance for AI-assisted software development — project contracts, RFCs, ADRs, agent skills and deterministic validation.",
+  "description": "Repository-native governance for AI-assisted software development \u2014 project contracts, RFCs, ADRs, agent skills and deterministic validation.",
   "keywords": [
     "ai",
     "agent",
@@ -331,6 +331,22 @@
     "./os/adversarial-module": {
       "types": "./os/adversarial/adversarial.module.ts",
       "default": "./os/adversarial/adversarial.module.ts"
+    },
+    "./sdk": {
+      "types": "./src/sdk/types.ts",
+      "default": "./src/sdk/types.ts"
+    },
+    "./sdk/context": {
+      "types": "./src/sdk/context.ts",
+      "default": "./src/sdk/context.ts"
+    },
+    "./sdk/loader": {
+      "types": "./src/sdk/loader.ts",
+      "default": "./src/sdk/loader.ts"
+    },
+    "./integration": {
+      "types": "./src/integration/enqueue.ts",
+      "default": "./src/integration/enqueue.ts"
     }
   },
   "files": [
@@ -671,6 +687,22 @@
       "./os/adversarial-module": {
         "types": "./dist/os/adversarial/adversarial.module.d.ts",
         "default": "./dist/os/adversarial/adversarial.module.js"
+      },
+      "./sdk": {
+        "types": "./dist/sdk/types.d.ts",
+        "default": "./dist/sdk/types.js"
+      },
+      "./sdk/context": {
+        "types": "./dist/sdk/context.d.ts",
+        "default": "./dist/sdk/context.js"
+      },
+      "./sdk/loader": {
+        "types": "./dist/sdk/loader.d.ts",
+        "default": "./dist/sdk/loader.js"
+      },
+      "./integration": {
+        "types": "./dist/integration/enqueue.d.ts",
+        "default": "./dist/integration/enqueue.js"
       }
     }
   }
