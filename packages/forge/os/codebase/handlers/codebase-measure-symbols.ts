@@ -17,9 +17,37 @@ estimate, never a crash.
 </CHANGE_SUMMARY>
 */
 
-import { createRequire } from "node:module";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
+/**
+ * Walk the node_modules chain upward from the measured workspace root,
+ * mirroring Node's directory resolution — but deliberately WITHOUT the
+ * environment-dependent fallbacks (NODE_PATH, $HOME/.node_modules, global
+ * prefixes). The measured workspace counts typescript as available only when
+ * its own directory chain provides it; a harness that injects typescript into
+ * the process environment (vitest's NODE_PATH, a global install) must not
+ * leak into the measurement.
+ */
+function resolveWorkspaceTypeScript(workspaceRoot: string): string | null {
+  let dir = resolve(workspaceRoot);
+  for (;;) {
+    const pkgJsonPath = join(dir, "node_modules", "typescript", "package.json");
+    if (existsSync(pkgJsonPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as { main?: string };
+        const entry = join(dir, "node_modules", "typescript", pkg.main ?? "lib/typescript.js");
+        if (existsSync(entry)) return entry;
+      } catch {
+        // malformed package.json — keep walking up
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
 
 export interface FileSymbols {
   classes: number;
@@ -88,8 +116,8 @@ export async function measureSymbols(
   try {
     // Resolve against the measured workspace, not this package — forge carries
     // no typescript dependency of its own, so a bare import would never find it.
-    const requireFromRoot = createRequire(join(workspaceRoot, "package.json"));
-    const tsPath = requireFromRoot.resolve("typescript");
+    const tsPath = resolveWorkspaceTypeScript(workspaceRoot);
+    if (tsPath == null) throw new Error("typescript-unavailable");
     ts = (await import(pathToFileURL(tsPath).href)) as unknown as TsApi;
   } catch {
     skipped.push("typescript-unavailable");

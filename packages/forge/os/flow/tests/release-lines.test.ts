@@ -122,16 +122,15 @@ describe("discoverReleaseLines", () => {
     expect(lines.map((l) => l.id).sort()).toEqual(["keep", "repo"]);
   });
 
-  it("the real werkstatt root discovers repo plus its published package lines", async () => {
+  it("the real monorepo root discovers repo plus its published package lines", async () => {
     const root = join(dirname(fileURLToPath(import.meta.url)), "../../../../..");
     const { lines, diagnostics } = await discoverReleaseLines(root, ambientIo);
     expect(diagnostics.filter((d) => d.ruleId === "FLOW-VER-02")).toEqual([]);
-    const ids = lines.map((l) => l.id);
-    // RFC-1540 added the intake-validator extract line (16 → 17).
-    expect(ids).toHaveLength(17);
-    expect(ids).toContain("repo");
-    expect(ids).toContain("intake-validator");
-    expect(ids).toContain("forge");
-    expect(ids).toContain("werkstatt-engine");
+    // v10 authoring monorepo (RFC-1649): a directory joins the release-line set
+    // when it carries extract.config.yaml — the publishability fact. Today that
+    // is packages/forge + packages/forge-typescript plus the repo line itself;
+    // the first-party plugin scaffolds (forge-astro, forge-repo-extract,
+    // forge-system) join when WP-5 makes them publishable.
+    expect(lines.map((l) => l.id).sort()).toEqual(["forge", "forge-typescript", "repo"]);
   });
 });

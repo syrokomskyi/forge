@@ -22,9 +22,7 @@ import {
   readAndParseRfc,
   listRfcFiles,
 } from "../frontmatter-io.ts";
-import { RFC_DIR } from "../types.ts";
 
-const WORKSPACE_ROOT = join(__dirname, "..", "..", "..", "..", "..");
 
 describe("readRfcFrontmatter — AC-5/AC-6 corpus reads", () => {
   const fmDoc = (id: string, extra = ""): string =>
@@ -87,27 +85,64 @@ describe("readRfcFrontmatter — AC-5/AC-6 corpus reads", () => {
 
 describe("AC-9 — frontmatter-only corpus produces the same rule input as full parse", () => {
   test(
-    "every real corpus file: frontmatter identical between the two paths",
+    "every corpus file: frontmatter identical between the two paths",
     async () => {
-      const rfcDir = join(WORKSPACE_ROOT, RFC_DIR);
-      const files = await listRfcFiles(rfcDir);
-      expect(files.length).toBeGreaterThan(100);
-      for (const f of files) {
-        const slim = await readRfcFrontmatter(rfcDir, f);
-        const full = await readAndParseRfc(rfcDir, f);
-        if (!slim || !full) continue;
-        if ("error" in slim || "error" in full) {
-          expect("error" in slim, `error parity for ${f}`).toBe("error" in full);
-          continue;
+      // v10 (RFC-1649): the authoring monorepo carries no hundred-file RFC
+      // corpus of its own — the v9 test scanned werkstatt's. The parity
+      // property is generic, so the corpus is synthesized here: diverse YAML
+      // shapes exercising exactly the scan/parse divergence surface (nested
+      // maps, flow + block sequences, multiline scalars, unicode, quotes,
+      // empty + malformed frontmatter).
+      const dir = mkdtempSync(join(tmpdir(), "fm-corpus-"));
+      try {
+        const shapes: Array<[string, string]> = [
+          ["simple", "id: RFC-1001\nstatus: draft\n"],
+          ["nested-map", "id: RFC-1002\nmeta:\n  author: a\n  tags:\n    x: 1\n"],
+          ["flow-seq", "id: RFC-1003\nrefs: [RFC-0001, RFC-0002]\n"],
+          ["block-seq", "id: RFC-1004\nrefs:\n  - RFC-0001\n  - RFC-0002\n"],
+          ["multiline-literal", "id: RFC-1005\nnote: |\n  line one\n  line two\n"],
+          ["multiline-folded", "id: RFC-1006\nnote: >\n  fold one\n  fold two\n"],
+          ["unicode", "id: RFC-1007\ntitle: Ünïcödé —  тест\n"],
+          ["quoted", 'id: RFC-1008\ntitle: "quoted: with colon"\n'],
+          ["single-quoted", "id: RFC-1009\ntitle: 'single ''quote'''\n"],
+          ["numbers", "id: RFC-1010\nversion: 2\nratio: 0.5\n"],
+          ["booleans", "id: RFC-1011\nactive: true\narchived: false\n"],
+          ["null-value", "id: RFC-1012\nsuperseded-by: null\n"],
+          ["empty-fm", ""],
+          ["deep-nesting", "id: RFC-1014\na:\n  b:\n    c:\n      d: [1, 2, { e: f }]\n"],
+          ["colon-in-value", "id: RFC-1015\nurl: https://example.com/x\n"],
+          ["dashes-in-key", "id: RFC-1016\nx-custom-key: v\n"],
+          ["long-value", `id: RFC-1017\nnote: "${"y".repeat(2000)}"\n`],
+          ["mixed-types", "id: RFC-1018\nn: 1\ns: text\nb: true\nl:\n  - 1\n  - two\n"],
+          ["indented-seq", "id: RFC-1019\nitems:\n    - one\n    - two\n"],
+          ["comment-in-fm", "id: RFC-1020\n# a comment\nstatus: draft\n"],
+          ["date-ish", "id: RFC-1021\ncreated: 2026-11-25\n"],
+          ["empty-string", 'id: RFC-1022\nnote: ""\n'],
+          ["anchor-free-dup", "id: RFC-1023\nx: a\ny: a\nz: a\n"],
+          ["malformed-unclosed", "id: [unclosed\n"],
+        ];
+        for (const [name, fm] of shapes) {
+          writeFileSync(join(dir, `rfc-${name}.md`), `---\n${fm}---\n\n# Body\n\ntext\n`);
         }
-        // Referential rules consume only this map — identical input means an
-        // identical violation set.
-        expect(slim.parsed.frontmatter, `frontmatter parity for ${f}`).toEqual(
-          full.parsed.frontmatter,
-        );
+        const files = await listRfcFiles(dir);
+        expect(files.length).toBeGreaterThan(15);
+        for (const f of files) {
+          const slim = await readRfcFrontmatter(dir, f);
+          const full = await readAndParseRfc(dir, f);
+          if (!slim || !full) continue;
+          if ("error" in slim || "error" in full) {
+            expect("error" in slim, `error parity for ${f}`).toBe("error" in full);
+            continue;
+          }
+          // Referential rules consume only this map — identical input means an
+          // identical violation set.
+          expect(slim.parsed.frontmatter, `frontmatter parity for ${f}`).toEqual(
+            full.parsed.frontmatter,
+          );
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
       }
-      // Sanity: the corpus is large enough that the slim path actually ran.
-      expect(files.length).toBeGreaterThan(100);
     },
     120_000,
   );
