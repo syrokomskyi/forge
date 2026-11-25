@@ -91,3 +91,14 @@ observed on the 10.0.0 publish as well).
 3. Evidence mirroring into werkstatt `docs/forge-v10/` — wp-2/wp-4-5 evidence + completed protection-migration-map — requires a werkstatt flow session (heavy gates; schedule with fresh context).
 4. WP-7 canary (warpgogol-verbund dark-run + cutover), WP-8 werkstatt migration, WP-9 consumers — operational waves in external repos.
 5. forge 10.1.0 release carrying WP-4/5 features once the full matrix is green; self-host pin bump follows.
+
+## WP-6 self-host closure — 2026-11-25 (session-3, delegated sign-off)
+
+- `@warpgogol/forge@10.1.0` npm-verified at the version-document endpoint (tarball + `./sdk` export present); dist-tag CDN lag observed again — the documented propagation pattern, not a failure.
+- `test/self-host.test.ts` green 3/3 against the published artifact — the pin-heal prediction confirmed exactly.
+- Canary bin-collision finding recorded: shadow installs must invoke direct dist paths, never `pnpm exec` (last-install-wins in `.bin`).
+- werkstatt evidence mirror integrated into werkstatt develop via flow.integrate (f068001b5 → fc538b6ae) after the inert-ignore-rule workaround.
+- **FLOW machinery false positive fixed in v10 lineage**: `sessionIgnoreRulePaths` counted `.gitignore` files inside ignored dirs (npm packages ship them) as session-authored dirt — git never reads those. Fixed via `check-ignore` filtration; CX-142 protection preserved for visible paths (test: `test/session-ignore-rules-inert.test.ts` 3/3).
+- Plugins republished at 1.0.1 — manifest/package version sync enforced by `test/plugin-manifest-version-sync.test.ts` (the 0.1.0-manifest-in-1.0.0-artifact drift class is now impossible).
+
+**WP-6 verdict: COMPLETE** — full self-host release cycle green: forge 10.1.0 built, published, pin-verified against itself in the monorepo consumer harness.
