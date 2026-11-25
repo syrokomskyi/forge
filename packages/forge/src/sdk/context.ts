@@ -191,6 +191,17 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
         return { status: res.status, body: await res.text() };
       },
     },
+    env: {
+      get(key) {
+        if (!(caps.envKeys ?? []).includes(key)) {
+          deny("env", `env key not declared in manifest envKeys: ${key}`);
+        }
+        return process.env[key];
+      },
+      declared(key) {
+        return (caps.envKeys ?? []).includes(key);
+      },
+    },
     log: {
       info: (msg) => console.log(`[${pid}] ${msg}`),
       warn: (msg) => console.warn(`[${pid}] ${msg}`),

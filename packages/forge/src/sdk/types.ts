@@ -137,6 +137,17 @@ export interface PluginContext {
   network: NetworkPort;
   log: LoggerPort;
   paths: PathResolverPort;
+  env: EnvPort;
+}
+
+/* Env access is allowlist-enforced: the manifest's envKeys declares exactly which
+   variables the plugin may read — secrets-adjacent access stays transparent and
+   auditable at the manifest surface, never a blanket process.env passthrough. */
+export interface EnvPort {
+  /** Declared key → value or undefined; undeclared key → CapabilityViolation. */
+  get(key: string): string | undefined;
+  /** Whether the key is declared in the manifest — no leakage of presence vs value. */
+  declared(key: string): boolean;
 }
 
 /** Typed incompatibility error — fail-closed, no degraded modes. */
