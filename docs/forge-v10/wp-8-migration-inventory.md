@@ -460,3 +460,7 @@ studio.deploy.status extracted and verified in the wave-2 session worktree:
 - translation effort confirmed mechanical: 83-line kernel handler → ~60-line plugin module in one pass, no design decisions needed beyond the documented pattern
 - host-version sensitivity discovered: the plugin needs host 10.1.2 at RUNTIME (readlink port) — plugin type-only imports mean version coupling is a host-runtime concern, not a compile-time one; the forgeRange manifest field is the enforcement surface
 - npm two-stage replication reconfirmed: version-doc 200 preceded tarball 200 by ~15 minutes; publish pipeline staging showed 409-on-retry as the tell that the first publish landed server-side
+
+### Operational hazard confirmed: werkstatt v9 machinery carries the inert-ignore phantom
+
+The wave-2 integrate refused on node_modules/.pnpm/robots-parser .gitignore phantom dirt — the CX-142 inverse problem. The fix shipped in forge 10.1.1 but werkstatt flow.integrate runs on the VENDORED v9 machinery which will never receive it. Every werkstatt integrate is one npm-shipped-.gitignore away from refusal until the v10 self-host migration completes (the WP-8 endgame itself). Interim: preemptive cleanup per runbook. This is additional evidence for prioritizing the migration over perfectionism in extraction ordering.
