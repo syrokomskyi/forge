@@ -1,10 +1,10 @@
 {
   "name": "@warpgogol/forge-repo-extract",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": false,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Forge first-party plugin (scaffold — implementation lands at program WP-5).",
+  "description": "Forge first-party plugin (scaffold \u2014 implementation lands at program WP-5).",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/syrokomskyi/forge.git",
@@ -16,9 +16,16 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "echo scaffold-noop",
-    "lint": "echo scaffold-noop",
-    "typecheck": "echo scaffold-noop",
-    "test": "echo scaffold-noop"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo lint-pending",
+    "test": "echo tests-pending"
+  },
+  "dependencies": {
+    "@warpgogol/forge": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "typescript": "~5.9.3"
   }
 }

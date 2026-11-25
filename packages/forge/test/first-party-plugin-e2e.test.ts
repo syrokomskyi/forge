@@ -52,4 +52,22 @@ describe("first-party plugin end-to-end (WP-5 proof-of-contract)", () => {
     // filesystem read granted — read works.
     await expect(loaded.ctx.workspace.exists("packages")).resolves.toBe(true);
   });
+
+  it("all four first-party plugins load through the standard loader", async () => {
+    for (const entry of ["packages/forge-typescript", "packages/forge-astro", "packages/forge-system", "packages/forge-repo-extract"]) {
+      execFileSync("pnpm", ["exec", "tsc", "-p", "tsconfig.build.json"], {
+        cwd: join(MONOREPO_ROOT, entry),
+        stdio: "ignore",
+      });
+      const loaded = await loadPlugin(entry, MONOREPO_ROOT, { workspaceRoot: MONOREPO_ROOT });
+      expect(loaded.commands.length).toBeGreaterThanOrEqual(2);
+      expect(loaded.manifest.forgeRange).toBeTruthy();
+      // every command honors the CommandModule contract shape
+      for (const cmd of loaded.commands) {
+        expect(typeof cmd.id).toBe("string");
+        expect(typeof cmd.run).toBe("function");
+        expect(["repo", "workspace", "system"]).toContain(cmd.scope);
+      }
+    }
+  });
 });
