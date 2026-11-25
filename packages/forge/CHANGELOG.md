@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.1.1] — 2026-11-25
+
+### Added
+
+- **Plugin-CLI bridge** — consumer plugins discovered from `forge.yaml plugins[]` load through the standard SDK path and register as first-class CLI commands; load failures surface loudly on stderr, never silent absence (RFC-1648 WP-6).
+- **Plugin-contributed skills join the generated tree** — `forge.upgrade` syncs active plugins' `skills/` dirs into `.agents/skills` through the SDK loader with conflict-skip and prune protection; generation is untracked by construction and writers self-ensure the `.gitignore` entry (RFC-1648).
+- `.agents/skills` is now a generated-untracked view in the forge monorepo itself (dogfooding; the tracked v9 twin is gone).
+
+### Fixed
+
+- `./sdk` publish export paths corrected for the `dist/src/` build layout.
+- Inert ignore-rule exclusion: `.gitignore` files inside ignored directories (npm packages ship them) no longer count as session-authored dirt in FLOW dirty classification — git never reads them; the CX-142 protection is preserved for visible paths.
+
 ## [10.1.0] — 2026-11-25
 
 ### Added
