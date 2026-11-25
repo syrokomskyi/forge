@@ -70,4 +70,8 @@ Hazards earned this wave:
 | dater | **INTEGRATED** | the largest consumer (11 workspaces, chrome-extension+cloudflare+astro stack) — pass/143 corpus preserved exact |
 | pipelines | in flight | first attempt refused CORR-GATE-02: the new top-level `plugins` key was not declared in `policy.mutable` — fixed by declaring `plugins` mutable (operator-controlled config, same class as `project`); re-integrating |
 
-wave-1 scoreboard: 4/5 integrated, pipelines in final gate.
+wave-1 scoreboard: **5/5 INTEGRATED.** pipelines completed parity-only (e4b0436ec) — CORR-GATE-02 correctly refused session self-amendment of policy twice (plugins key, then policy-decl change); plugin adoption in policy-gated consumers must land through the verbund queue path, filed as follow-up. All primaries post-merge `pnpm install`-refreshed and resolving forge 10.1.1.
+
+## Plugin dependency design fix (same wave)
+
+Published plugins 1.0.1 carried exact-pinned forge dependencies (workspace rewrite artifact) — nested copies and version-lock cascades in adopters. Fixed: `@warpgogol/forge` moved to `peerDependencies: ^10.1.0` in all four plugins, republished as **1.0.2**; e2e re-verified — zero nested copies, validators pass. Consumers adopting plugins should pin `^1.0.2`.
