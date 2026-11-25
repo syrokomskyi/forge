@@ -81,3 +81,7 @@ Published plugins 1.0.1 carried exact-pinned forge dependencies (workspace rewri
 - **werkstatt evidence-mirror integration hits the inert-ignore phantom** — v9-line machinery in werkstatt counts `node_modules/.pnpm/*/node_modules/*/.gitignore` as session dirt (CX-142 over-broadness fixed in v10 forge but not in the werkstatt v9-line). Workaround: delete the phantom file before flow.integrate; permanent fix arrives with WP-8 (werkstatt itself moving to v10 machinery).
 - **hdri-frozen-v3**: absent as a standalone clone locally (exists only as a pipelines-attached worktree `hdri-frozen-v3-20261104`, detached) — confirmed skip, frozen artifact repo.
 - plugin manifest-version sync + cli-bridge + first-party e2e tests re-verified green (10/10) after the 1.0.2 peerDependency republish.
+
+## Follow-up execution: T-0023 filed (2026-11-25)
+
+pipelines plugin adoption filed as verbund-queue task **T-0023** (kind: adoption, state: proposed) with a complete brief: the CORR-GATE-02 context, explicit-version pinning rule (^1.0.2 for the peerDependencies fix), policy.mutable sanctioning instructions, acceptance checks. Integrated into warpgogol-verbund develop (commit eaf8233). The verbund dispatch loop (`fo-system-dispatch`) owns execution from here.
