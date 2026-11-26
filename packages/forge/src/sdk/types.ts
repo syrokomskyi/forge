@@ -30,6 +30,11 @@ export interface PluginManifest {
     /* forge's own state space (.git/forge/) lives outside the workspace sandbox in
        worktrees — access is a distinct grant, never a widening of filesystem. */
     forgeState?: "none" | "read";
+    /* The primary checkout's artifact store (<primary>/.werkstatt/artifacts) lives
+       outside the workspace sandbox in worktrees — deploy/release state is shared
+       across worktrees by design. Access is a distinct per-space grant following
+       the forgeState precedent: semantic space boundary, never a path passthrough. */
+    artifactStore?: "none" | "read" | "readwrite";
   };
   registers: {
     commands?: string[];
@@ -146,6 +151,11 @@ export interface PluginContext {
   paths: PathResolverPort;
   env: EnvPort;
   forgeState: ForgeStatePort;
+  /* WorkspaceIO-shaped port rooted at the primary checkout's artifact store.
+     Shares the workspace port's method surface exactly; the root difference is
+     the whole point — methods deny with CapabilityViolation when the grant is
+     insufficient, read methods degrade to absent-shape when no git state exists. */
+  artifactStore: WorkspaceIOPort;
 }
 
 /* The journal record shape is open-ended by design — the flow machinery evolves

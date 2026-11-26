@@ -81,6 +81,160 @@ export async function resolveGitCommonDir(workspaceRoot: string): Promise<string
   }
 }
 
+
+/** Scoped WorkspaceIOPort factory — one implementation behind every filesystem-shaped
+   port (workspace, artifactStore, future state spaces). `root` is the sandbox root;
+   `grant()` reports the effective grant per call so capability changes evaluate fresh;
+   `onDeny` raises the capability violation with the caller's capability dimension. */
+function makeScopedPort(
+  root: string,
+  grant: () => string,
+  onDeny: (capability: string, detail: string) => never,
+  capability: string,
+) {
+  const scopedTo = (p: string): string => {
+    const resolved = pathResolve(root, p);
+    if (!resolved.startsWith(pathResolve(root))) {
+      onDeny(capability, `path escape outside ${capability} root: ${p}`);
+    }
+    return resolved;
+  };
+  return {
+    async readFile(p: string) {
+      if (grant() === "none") onDeny(capability, `readFile with ${capability}:none`);
+      return readFile(scopedTo(p), "utf8");
+    },
+    async writeFile(p: string, content: string) {
+      if (grant() !== "readwrite") onDeny(capability, `writeFile with ${capability}:${grant()}`);
+      const target = scopedTo(p);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, content);
+    },
+    async exists(p: string) {
+      if (grant() === "none") return false;
+      try {
+        await access(scopedTo(p));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    async list(dir: string) {
+      if (grant() === "none") onDeny(capability, `list with ${capability}:none`);
+      return readdir(scopedTo(dir));
+    },
+    async readlink(p: string) {
+      if (grant() === "none") onDeny(capability, `readlink with ${capability}:none`);
+      return readlink(scopedTo(p));
+    },
+    async symlink(target: string, linkPath: string) {
+      if (grant() !== "readwrite") onDeny(capability, `symlink with ${capability}:${grant()}`);
+      await symlink(target, scopedTo(linkPath));
+    },
+    async unlink(p: string) {
+      if (grant() !== "readwrite") onDeny(capability, `unlink with ${capability}:${grant()}`);
+      await unlink(scopedTo(p));
+    },
+    async readFileBytes(p: string) {
+      if (grant() === "none") onDeny(capability, `readFileBytes with ${capability}:none`);
+      return new Uint8Array(await readFile(scopedTo(p)));
+    },
+    async rename(from: string, to: string) {
+      if (grant() !== "readwrite") onDeny(capability, `rename with ${capability}:${grant()}`);
+      await rename(scopedTo(from), scopedTo(to));
+    },
+    async rm(p: string, opts?: { recursive?: boolean }) {
+      if (grant() !== "readwrite") onDeny(capability, `rm with ${capability}:${grant()}`);
+      await rm(scopedTo(p), { recursive: opts?.recursive ?? false, force: true });
+    },
+    async stat(p: string) {
+      if (grant() === "none") onDeny(capability, `stat with ${capability}:none`);
+      const st = await stat(scopedTo(p));
+      return { size: st.size, mtimeMs: st.mtimeMs, isDirectory: st.isDirectory() };
+    },
+  };
+}
+
+
+/** Deferred-root space port — state spaces whose root resolves per call (the gitdir
+   pointer can change across the process lifetime in theory, and context construction
+   is synchronous). Each method resolves the root fresh and delegates to the shared
+   scoped implementation. A null root (no git state) degrades reads to absent-shape
+   and refuses writes with a plain error — never a capability violation, since the
+   cause is topology, not grants. */
+function makeDeferredSpacePort(
+  capability: string,
+  grant: () => string,
+  onDeny: (capability: string, detail: string) => never,
+  resolveRoot: () => Promise<string | null>,
+) {
+  const space = async () => {
+    const root = await resolveRoot();
+    if (root === null) return null;
+    return makeScopedPort(root, grant, onDeny, capability);
+  };
+  const unreachable = (): never => {
+    throw new Error(`${capability} unreachable: no git state resolvable from workspace`);
+  };
+  return {
+    async readFile(p: string) {
+      const s = await space();
+      if (!s) throw new Error(`${capability} unreadable: no git state resolvable from workspace`);
+      return s.readFile(p);
+    },
+    async writeFile(p: string, content: string) {
+      const s = await space();
+      if (!s) unreachable();
+      return s!.writeFile(p, content);
+    },
+    async exists(p: string) {
+      const s = await space();
+      if (!s) return false;
+      return s.exists(p);
+    },
+    async list(dir: string) {
+      const s = await space();
+      if (!s) throw new Error(`${capability} unreadable: no git state resolvable from workspace`);
+      return s.list(dir);
+    },
+    async readlink(p: string) {
+      const s = await space();
+      if (!s) throw new Error(`${capability} unreadable: no git state resolvable from workspace`);
+      return s.readlink(p);
+    },
+    async symlink(target: string, linkPath: string) {
+      const s = await space();
+      if (!s) unreachable();
+      return s!.symlink(target, linkPath);
+    },
+    async unlink(p: string) {
+      const s = await space();
+      if (!s) unreachable();
+      return s!.unlink(p);
+    },
+    async readFileBytes(p: string) {
+      const s = await space();
+      if (!s) throw new Error(`${capability} unreadable: no git state resolvable from workspace`);
+      return s.readFileBytes(p);
+    },
+    async rename(from: string, to: string) {
+      const s = await space();
+      if (!s) unreachable();
+      return s!.rename(from, to);
+    },
+    async rm(p: string, opts?: { recursive?: boolean }) {
+      const s = await space();
+      if (!s) unreachable();
+      return s!.rm(p, opts);
+    },
+    async stat(p: string) {
+      const s = await space();
+      if (!s) throw new Error(`${capability} unreadable: no git state resolvable from workspace`);
+      return s.stat(p);
+    },
+  };
+}
+
 /** Build a capability-enforcing PluginContext for one activated plugin. */
 export function createPluginContext(manifest: PluginManifest, host: ContextHostServices): PluginContext {
   const caps = manifest.capabilities ?? {};
@@ -100,65 +254,19 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
   };
 
   return {
-    workspace: {
-      async readFile(path) {
-        if (fsGrant === "none") deny("filesystem", "readFile with filesystem:none");
-        return readFile(scoped(path), "utf8");
+    workspace: makeScopedPort(host.workspaceRoot, () => fsGrant, deny, "filesystem"),
+    artifactStore: makeDeferredSpacePort(
+      "artifactStore",
+      () => caps.artifactStore ?? "none",
+      deny,
+      async () => {
+        const common = await resolveGitCommonDir(host.workspaceRoot);
+        if (!common) return null;
+        // common is <primary>/.git — the artifact store root lives in the checkout,
+        // shared across worktrees by design (resolveWorkshopPaths primaryRoot parity).
+        return pathResolve(dirname(common), ".werkstatt", "artifacts");
       },
-      async writeFile(path, content) {
-        if (fsGrant !== "readwrite") deny("filesystem", `writeFile with filesystem:${fsGrant}`);
-        const target = scoped(path);
-        await mkdir(dirname(target), { recursive: true });
-        await writeFile(target, content);
-      },
-      async exists(path) {
-        if (fsGrant === "none") return false;
-        try {
-          await access(scoped(path));
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      async list(dir) {
-        if (fsGrant === "none") deny("filesystem", "list with filesystem:none");
-        return readdir(scoped(dir));
-      },
-      async readlink(path) {
-        if (fsGrant === "none") deny("filesystem", "readlink with filesystem:none");
-        return readlink(scoped(path));
-      },
-      async symlink(target, linkPath) {
-        if (fsGrant !== "readwrite") deny("filesystem", `symlink with filesystem:${fsGrant}`);
-        // The link PATH is sandboxed; the link TARGET is not re-validated — scoped()
-        // is a textual check, so a link pointing outside the root escapes on follow.
-        // readwrite is a trusted-within-workspace grant (it can already overwrite
-        // forge.yaml and hooks); symlink creation is consistent with that trust level.
-        // Plugins needing strict containment must not receive readwrite.
-        await symlink(target, scoped(linkPath));
-      },
-      async unlink(path) {
-        if (fsGrant !== "readwrite") deny("filesystem", `unlink with filesystem:${fsGrant}`);
-        await unlink(scoped(path));
-      },
-      async readFileBytes(path) {
-        if (fsGrant === "none") deny("filesystem", "readFileBytes with filesystem:none");
-        return new Uint8Array(await readFile(scoped(path)));
-      },
-      async rename(from, to) {
-        if (fsGrant !== "readwrite") deny("filesystem", `rename with filesystem:${fsGrant}`);
-        await rename(scoped(from), scoped(to));
-      },
-      async rm(path, opts) {
-        if (fsGrant !== "readwrite") deny("filesystem", `rm with filesystem:${fsGrant}`);
-        await rm(scoped(path), { recursive: opts?.recursive ?? false, force: true });
-      },
-      async stat(path) {
-        if (fsGrant === "none") deny("filesystem", "stat with filesystem:none");
-        const st = await stat(scoped(path));
-        return { size: st.size, mtimeMs: st.mtimeMs, isDirectory: st.isDirectory() };
-      },
-    },
+    ),
     evidence: {
       consult: host.hooks?.evidenceConsult ?? (async () => ({ hit: false })),
     },
