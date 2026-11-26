@@ -669,3 +669,69 @@ WP-8 deploy cluster is the first FULLY migrated engine module — the extraction
 methodology is now proven across the full difficulty spectrum: read-only paths
 (status), write-backed lifecycle (gc/verify/swap/rollback), host-state boundary
 (journal-tail via forgeState), and spawn-needing builds (artifact.build).
+
+## Wave-4 feasibility scan (2026-11-26) — per-file dependency profile, studio-ops dirs
+
+Heuristic per-file scan (markers: spawn/env/invoke/network/git; cross-cluster
+imports excluding kernel/shared). Caveat: intra-cluster closure not measured —
+a clean handler may still import a coupled sibling; verify per-command before
+extraction. Raw output:
+
+```
+=== per-cluster handler profile ===
+
+## mission
+  clean: -
+  coupled: mission-materialization-commands.ts->bordbuch,handoff,journal
+
+## leitstand
+  clean: -
+  coupled: access-commands.ts->sternsystem leitstand-commands.ts->artifact-store,integrity,sternsystem
+
+## journal
+  clean: check-blocking.ts[fs-only] jsonl.ts[fs-only] runner.ts[fs-only] sweep.ts[fs-only]
+  coupled: -
+
+## nachweis
+  clean: nachweis-cloudflare-agent-readiness-measure.ts[env+network] nachweis-key-ensure.ts[fs-only] nachweis-lighthouse-measure.ts[spawn+env] tsa-adapter.ts[network]
+  coupled: nachweis-approve.ts->bordbuch,werkstatt nachweis-assessment-ingest.ts->bordbuch,werkstatt nachweis-consent.ts->bordbuch,werkstatt nachweis-ingest.ts->bordbuch,werkstatt nachweis-io.ts->evidence,sternsystem nachweis-manifest.ts->bordbuch,werkstatt nachweis-public-derivative.ts->bordbuch,werkstatt nachweis-publish.ts->bordbuch,werkstatt
+
+## fleet
+  clean: claims-commands.ts[fs-only] ownership-commands.ts[fs-only]
+  coupled: -
+
+## sternsystem
+  clean: build-identity-path.ts[fs-only] cache-clone-marker.ts[fs-only] channel-migration.ts[fs-only] external-edit-collector.ts[spawn] live-drift.ts[fs-only] passport-staleness.ts[fs-only] pin-helpers.ts[fs-only] provision-external-resources.ts[fs-only] seed-from-intake.ts[fs-only] site-hosting.ts[fs-only]
+  coupled: external-edit-guard.ts->handoff handover.ts->werkstatt passport.ts->bordbuch provisional-host.ts->leitstand registry-io.ts->mission,werkstatt sternsystem-channels-migrate.ts->mission,werkstatt sternsystem-extract.ts->bordbuch,handoff,migrators sternsystem-handover-cancel.ts->mission,werkstatt
+
+## integrity
+  clean: integrity-commands.ts[env] run-backfill-revisions.ts[fs-only] run-init.ts[fs-only] run-record-build.ts[fs-only] run-update.ts[fs-only] run-verify.ts[fs-only]
+  coupled: -
+
+## bordbuch
+  clean: bordbuch-status.ts[fs-only] bordbuch-validate.ts[fs-only]
+  coupled: bordbuch-append.ts->werkstatt bordbuch-commit-helper.ts->sternsystem bordbuch-commit.ts->sternsystem,werkstatt bordbuch-generate.ts->werkstatt bordbuch-hook.ts->mission bordbuch-io.ts->mission,sternsystem,werkstatt bordbuch-repair.ts->sternsystem,werkstatt
+
+## hygiene
+  clean: anomalies.ts[fs-only] hygiene-audit.ts[fs-only] hygiene-policy.ts[fs-only] protection.ts[fs-only]
+  coupled: classes.ts->mission,sternsystem gc.ts->evidence,mission,sternsystem hygiene-gc.ts->werkstatt
+
+## artifact-store
+  clean: -
+  coupled: artifact-store-commands.ts->werkstatt
+
+## evidence
+  clean: evidence-fetch.ts[fs-only] evidence-sync.ts[fs-only] r2-client.ts[fs-only]
+  coupled: resolve-system-id.ts->m
+```
+
+**Headline candidates**:
+- **integrity — FULLY clean**: zero coupled files cluster-wide; handlers fs-only
+  (only integrity-commands touches env). Signing primitives already in
+  werkstatt-shared (proven in wave-2b). Wave-4 primary candidate.
+- observability — fs-only validators extractable, but network-needing commands
+  (signoz api client) need a network-capability decision first.
+- signing — single fs-only command file, tiny.
+- fleet claims/ownership commands — fs-only.
+- hygiene audit chain — files clean but classes.ts/gc.ts couple to
+  mission/sternsystem/evidence, confirming the inventory's late-wave verdict.
