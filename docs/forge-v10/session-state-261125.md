@@ -799,3 +799,18 @@ release leaf = validate/list/state.validate/sign (4 extractable, closure
 ~2300 lines core + handoff/integrity/closed-workpiece transitive — largest
 remaining wave); handoff deep (3678 lines core); nachweis-coupled-3
 E1-blocked. WP-8 extraction program now at 54 studio commands.
+
+**wave-19 release leaf** (3 commands: validate/list/state.validate, commit
+92b7b289c): surgical extraction NOT whole-file copy — measurement showed the
+leaf set transitively self-contained (4 file-local helpers, 260 lines, zero
+shared coupling with prepare/ready's kernel machinery). Scope split decision:
+release.sign deferred to wave-20 — it alone carries the signing/integrity
+cluster (signBuildIdentity, writeReleasePublicKey, signLatestBuildArtifacts,
+runIntegrityBuildRecord, loadPrivateKey). DATA-CLASS parity proven: plugin
+returns identical 9-release listing with matching states (dp7-r000007..9) —
+strongest parity class beyond validation-error equality. Reuse terminal
+economics continued: readBordbuch already in plugin (wave-12), mission
+resolver in plugin (wave-13) — mission-io-seam only needed read/write
+manifest (~40 lines). Composition-programmatic extraction validated: spans
+extracted by brace-matching, dead imports pruned by usage analysis (15
+dropped), then lint-driven final pruning.
