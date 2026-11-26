@@ -774,3 +774,13 @@ _Patch release published between 4.2.3 and the 5.0.0 major — no dedicated bump
 ### Removed
 
 - Deleted stale `warpgogol-forge-2.15.0.tgz` from package root
+
+## 10.6.0
+
+- WorkspaceIOPort widened with `readdir` (typed DirEntry entries — engine
+  workspace-io parity shape) and `mkdir` (recursive). Motivated by WP-8
+  mechanical-port extractions: copied engine helpers consume exactly these
+  verbs, so the plugin-side bridge adapter stays thin. Both verbs honor the
+  same grant discipline — reads deny with CapabilityViolation under `none`,
+  writes require `readwrite`; deferred space ports delegate with the existing
+  unreachable/unreadable semantics.

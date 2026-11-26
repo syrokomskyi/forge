@@ -158,6 +158,15 @@ function makeScopedPort(
       const st = await stat(scopedTo(p));
       return { size: st.size, mtimeMs: st.mtimeMs, isDirectory: st.isDirectory() };
     },
+    async readdir(p: string) {
+      if (grant() === "none") onDeny(capability, `readdir with ${capability}:none`);
+      const entries = await readdir(scopedTo(p), { withFileTypes: true });
+      return entries.map((e) => ({ name: e.name, isFile: e.isFile(), isDirectory: e.isDirectory() }));
+    },
+    async mkdir(p: string) {
+      if (grant() !== "readwrite") onDeny(capability, `mkdir with ${capability}:${grant()}`);
+      await mkdir(scopedTo(p), { recursive: true });
+    },
   };
 }
 
@@ -242,6 +251,16 @@ function makeDeferredSpacePort(
       const s = await space();
       if (!s) throw new Error(`${capability} unreadable: no git state resolvable from workspace`);
       return s.stat(p);
+    },
+    async readdir(p: string) {
+      const s = await space();
+      if (!s) throw new Error(`${capability} unreadable: no git state resolvable from workspace`);
+      return s.readdir(p);
+    },
+    async mkdir(p: string) {
+      const s = await space();
+      if (!s) unreachable();
+      return s!.mkdir(p);
     },
   };
 }

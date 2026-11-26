@@ -107,6 +107,13 @@ export interface WorkspaceIOPort {
   rename(from: string, to: string): Promise<void>;
   rm(path: string, opts?: { recursive?: boolean }): Promise<void>;
   stat(path: string): Promise<{ size: number; mtimeMs: number; isDirectory: boolean }>;
+  /* Engine-parity directory read (10.6.0) — mechanical-port extractions consume
+     typed entries, unlike list's bare names. Shape matches the engine's
+     workspace-io DirEntry exactly so copied helpers need zero edits. */
+  readdir(path: string): Promise<{ name: string; isFile: boolean; isDirectory: boolean }[]>;
+  /* Recursive — writeFile already creates parents; this verb exists for empty
+     directories the engine materializes explicitly. */
+  mkdir(path: string): Promise<void>;
 }
 
 export interface EvidenceAccessPort {

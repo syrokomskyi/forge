@@ -73,6 +73,28 @@ describe("primaryState port", () => {
     await expect(c.primaryState.readFile("anything")).rejects.toThrow(/unreachable|unreadable/);
     await expect(c.primaryState.writeFile("x", "y")).rejects.toThrow(/unreachable/);
   });
+  it("readdir returns typed entries (engine DirEntry parity)", async () => {
+    const { wt } = seedGitLayout();
+    const c = ctx("read", wt);
+    const entries = await c.primaryState.readdir("releases");
+    const sysdir = entries.find((e) => e.name === "sys-r1");
+    expect(sysdir).toBeDefined();
+    expect(sysdir!.isDirectory).toBe(true);
+    expect(sysdir!.isFile).toBe(false);
+    const files = await c.primaryState.readdir("releases/sys-r1");
+    const yaml = files.find((e) => e.name === "release.yaml");
+    expect(yaml!.isFile).toBe(true);
+    expect(yaml!.isDirectory).toBe(false);
+  });
+  it("mkdir materializes empty dirs recursively; read grant refuses", async () => {
+    const { wt } = seedGitLayout();
+    const c = ctx("readwrite", wt);
+    await c.primaryState.mkdir(".werkstatt/locks/nested/deep");
+    expect(await c.primaryState.exists(".werkstatt/locks/nested/deep")).toBe(true);
+    expect((await c.primaryState.readdir(".werkstatt/locks/nested")).find((e) => e.name === "deep")!.isDirectory).toBe(true);
+    const cr = ctx("read", wt);
+    await expect(cr.primaryState.mkdir("x")).rejects.toBeInstanceOf(CapabilityViolation);
+  });
   it("path escape outside the space root is refused", async () => {
     const { wt } = seedGitLayout();
     const c = ctx("readwrite", wt);
