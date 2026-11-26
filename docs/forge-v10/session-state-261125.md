@@ -887,6 +887,16 @@ Also measured: zero executeKernelCommand references exist inside the plugin
 itself — extraction scoping cleanly avoided backwards dependencies (coupled
 commands were simply never extracted).
 
+Verification pass: the 4-edge measurement survived false-positive filtering
+(data-shape `command:` fields in report types, declaration-registry metadata,
+path constants). evidence.sync edge is DEPLOY-CRITICAL: leitstand
+deploy-execution consumes its structured result through a typed cast and
+throws EVIDENCE_SYNC_FAILED gating the deploy — direction-C shell-out cannot
+reproduce this without the structured-report contract decision (design §7).
+Additional coupling discovered non-blocking: kernel runtime/validate-
+declarations carries metadata declarations ABOUT plugin-resident commands —
+governance coupling, not runtime dependency, but requires awareness at E3.
+
 E1 is a BOUNDED design problem: a delegation mechanism covering 4 edges.
 Options per wp-8-completion-design §7: direction-C shell-out (structured
 report reproduction problem), in-proc cross-loader invocation, or command
