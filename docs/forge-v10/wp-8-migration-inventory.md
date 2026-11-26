@@ -875,3 +875,20 @@ Additional extraction-surface facts gathered (artifact-store-commands.ts):
 - io.mkdir exists on the engine WorkspaceIO — confirms the SDK port mkdir gap;
   the artifactStore port inherits the gap (writeFile creates parents, but
   empty-dir creation needs the mkdir spawn workaround)
+
+## wave-4a executed — get+validate extracted (2026-11-26), integrate in flight
+
+- `studio.artifact.store.validate` + `studio.artifact.store.get` committed
+  (d0f2057c7) in session worktree; both proofs green: validate both polarities
+  exact engine messages, get end-to-end incl. mkdir spawn and absolute-path
+  output parity. Pin stayed 10.3.0 — pure workspace parity needs no new port.
+- MVP-stub parity documented: validate's presence-implies-verified, get's
+  no-extraction behavior — replicated exactly, flagged in module contracts.
+- **F-0402 filed**: `--output` is alias-collided to `--json` in BOTH host
+  parsers (kernel KERNEL_FLAG_ALIASES + forge CLI_FLAG_ALIASES) — engine
+  artifact.store.get is dead-in-practice as documented; only `--output=<value>`
+  survives parsing. Extraction shares the collision, interface parity trivial.
+- scan-crash parity: unguarded JSON.parse/readdir replicated (corrupt manifests
+  crash the scan in both implementations) — deviations corrected during proof.
+- forge 10.4.1 propagated during the wave (artifactStore widened space live);
+  selfhost harness validated on the npm artifact.
