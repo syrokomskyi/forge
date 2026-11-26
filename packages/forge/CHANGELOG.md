@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.8.0] — 2026-11-26
+
+### Fixed
+
+- `--json` output now carries the authoritative envelope: `exitCode` + `summary` alongside the data payload (`shapeJsonOutput`), with envelope keys winning over colliding data keys — shells consuming `--json` reproduce kernel-execution-equivalent semantics (E1 delegation contract, WP-8).
+- Plugin `info` logs now write to stderr instead of stdout — POSIX stream separation; json-mode stdout is cleanly parseable while terminal UX is unchanged.
+
 ## [10.5.0] — 2026-11-26
 
 ### Changed
