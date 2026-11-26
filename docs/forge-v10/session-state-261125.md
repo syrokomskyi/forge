@@ -902,3 +902,29 @@ Options per wp-8-completion-design §7: direction-C shell-out (structured
 report reproduction problem), in-proc cross-loader invocation, or command
 re-homing (move the 3 kernel-invoked commands back to kernel — cost: reversal
 of wave-14/13 work, benefit: zero new machinery).
+
+## E1 direction-C feasibility — structured-contract dissolution (2026-11-26)
+
+Per-edge consumption-depth measurement of all 3 kernel→plugin edges:
+
+1. bordbuch.repair (mission-open): FIRE-AND-FORGET — result entirely unused;
+   correctness re-established by independent preflightBordbuch re-check.
+   Trivially delegable (even ignoring exit code preserves semantics).
+2. bordbuch.validate (nachweis-validate): reads ONLY exitCode + summary.
+3. evidence.sync (leitstand deploy-execution): reads ONLY exitCode + summary
+   (typed cast confirmed at the consumer).
+
+CONCLUSION: the structured-report reproduction problem (design §7 direction-C
+concern) DOES NOT EXIST for any live edge. Shell-out delegation executing
+`forge <cmd> --json` and parsing exitCode/summary reproduces 100% of consumed
+contract surface. E1 reduces from an architecture problem to an engineering
+problem: forge-binary discovery, workspace-rooted spawn discipline, timeout/
+env policy — no new contracts required. The one deep-contract edge
+(nachweis.publish → manifest.generate) is reverse-direction and currently
+moot (publish never extracted; both copies dark-run in kernel).
+
+Recommended E1 shape: a kernel-side delegateCommandPort helper —
+`executeDelegatedCommand(workspaceRoot, commandName, argv)` shelling to the
+npm-published forge host with the same argv/exitCode/summary semantics as
+executeKernelCommand — landing behind the existing invocation sites with zero
+consumer changes.
