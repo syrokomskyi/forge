@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.3.0] — 2026-11-26
+
+### Added
+
+- **processSpawn binary allowlist** — the `processSpawn` capability now accepts either `true` (unchanged legacy semantics) or an object form `{ allowlist: string[] }` naming the exact binaries the plugin may spawn. Boolean `true` was a capability-escalation hole: a plugin granted processSpawn for `cp`/`tar` pipelines could spawn `git commit` and bypass `gitMutation: false` entirely. Enforcement parses the spawn argv, resolves the binary basename, and refuses undeclared binaries with CapabilityViolation. No first-party plugin changes required — all four declare `gitMutation: false` and none spawn git (RFC-1645 WP-8 wave-2c prep — deploy artifact.build spawns git/cp/turbo through the allowlist form).
+
 ## [10.2.1] — 2026-11-26
 
 ### Fixed
