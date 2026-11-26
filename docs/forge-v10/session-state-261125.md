@@ -277,3 +277,12 @@ and the port's first real consumer becomes gc/hygiene instead. Do NOT extract
 on the primary-root assumption without this decode. Search terms for next
 session: `hashPath`, `ARTIFACTS_DIR`, `ARTIFACTS_DIR_NAME`, call sites of
 `artifact.store.put` in leitstand/release pipelines.
+
+- **caller decode partial**: the production caller is
+  `release/release-commands.ts:1156` calling `storeArtifactCore` DIRECTLY
+  (lock-free, because the release pipeline already holds the lock — the CLI
+  put facade would deadlock). The artifact.store.* CLI commands are operator
+  facades. Open question narrowed: what root does the release pipeline execute
+  with? If primary (likely — releases are primary state), the
+  workspaceRoot-relative store paths ARE primary paths in practice and the
+  divergence is latent-but-real only for CLI facades run inside worktrees.
