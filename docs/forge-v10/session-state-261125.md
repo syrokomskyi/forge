@@ -471,3 +471,24 @@ heavy hygiene closure ~700 lines), hygiene.audit/gc (same closure — synergy),
 fleet claims (coupling re-validation needed), release module commands.
 Sequencing doctrine unchanged: smallest-closure-first within the unblocked set,
 extraction unit = command.
+
+## thread-7 final state — wave-4a+4b INTEGRATED, artifact-store 3/4 (2026-11-26)
+
+**Develop 8b705adb7**: 10 studio commands, npm-spec pins 10.5.0 both package.json.
+Integrated: wave-4a get+validate (72403bb81), wave-4b put (8b705adb7).
+forge 10.5.0 published+propagated+selfhost-validated: primaryState coarse space
+(replacing artifactStore pre-consumer) + writeFileBytes binary write.
+
+**Frictions filed**: F-0402 (--output alias collision — engine get dead-in-practice),
+F-0403 (degenerate shard — sha256: prefix makes slice(0,2) constant "sh").
+
+**Next session — wave-4c artifact.store.gc** (last artifact-store command):
+heavy closure ~750 lines — protection.ts 257 + anomalies 168 + release-index 99 +
+collectReleaseArtifacts ~120 + gc body ~100. Translation now mechanical:
+protection helpers take WorkshopPaths — primaryState port covers primary access,
+workspace port covers the rest. Key parity notes already in inventory+session-state:
+primary-rooted locking (acquireLock(paths.primaryRoot,"hygiene-gc",…,3600) — NOTE:
+locks land in PRIMARY .werkstatt/locks → primaryState write, unlike put's
+worktree-local), dry-run never locks, CAS shared-hash protection, doubt-defaults-
+to-keep on degraded protection sources, release-index append before delete.
+Then: hygiene module wave (shares the closure — synergy), then re-scan.
