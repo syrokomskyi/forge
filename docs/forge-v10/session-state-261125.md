@@ -736,3 +736,50 @@ artifact-store(4) hygiene(2) intake(3) evolution(9) evidence(2) +
 deploy(6) signing(1) behavior(2) journal(1). Mechanical-port machinery
 proven across closures from 79 to 2600+ lines; seam-extraction strategy
 validated for deep transitive closures.
+
+## waves-14..17 — heavy-tail extraction phase (2026-11-26)
+
+The wave-13 "WP-8 COMPLETE" claim was premature — re-verification against
+design exit criteria showed inventory covers ~156 workspace-scope commands;
+plugin had 30. Heavy-tail waves executed:
+
+**wave-14 bordbuch** (6 commands, commit 4ff9888b1): seam reuse economics —
+bordbuch-io already ported in wave-12, extraction cost minimal. TSC cascade
+20→12→5→1→0. Added writeSystemState to registry-seam.
+
+**F-0405 verifier fix** (commit 07afed5ab): FLOW-INT-01 phantom `.gitignore`
+blocker — sessionIgnoreRulePaths fs-walk descended into ignored node_modules
+trees collecting inert third-party `.gitignore` files as session-authored
+evasions. Fix: parent-ignored check + tracked-files edge probe, both
+fail-closed. Meta-validation: the fix passed through the very machinery it
+repairs. 54/54 regression + 2/2 new tests green.
+
+**wave-15 lagebild** (5 commands): seam minimization taken to the limit —
+55 lines of seams replacing a 2263-line adapter barrel.
+
+**wave-16 nachweis leaf** (10 commands, commits 37892869f+c6a46ebe4): reuse
+economics maximum — only 12 initial TSC errors on a 5100-line closure.
+E1 forcing function discovered intra-module: nachweis.publish calls
+kernel-retained nachweis.manifest.generate via executeKernelCommand — genuine
+plugin→kernel backwards dependency. validate/publish/withdraw deferred to E1
+delegation program. Wrapper id convention settled: hyphenated filenames,
+dotted ids.
+
+**wave-17 notausgang** (2 commands + F-0406 friction filed): fingerprint
+subtree copied whole (15 normalizers, engine-only code never promoted to
+shared). Deps matched to engine versions: @astrojs/compiler, postcss,
+jsonc-parser, pdf-lib, remark-frontmatter, unified, remark-parse, remark-mdx,
+@typescript-eslint/typescript-estree. Mixed runtime+type kernel imports are
+a regex-evading hazard class — typeShim batch patterns miss them; diagnosis
+via direct file inspection. site-workspace-resolver copied (261 lines) with
+seam redirects.
+
+**F-0406 gate-trust hole filed**: scoped-typecheck verdict cache emitted
+`pass in 0ms` on a tree with genuine TSC errors — cache key coverage
+incomplete. Doctrine until fixed: direct pnpm exec tsc in the package is the
+only trusted typecheck evidence.
+
+WP-8 state after wave-17: 53 studio commands across 10 modules. Extraction
+exhausted except: release leaf (invocation-form verification needed), handoff
+(deep, 3678 lines), nachweis-coupled-3 (E1-blocked). Program reduces to
+E1/E3 endgame.
