@@ -106,3 +106,11 @@ migration waves.
   branches/worktrees are gone; machinery drops entries correctly for modern
   sessions. Registry-GC is a forge-side feature candidate; mass manual discard
   not sanctioned.
+
+## Addendum (2026-11-26): port-surface widening precedes wave-4c
+
+Measured interface delta (engine WorkspaceIO vs SDK WorkspaceIOPort): DirEntry
+shape mismatch on readdir/list; appendFile/mkdir/copyFile/mkdtemp/realpath
+missing plugin-side. Decision teed in WAVE4C-RESUME.md — lean SDK-first:
+10.6.0 widens the port verbs, then the abs-path bridge adapter is thin and
+shared. If adapter proves general it promotes into the SDK itself.
