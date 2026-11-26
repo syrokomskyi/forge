@@ -595,3 +595,19 @@ docs/gate-probes/ is invisible to it.
 exists only in a doomed worktree's counters journal should probably be
 captured into the committed counters projection at integrate time — as-is,
 the ratchet punishes exactly the sessions that productively exercised a rule.
+
+## Wave-3 INTEGRATED (2026-11-26)
+
+`flow.integrate` verdict: `auto/session-261126-03-wave3-forgestate integrated
+(9516b009b → 7bd4b4aa7), cleanup done` — exit 0, machinery-discarded worktree.
+
+Landed on werkstatt develop:
+- `3071158aa` journal-tail migrated to the forgeState host port (reads across the
+  worktree pointer boundary; correct event/opId/ts schema; pin 10.2.1, forgeRange >=10.2.1)
+- `7bd4b4aa7` FRICTION-02 probe fixture — the ratchet paradox resolution (first
+  frictions-contract fixture; PASS with exactly 1 diagnostic on the seeded
+  `category: defect` violation)
+
+The integrate gate's probe-ratchet step passed with the fixture binding in the
+branch — confirming RFC-1642's "bound fixture is liveness" semantics end-to-end
+in production conditions.
