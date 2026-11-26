@@ -1,0 +1,10 @@
+schema: forge/policy-bundle@1
+sha256: 518eb46f1175d985acd182162241352a6fe0f9fd19f502243d319e09d9a91e63
+attestedBy: operator:syrokomskyi
+attestedAt: 2026-11-26T13:49:32.115Z
+covers:
+  - .github/CODEOWNERS
+  - .github/workflows/ci.yml
+  - .github/workflows/forge-policy.yml
+  - .github/workflows/publish.yml
+  - forge.yaml

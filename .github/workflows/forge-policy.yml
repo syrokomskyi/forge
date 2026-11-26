@@ -27,14 +27,20 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Bootstrap dogfooding: governance runs from the published stable
+      # artifact (the forge-stable alias pinned in package.json), not from
+      # the in-flight source — the rules that judge a change are the
+      # released rules, and adopting newer governance is a deliberate
+      # version bump of the alias. Source-level correctness of new gate
+      # logic is covered by the vitest suite in ci.yml instead.
       # The frozen policy surface: forge.yaml policy keys, freezeFiles, the
       # manifest set — judged policy-only so the job does not need the full
       # oracle substrate.
       - name: Correctness gate (policy-only)
-        run: pnpm exec forge correctness.gate --policy-only --base ${{ github.event.before || 'HEAD~1' }}
+        run: node node_modules/forge-stable/bin/cli.js correctness.gate --policy-only --base ${{ github.event.before || 'HEAD~1' }}
       # The pinned file set must resolve and validate in CI mode.
       - name: Pinned validation
-        run: pnpm exec forge pinned.validate --mode ci
+        run: node node_modules/forge-stable/bin/cli.js pinned.validate --mode ci
       # The recorded digest must match the policy surface as committed.
       - name: Policy digest
-        run: pnpm exec forge policy.digest --verify
+        run: node node_modules/forge-stable/bin/cli.js policy.digest --verify

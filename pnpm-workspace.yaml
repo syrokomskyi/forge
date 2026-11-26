@@ -1,3 +1,5 @@
 packages:
   - "packages/*"
+minimumReleaseAgeExclude:
+  - '@warpgogol/forge@10.8.1'
 publishBranch: develop

@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      forge-stable:
+        specifier: npm:@warpgogol/forge@10.8.1
+        version: '@warpgogol/forge@10.8.1'
 
   packages/forge:
     dependencies:
@@ -594,6 +598,11 @@ packages:
 
   '@vitest/spy@5.1.1':
     resolution: {integrity: sha512-6K8C6alQG1/Yc8/ZI22iJS7JEsxPdVzqtqDq+/xM4Z0mGVykemMVjLhqMy/q6/IHYG3kKD8hKSwRen/ZdyI9vQ==}
+
+  '@warpgogol/forge@10.8.1':
+    resolution: {integrity: sha512-k/ub2q3sY+9drU+o+Xy77yhBPJkpi2mJxtFhxpgtF+N14vEf0Z7dPSQpP/adC0euYM+rVgeQYMWRnqLAGEdoMA==}
+    engines: {node: '>=24'}
+    hasBin: true
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -2277,6 +2286,21 @@ snapshots:
       vite: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
 
   '@vitest/spy@5.1.1': {}
+
+  '@warpgogol/forge@10.8.1':
+    dependencies:
+      '@aws-sdk/client-s3': 3.1176.0
+      '@modelcontextprotocol/sdk': 1.32.2(zod@4.6.7)
+      ajv: 8.20.0
+      linkedom: 0.18.15
+      picomatch: 4.0.7
+      trash: 10.1.1
+      yaml: 2.9.1
+      zod: 4.6.7
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - canvas
+      - supports-color
 
   accepts@2.0.0:
     dependencies:
