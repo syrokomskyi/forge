@@ -453,3 +453,21 @@ propagation → npm-spec pins in wave-4b worktree (BOTH root + studio package.js
 currently file:/tmp/warpgogol-forge-10.5.0.tgz) → reinstall → production-real
 smoke → commit F-0403+put+manifest → integrate (phantom already preempted).
 Session worktree: werkstatt@auto-session-261126-04-wave4-artifact-put.
+
+## sequencing shift — primaryState unblocks the scan's largest blocker class (2026-11-26)
+
+The wave-4 feasibility scan classified most workspace-scope commands as blocked
+by resolveWorkshopPaths primary-root access. primaryState (10.5.0) removes that
+blocker class entirely — releases/, .werkstatt/, missions/archive access now has
+a governed port. Remaining structural blockers after wave-4:
+- cache-clone access (../systems-cache) — sternsystem/bordbuch line, needs the
+  cache space decision (resolution is trivial — sibling-invariant — but the
+  capability shape is undesigned; copy the primaryState pattern when forced)
+- semantic coupling into mission/sternsystem closure (independent of state access)
+- app-scope line (integrity.*) — separate extraction track entirely
+
+Next-wave candidates re-opened by primaryState: artifact.store.gc (wave-4c,
+heavy hygiene closure ~700 lines), hygiene.audit/gc (same closure — synergy),
+fleet claims (coupling re-validation needed), release module commands.
+Sequencing doctrine unchanged: smallest-closure-first within the unblocked set,
+extraction unit = command.
