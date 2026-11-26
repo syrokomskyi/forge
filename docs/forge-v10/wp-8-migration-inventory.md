@@ -1364,3 +1364,27 @@ closed. F-0405 filed + fixed in one program day.
 Wave-14 integrate confirmation: develop carries 4ff9888b1 (bordbuch x6) +
 3176d53e8 (F-0405 record) + 07afed5ab (verifier fix) — plugin manifest 36
 commands. Session worktrees zero.
+
+## wave-15 lagebild extraction (2026-11-26) — first post-verifier-fix wave
+
+Session `wave15-lagebild`. 5 commands ported: connect/referral.issue/
+referral.list/status/validate — module selected by refined E2 framework: zero
+kernel-runtime coupling, zero execution-position external invocation, operator-
+facing semantics. Closure 1550 lines byte-identical; seam minimization taken
+further than wave-12: only filterEnv+sourceDotenv extracted from the 2263-line
+deployment-adapter barrel (the two sole consumers in the lagebild closure) —
+self-contained pure functions, ~55 lines replace the transitive adapter layer.
+registry-seam extended with readSystemStateSmart/writeSystemStateSmart/
+writeSystemStateToWorkpiece byte-faithful. wrangler-secrets.ts copied whole
+(95 lines — runWranglerSecretPut boundary). TSC cascade 10→5→3→0. Proof:
+engine vs plugin validation parity byte-identical (--site is required same
+wording). Commit 4ca4d6b02. Manifest after registration: 41 commands.
+
+NOTAUSGANG semantic check for next-wave ordering: 2 commands (export/validate)
+— disaster-recovery operator surface. subdomain mostly KERNEL-RETAIN
+(register/validate invoked by leitstand/service-promote — pipeline-internal);
+only list is operator-facing — not worth a partial-module wave. Remaining
+extractable inventory after wave-15: nachweis leaf (13/15, heavy ~5000 lines),
+notausgang (2, 1629 lines), release leaf (invocation-form unverified), handoff
+(3, 3678 lines deep). The extraction program is entering its heavy-tail phase —
+each remaining wave is evolution-scale or partial-module surgery.
