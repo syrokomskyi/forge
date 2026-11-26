@@ -950,3 +950,34 @@ executeDelegatedCommand is a drop-in at the 3 kernel edges with zero consumer
 changes. The bordbuch.repair edge (fire-and-forget) can migrate first as the
 lowest-risk proof; evidence.sync (deploy-critical) migrates last after the
 port is battle-tested.
+
+## E1 contract gaps CLOSED + end-to-end proven (2026-11-26, forge repo)
+
+Both contract gaps closed in the forge standalone repo (commit: feat(forge)
+close E1 delegation contract gaps):
+
+1. shapeJsonOutput in cli-output.ts — json envelope carries authoritative
+   exitCode + summary alongside data payload (data keys cannot collide-override)
+2. plugin LoggerPort info → stderr (POSIX stream separation; warn/error already
+   stderr; terminal UX unchanged — both streams reach the terminal)
+
+End-to-end proof with a fixture consumer plugin: stdout = pure parseable JSON
+{status, answer, exitCode, summary, nextSteps}; stderr = diagnostic line.
+A shell-out consumer now reproduces executeKernelCommand-equivalent semantics
+with spawn + JSON.parse — the full consumed contract surface of all 3 kernel
+edges.
+
+Verification: 5418/5418 suite green, tsc+lint clean, 4/4 new contract tests.
+No programmatic stdout consumers exist in werkstatt (scan: only human-facing
+hint strings reference forge output) — zero regression surface.
+
+ARCHITECTURAL DISCOVERY: standalone bin/cli.ts carries the whole WP-6 plugin
+machinery absent from werkstatt upstream — divergence is intentional
+(standalone-first v10 program), propagation upstream unnecessary. The npm
+artifact IS the resolution target even inside werkstatt.
+
+REMAINING for E1: forge publication (operator-triggered) + implement
+executeDelegatedCommand port in werkstatt kernel + land behind 3 edges in
+order bordbuch.repair → bordbuch.validate → evidence.sync. The dark-run
+doctrine crossing (live deploy behavior change) still requires operator
+sign-off — but every prerequisite is now proven and published-artifact-ready.
