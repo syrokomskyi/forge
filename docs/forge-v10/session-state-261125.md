@@ -1017,3 +1017,25 @@ The research phase of E1 is fully closed: measurement definitive, contract gaps
 closed and proven end-to-end, port implemented and unit-tested. Remaining work
 is a bounded wiring diff plus verification, executable in one session after
 sign-off.
+
+### Real-world parser validation against production output (corrected finding)
+
+Validation of `parseDelegatedEnvelope` against live `forge studio.release.list --json`
+output in the werkstatt workspace produced the decisive proof of why npm publication
+is a hard prerequisite rather than a versioning formality:
+
+- **The currently published forge envelope carries NO exitCode field at all** —
+  Gap 1 exists verbatim in production. The delegation port cannot be
+  integration-proven until the contract-fix minor lands on npm; unit tests carry
+  the contract until then.
+- An initial scanner-bug suspicion (backward `lastIndexOf` grabbing nested braces)
+  was investigated and REFUTED: nested object braces in pretty-printed envelopes
+  are indented, so `\n{` at column 0 matches only the envelope root; compact
+  envelopes have no newlines and hit the whole-document fast path. The committed
+  scanner is correct for post-fix hosts as implemented.
+- Production noise confirmed real: the info log line `[werkstatt-studio] Found 9
+  valid releases` precedes the envelope in stdout — the exact pollution class the
+  stderr separation fixes, and the tolerant scanner already absorbs for legacy hosts.
+
+Publication blocking-order is now empirically settled, not just designed:
+npm minor → then integration proof of the port → then edge wiring.
