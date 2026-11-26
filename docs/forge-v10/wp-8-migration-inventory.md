@@ -534,3 +534,15 @@ The first consumer of the forgeState host port is migrated and proven end-to-end
 Chain validated in the same stroke: forge 10.2.1's capability registration fix works (manifest declares forgeState: read, plugin loads), and the output schema correction is documented — the pilot emitted kind/opId/ts fields that never existed in real journal records; the migration emits the measured event/branch/sha/at shape.
 
 Design note for future journal consumers: forgeState.journal returns oldest-first tails; size() is the cheap existence probe. The draft at docs/forge-v10/wave3-journal-tail-forgestate.draft.ts matches the shipped implementation.
+
+## SDK design question — processSpawn capability unsoundness (2026-11-26)
+
+Discovered during wave-2c design analysis: processSpawn as a boolean is a meta-capability that trivially subsumes every other grant. A plugin with processSpawn:true and gitMutation:false can simply spawn git push directly — the capability model is unsound wherever spawn is granted. The current implementation is honest about timeouts and uses execFile (no shell injection), but binary-level scoping is absent.
+
+Options for wave-2c-era hardening:
+
+1. Binary allowlist — processSpawn becomes string[] naming exact binaries (manifest-transparent, auditable); documentation must honestly state that spawning a side-effecting binary is equivalent to trusting the plugin with those effects
+2. Deep integration — spawn of git re-applies the gitMutation subcommand analysis at spawn level; principled but complex and fragile (arg parsing duplicated)
+3. Document-only — declare processSpawn a fully-trusted grant, keep boolean; cheapest but the manifest surface stops being informative
+
+Recommendation: option 1 — it preserves the manifest as an honest audit surface without pretending to containment that spawn cannot provide. artifact.build needs exactly [pnpm, cp, git] which reads well in a manifest. This is a forge SDK change requiring its own release cycle — sequenced before wave-2c extraction starts, since artifact.build is the first spawn-needing consumer.
