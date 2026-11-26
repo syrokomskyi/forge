@@ -807,3 +807,28 @@ Open design questions for the implementation session:
   file-based in shared state; host mediation must preserve the deadlock/
   stale-lock recovery behavior (werkstatt.lock.* commands exist for this)
 - does the port version independently per domain, or one hostState version?
+
+## artifactStore spaces port — implemented on forge develop (2026-11-26), release 10.4.0 in flight
+
+First generalization of the forgeState pattern, implemented and tested:
+
+- `artifactStore: "none" | "read" | "readwrite"` capability; WorkspaceIO-shaped
+  port rooted at `<primary>/.werkstatt/artifacts`, resolved through the gitdir
+  pointer PER CALL (context construction stays synchronous)
+- implementation: one scoped-port factory (`makeScopedPort`) behind workspace +
+  space ports; `makeDeferredSpacePort` wrapper for per-call root resolution;
+  reads degrade to absent-shape, writes refuse with plain topology error when
+  no git state exists — never capability violations
+- tests 6/6 including the decisive worktree-boundary proof: writes land in the
+  primary store, nothing leaks worktree-local; path escapes refused;
+  undeclared grant denies
+
+Design decisions taken (resolving the wave-4 open questions):
+- flat per-space capability dimensions (forgeState shape), not nested config —
+  loader stays simple, consistency guard covers registration
+- the space root is domain-scoped (`.werkstatt/artifacts` exactly), not the
+  wide primary root — the second consumer's space gets its own dimension when
+  it arrives, no premature wide grants
+- cache-clone resolution needs NO pointer: `../systems-cache` is
+  worktree-invariant because session worktrees are siblings of the primary at
+  the same depth — the cache space port (when built) resolves trivially
