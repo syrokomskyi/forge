@@ -1161,3 +1161,24 @@ binds registry commands in-proc — NOT a delegation edge, belongs to E3.
 Topology verification: all edges execute inside the werkstatt platform repo
 (missions live in-repo) where the studio plugin resolves; consumer repos use
 forge only for governance and never invoke these kernel paths.
+
+### Edge-wiring test-boundary lessons (EC-16 cycle)
+
+- Kernel test suites mock `@warpgogol/werkstatt-engine/kernel` barrel —
+  interception keyed on the exact specifier. Wiring edges through
+  executeDelegatedCommand moved the boundary: mocks must cover the port with
+  the same shallow contract (executeDelegatedCommand stub returning exitCode 0).
+  The mock-follows-boundary adaptation is semantically honest — the delegation
+  port IS the same architectural boundary, renamed.
+- `WERKSTATT_DELEGATION_IN_PROC=1` env-gate in the port (set in engine vitest
+  setup) routes delegation in-proc for fixture tests that DON'T mock the
+  barrel — fixture roots carry no forge.yaml so real shell-out cannot resolve.
+  Migration-scoped: production never sets it, E3 deletes both branches.
+- Barrel-routed dynamic import inside the fallback does NOT reliably hit
+  vitest module mocks (resolved-instance mismatch) — direct mock coverage of
+  the port is the reliable pattern; the env-gate covers the unmocked long tail.
+- Discovered structured consumption at mission-close evidence.sync edge
+  (data.r2KeyPrefix/uploadedFiles) missed by the original shallow measurement —
+  delegation-compatible since the envelope-rest parser preserves the full data
+  payload shape. Lesson: shallow-contract measurements need per-field
+  consumption enumeration, not just "exitCode/summary" spot checks.
