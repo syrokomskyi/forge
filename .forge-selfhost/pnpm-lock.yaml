@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@warpgogol/forge':
-        specifier: 10.5.0
-        version: 10.5.0
+        specifier: 10.6.0
+        version: 10.6.0
 
 packages:
 
@@ -154,8 +154,8 @@ packages:
     resolution: {integrity: sha512-X1Iui3FUNZP18EUvysTHxt+Avu2nlVzyf90YM8OYgP6SGzTzzX/0JgObfO1AQQDzuZtNNz29bVh8h5R97JrjxA==}
     engines: {node: '>=8'}
 
-  '@warpgogol/forge@10.5.0':
-    resolution: {integrity: sha512-nMWd51GbG8R9zPjYmZSRarC4w62NXWqd13jCUUklEEfER7Fb9V0ldn556IILuH7VUFViyxEdox5Cdrcn5k8D6w==}
+  '@warpgogol/forge@10.6.0':
+    resolution: {integrity: sha512-oFexjdpTSnxH6G/1c/UeSMsGDAWuDGLXSlGcWIT1hzVq2t8JM5rVxQqGEZa59qpiMYNpMN6kKciXbKoXYGh8pg==}
     engines: {node: '>=24'}
     hasBin: true
 
@@ -1054,7 +1054,7 @@ snapshots:
 
   '@stroncium/procfs@1.2.1': {}
 
-  '@warpgogol/forge@10.5.0':
+  '@warpgogol/forge@10.6.0':
     dependencies:
       '@aws-sdk/client-s3': 3.1177.0
       '@modelcontextprotocol/sdk': 1.32.2(zod@4.6.7)
