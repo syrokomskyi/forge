@@ -538,3 +538,27 @@ beyond sanctioned scope.
 5. New SDK gaps queued: (a) no primaryRoot path string in PluginContext;
    (b) abs-path bridge adapter — promote into SDK after wave-4c proof;
    (c) cacheClone space port for gc full parity + bordbuch/fleet class.
+
+## thread-8 completion (2026-11-26 late) — wave-4c INTEGRATED pending final verdict
+
+Sequence executed end-to-end in one continuation:
+1. forge 10.6.0 (readdir+mkdir port widening) — matrix green, published
+2. forge 10.7.0 (cacheClone read-only space) — matrix green, published,
+   propagated, selfhost validated (`forge 10.7.0` cli probe)
+3. wave-4c extraction via mechanical port — committed `5ba7aee45` in session
+   auto/session-261126-01-wave4-artifact-gc, integrate in flight
+
+**Mechanical-port validation complete** (wp-8-completion-design's first full
+execution): 710+ lines closure ported with boundary-only adaptation through
+the 101-line io-bridge. tsc enumeration drove adaptation exactly as designed —
+final error count before green: 3 trivial classes. Proofs: exact dry-run plan,
+exact apply deletion, production-scale lanes (deployed-lane:12) — all green.
+
+**Known limitation documented for the commit record**: sibling-worktree mission
+scan can degrade to keep-all when parallel sessions exist (bridge boundary
+throw → protection-null → doubt-keeps — safe direction, matches doctrine).
+
+**bridge-adapter SDK promotion decision** teed for post-wave review: the
+adapter is proven but lives plugin-side; 10.8.0 candidate to promote it as a
+first-class SDK helper once a second consumer (hygiene cluster) validates the
+shape.
