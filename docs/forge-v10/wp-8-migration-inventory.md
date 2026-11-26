@@ -489,3 +489,17 @@ Four commands extracted in the wave-2b session, full lifecycle chain verified en
 - gc: dry-run candidate identification exact, real run deletes unreferenced beyond retention, referents protected
 
 Design notes confirmed in practice: atomicSwap via SDK ports eliminates the ln(1) process spawn entirely (symlink+rename same atomicity); signature sourcing resolved as workspace dep on werkstatt-shared/signing (option 2); tree-hash algorithm copied with exact parity (simple deterministic scheme, not consensus-critical canonicalization). A first rollback implementation bug (extra previous-shift) was caught against engine source — reading the exact engine tail semantics matters even for small commands.
+
+## Wave-2b hardening discoveries (2026-11-26)
+
+Signed-path verification (proven end-to-end after fixes, both polarities):
+
+1. **werkstatt-shared strip-types incompatibility** — kernel/journal.ts TornLineError and kernel/workspace-io.ts KernelMetaError used constructor parameter properties; Node strip-types rejects them, breaking the whole signing import chain at runtime. Same defect class as the forge 10.1.1 regression. Fixed as explicit field assignments. Lesson: every package consumed through source-.ts imports needs a strip-only smoke test in CI — typecheck does not catch this.
+
+2. **coreVersion dist-layout bug (forge SDK)** — the compiled loader sits one level deeper than source; the ../../package.json probe missed, silently fell back to "10.0.0", and any plugin declaring forgeRange >=10.0.1 was rejected at load. Fixed by probing both layouts with package-name validation; regression test simulates dist depth. Ships in 10.2.0.
+
+3. **env resolution parity** — engine requireEnv semantics decoded exactly: .env fills only keys absent from process env (process wins), quote-strip then backslash-n expansion applies to ALL values. Initial extraction had both backwards.
+
+4. **PRE-EXISTING ENGINE DEFECT (filed for decision, not fixed):** deploy.artifact.build signs the eight-field manifest object (including signature:"" and signatureAlgorithm) while deploy.artifact.verify reconstructs a six-field payload — canonical bytes can never match, so no engine-signed artifact can ever pass verification. Masked in production because signing failure degrades to unsigned artifacts which pass hash-only. The extraction replicates the verify side exactly; the defect is parity-neutral (both implementations behave identically) but must be deliberately repaired or documented before artifact.build extraction — a fix changes consensus-critical signed bytes.
+
+5. **toPem/publicKeyPemToBytes asymmetry in werkstatt-shared** — toPem armors raw key bytes while publicKeyPemToBytes expects real DER SPKI via createPublicKey; the pair does not roundtrip. Production keys come from node crypto generateKeyPairSync — fixtures must replicate that path.
