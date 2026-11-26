@@ -522,3 +522,7 @@ Sequencing recommendation: resolve the sign-semantics decision first; consider w
 Commits landed: 167bd675f (extraction) + fa8f7430c (hardening) + abbeb3f7c (manifest regen). All six plugin commands present in primary tree. Deploy cluster extraction status: 5/6 commands migrated (status, artifact.gc, artifact.verify, atomic.swap, atomic.rollback) — only artifact.build remains (wave-2c, blocked on the sign-semantics operator decision).
 
 IMPORTANT SEQUENCING NOTE: the plugin manifest requires forge >=10.1.2, but published 10.1.2 carries the coreVersion bug (reports 10.0.0) and REJECTS the plugin at load. The werkstatt forge10 pin must bump to 10.2.0 (published, propagating) before the plugin family loads in production use. Until then the extractions are dormant-but-integrated.
+
+## Wave-2c doctrine resolution (2026-11-26)
+
+The sign-semantics question resolves by doctrine, not operator decision: dark-run parity means extraction replicates engine behavior EXACTLY — including the eight-field sign input. The defect is orthogonal: filed as werkstatt F-0401, fixed (or documented-as-vestigial) through the engine's own governance, and the plugin then tracks the fix in a synchronized change. Extraction never repairs behavior, even broken behavior. wave-2c is unblocked on that axis; remaining complexity is processSpawn capability scoping and copyDir port economics.
