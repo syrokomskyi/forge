@@ -350,3 +350,24 @@ primaryState) is OPEN — decide with put evidence; gc fits the narrow port.
 4. translate: collectReleaseArtifacts (lines 560-680) + runArtifactStoreGc body + hashPath/collectFiles helpers from werkstatt-shared; protection-set logic newest-3 + live readers + chain head — READ the helper before translating
 5. proofs: fixture artifact store in worktree tmp, dry-run plan shape, apply deletes only unprotected, lock refusal path, worktree-boundary decisive proof (writes land in primary)
 6. integrate via kernel host, no timeout wrapper, expect one node_modules phantom retry
+
+## thread-6 final state — 10.4.0 published, propagation pending (2026-11-26 ~03:10)
+
+**INCOMPLETE — resume here next session**:
+1. propagation: npm processing 10.4.0 (`npm view versions` doesn't list it yet —
+   the packument itself lags; publish command DID succeed). Poll
+   `npm view @warpgogol/forge dist-tags.latest` until 10.4.0.
+2. then: `cd .forge-selfhost && pnpm install` (pin already bumped+committed),
+   validate harness (`node_modules/.bin/forge --version` → 10.4.0), commit
+   lockfile + pnpm-workspace.yaml release-age exclude if machine-updated.
+3. then werkstatt wave-4a per the runbook skeleton above — NOTE the space-root
+   design correction: gc locks live in `<primary>/.werkstatt/locks`, outside the
+   narrow artifacts space; LEANING toward widening artifactStore root to
+   `<primary>/.werkstatt` in forge 10.4.1 BEFORE the wave (zero consumers —
+   safe). That widening is a small context.ts edit + test adjustments + matrix.
+
+**Completed this thread** (all committed): deploy module 6/6 migration COMPLETE;
+wave-3 forgeState consumer integrated; FRICTION-02 paradox resolved (RFC-1642
+fixture); 10.3.0 (processSpawn allowlist) + 10.4.0 (artifactStore spaces port)
+published; wave-4 structural analysis + artifact-store decode + sizing +
+runbook; tmpfs matrix lesson (disk-backed TMPDIR).
