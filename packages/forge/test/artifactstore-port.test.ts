@@ -42,16 +42,16 @@ describe("artifactStore port", () => {
   it("worktree layout: reads the primary store across the sandbox boundary", async () => {
     const { wt } = seedGitLayout();
     const c = ctx("read", wt);
-    expect(await c.artifactStore.exists("index.json")).toBe(true);
-    expect(await c.artifactStore.readFile("index.json")).toBe(`{"entries":[]}`);
+    expect(await c.artifactStore.exists("artifacts/index.json")).toBe(true);
+    expect(await c.artifactStore.readFile("artifacts/index.json")).toBe(`{"entries":[]}`);
     // workspace port cannot see it — boundary intact
     expect(await c.workspace.exists("../" + ".werkstatt/artifacts/index.json")).toBe(false);
   });
   it("readwrite: writes land in the primary store, not the worktree", async () => {
     const { common, wt } = seedGitLayout();
     const c = ctx("readwrite", wt);
-    await c.artifactStore.writeFile("sha256-test/manifest.json", `{"hash":"x"}`);
-    expect(await c.artifactStore.exists("sha256-test/manifest.json")).toBe(true);
+    await c.artifactStore.writeFile("artifacts/sha256-test/manifest.json", `{"hash":"x"}`);
+    expect(await c.artifactStore.exists("artifacts/sha256-test/manifest.json")).toBe(true);
     // nothing leaked into the worktree-local filesystem
     expect(await c.workspace.exists(".werkstatt/artifacts/sha256-test/manifest.json")).toBe(false);
     void common;
@@ -64,7 +64,7 @@ describe("artifactStore port", () => {
   it("undeclared grant denies reads", async () => {
     const { wt } = seedGitLayout();
     const c = ctx(undefined, wt);
-    await expect(c.artifactStore.readFile("index.json")).rejects.toBeInstanceOf(CapabilityViolation);
+    await expect(c.artifactStore.readFile("artifacts/index.json")).rejects.toBeInstanceOf(CapabilityViolation);
   });
   it("no git state degrades: exists false, reads throw plain error", async () => {
     const c = ctx("read", mkTmp("as-nogit-"));

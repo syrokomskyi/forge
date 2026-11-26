@@ -254,9 +254,11 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
       async () => {
         const common = await resolveGitCommonDir(host.workspaceRoot);
         if (!common) return null;
-        // common is <primary>/.git — the artifact store root lives in the checkout,
-        // shared across worktrees by design (resolveWorkshopPaths primaryRoot parity).
-        return pathResolve(dirname(common), ".werkstatt", "artifacts");
+        // common is <primary>/.git — the werkstatt state dir is the space boundary:
+        // artifacts/, locks/ and fleet-claims/ all live under it, shared across
+        // worktrees by design (resolveWorkshopPaths primaryRoot parity). Widened
+        // from .werkstatt/artifacts in 10.4.1 — gc-class commands need lock access.
+        return pathResolve(dirname(common), ".werkstatt");
       },
     ),
     evidence: {

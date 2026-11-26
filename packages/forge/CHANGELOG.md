@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.4.1] — 2026-11-26
+
+### Changed
+
+- **artifactStore space root widened to `<primary>/.werkstatt`** — gc-class artifact commands lock under `<primary>/.werkstatt/locks` (primary-rooted), outside the narrow artifacts root shipped in 10.4.0. The werkstatt state dir (artifacts/, locks/, fleet-claims/) is the coherent boundary; zero consumers exist, so the widening is safe. Port paths gain the `artifacts/` prefix.
+
 ## [10.4.0] — 2026-11-26
 
 ### Added
