@@ -966,3 +966,25 @@ full validation:
   releases/index.yaml; root-caused as file created by the proof itself (mtime),
   defensive readIndex degrades gracefully; file removed restoring pre-proof
   state. Lesson: never scripted-edit generated files without a backup copy.
+
+## wave-5 evidence (2026-11-26) — hygiene.audit, first wave-4c-lib reuse
+
+Second mechanical-port execution — validated the REUSE economics of the
+strategy: protection/anomalies/types/atomic/io-bridge carried over unchanged
+from wave-4c; incremental closure only classes 288 + hygiene-policy 145 +
+digest-export 132 + handler ~100 lines of new authoring.
+
+- Bridge extended twice (stat, copyFile) — exact-verb measurement continues to
+  drive the surface; copyFile cross-port byte copy is semantically exact.
+- Parity proof at the strictest standard yet: fixture harness runs the SAME
+  tree through engine scanAllClasses and plugin scanAllClasses — output
+  byte-identical (missions verdicts/sizes, axiom fail-closed blocked reason,
+  class ordering). Harness pattern recorded for future waves: engine import
+  path + plugin import path + shared direct-fs io.
+- PRODUCTION-SCALE FINDING: engine hygiene.audit itself times out at 5 min on
+  the production tree (exit 124) — scanMissionsClass pathSizes 4.1G of archive
+  file-by-file. Filed F-0404; extraction replicates faithfully per doctrine.
+- friction registry lesson: folded plain scalars must not contain colon+space
+  sequences — FRICTION-01 yaml parse errors; F-0403 shape is the canonical
+  template (id/created/session/category/friction/signature/measure/artifacts/
+  status/lastSeen).
