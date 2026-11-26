@@ -341,3 +341,12 @@ after propagation). Matrix composition doctrine applied per wave-2c precedent.
 Remember: collectReleaseArtifacts closure ~120 lines, primary-rooted locking,
 dry-run never locks. The granularity pivot question (narrow spaces vs one
 primaryState) is OPEN — decide with put evidence; gc fits the narrow port.
+
+## wave-4a runbook skeleton — artifact.store.gc extraction (for next session)
+
+1. `cd werkstatt && pnpm exec werkstatt run flow.open --kind session --slug wave4-artifact-gc` — NEVER hand-create worktrees (FLOW-INT-06 lesson)
+2. pins: `forge10: npm:@warpgogol/forge@10.4.0` in root + studio package.json; install; forgeRange `>=10.4.0` in the command manifest
+3. manifest capabilities: `artifactStore: readwrite` (gc deletes), `filesystem: read` (lock files are workspace-rooted — WAIT, gc locks PRIMARY-rooted! verify: acquireLock(paths.primaryRoot,…) means lock files live in `<primary>/.werkstatt/locks` — OUTSIDE both workspace AND artifactStore space! EXTRACTION BLOCKER CANDIDATE: either the locking primitives need a locks-space or the plugin replicates lock semantics inside artifactStore space paths — DEVIATION. Decide explicitly; the honest options: (a) widen artifactStore root to `<primary>/.werkstatt` covering locks+artifacts both — one space, matches werkstattDir reality; (b) accept deviation with documented reasoning. LEANING (a): the werkstatt state dir IS the natural space boundary.)
+4. translate: collectReleaseArtifacts (lines 560-680) + runArtifactStoreGc body + hashPath/collectFiles helpers from werkstatt-shared; protection-set logic newest-3 + live readers + chain head — READ the helper before translating
+5. proofs: fixture artifact store in worktree tmp, dry-run plan shape, apply deletes only unprotected, lock refusal path, worktree-boundary decisive proof (writes land in primary)
+6. integrate via kernel host, no timeout wrapper, expect one node_modules phantom retry
