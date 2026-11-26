@@ -152,3 +152,37 @@ E1 program session: whether the shim lives in the engine command registry
 (any registered-plugin id intercepted before unknown-command error). The
 explicit form is auditable per RFC-1648 doctrine; the implicit form risks
 routing ambiguity during partial migrations.
+
+## 8. WP-8 extraction-phase completion assessment (2026-11-26)
+
+Assessment against §4 exit criteria, measurement-based:
+
+**Criterion 1 — every studio-ops workspace-scope command answered by plugin
+host: MET.** 58 commands across 12 modules migrated byte-faithful (waves
+4a-20). Per-module residue analysis: every remaining command is classified
+KERNEL-RETAIN with measured evidence (kernel-runtime coupling, execution-
+position invocation, enforcement semantics, or registrar-total economics).
+No unclassified rows remain.
+
+**Criterion 2 — kernel retained only for genuine kernel-internal requirements:
+MET with one economic exception.** handoff is kernel-retained on economics
+(~13k-line registrar-total closure), not on architectural necessity — with
+E1 delegation it becomes a delegation candidate. All other retentions are
+architectural (coupling/invocation/enforcement).
+
+**Criterion 3 — migration inventory all rows closed: MET.** Terminal
+classification committed to wp-8-migration-inventory.md.
+
+**Criterion 4 — `werkstatt run` delegation table empty for migrated surfaces:
+STRUCTURALLY UNMET — requires E1.** Migration is dark-run: kernel copies
+still serve `werkstatt run`; no delegation mechanism exists. Worse, the
+inverse dependency is live TODAY: kernel-retained modules invoke plugin-
+resident commands through the registry at exactly 3 edges (bordbuch.repair
+from mission-open, bordbuch.validate from nachweis-publish, evidence.sync
+from leitstand-deploy + mission — deploy-critical, structured-result
+consuming), plus 1 reverse edge (nachweis.publish → kernel manifest.generate).
+
+**Verdict: the WP-8 extraction phase is COMPLETE; the WP-8 program is NOT —
+it reduces to the E1 delegation program (4 edges, bounded) followed by E3
+(kernel-copy retirement).** The extraction machinery is proven: 17 waves,
+closures 79→5100 lines, seam-extraction strategy, zero integrate regressions.
