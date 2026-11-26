@@ -1202,3 +1202,23 @@ Extraction-proof corollary: any wave whose parity proof shrinks the unprobed
 baseline MUST either regenerate the committed counters projection in the same
 integrate or expect the NEXT wave's integrate to refuse PROBE-06 on the same
 rules. Wave-8 got lucky ordering; wave-9 paid the debt.
+
+## wave-10 evidence (2026-11-26) — intake.schema.export, fastest wave yet
+
+Seventh mechanical-port execution — the smallest (132 lines core) and fastest:
+open-to-integrate in a fraction of prior waves. Schema derivation stays in
+published @warpgogol/werkstatt-shared + @warpgogol/pbp (zod source-of-truth,
+never copied); generated-marker.ts copied byte-identical (236 lines, cohesive
+header-generation unit). Deps added: @warpgogol/pbp workspace:*, zod ^4.6.5.
+
+PARITY PROOF — strongest form: real writes compared. Plugin render sha256
+b72965c0… == engine render sha256 b72965c0… byte-exact. (Both differ from the
+committed artifact — pre-existing repo drift in the zod model, not wave scope.)
+
+Endgame measurement (remaining WP-8 surface):
+- intake.fixtures.generate — 249 lines + test-bundle.ts closure ~1045 (deep)
+- evidence.fetch/sync — 762 lines core + registry-io 534 dep; BLOCKED on
+  network-capability design decision: plugin manifest declares network:false,
+  aws-sdk bypasses the fetch capability port by construction (auditability
+  not sandbox) — needs explicit doctrine before extraction
+- evolution — 2023 lines + fleet/health deps (largest remaining)
