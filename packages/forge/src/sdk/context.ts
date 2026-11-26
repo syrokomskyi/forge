@@ -83,7 +83,7 @@ export async function resolveGitCommonDir(workspaceRoot: string): Promise<string
 
 
 /** Scoped WorkspaceIOPort factory — one implementation behind every filesystem-shaped
-   port (workspace, artifactStore, future state spaces). `root` is the sandbox root;
+   port (workspace, primaryState, future state spaces). `root` is the sandbox root;
    `grant()` reports the effective grant per call so capability changes evaluate fresh;
    `onDeny` raises the capability violation with the caller's capability dimension. */
 function makeScopedPort(
@@ -247,18 +247,16 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
 
   return {
     workspace: makeScopedPort(host.workspaceRoot, () => fsGrant, deny, "filesystem"),
-    artifactStore: makeDeferredSpacePort(
-      "artifactStore",
-      () => caps.artifactStore ?? "none",
+    primaryState: makeDeferredSpacePort(
+      "primaryState",
+      () => caps.primaryState ?? "none",
       deny,
       async () => {
         const common = await resolveGitCommonDir(host.workspaceRoot);
         if (!common) return null;
-        // common is <primary>/.git — the werkstatt state dir is the space boundary:
-        // artifacts/, locks/ and fleet-claims/ all live under it, shared across
-        // worktrees by design (resolveWorkshopPaths primaryRoot parity). Widened
-        // from .werkstatt/artifacts in 10.4.1 — gc-class commands need lock access.
-        return pathResolve(dirname(common), ".werkstatt");
+        // common is <primary>/.git — the space root is the primary checkout itself,
+        // mirroring resolveWorkshopPaths primaryRoot semantics one-to-one.
+        return dirname(common);
       },
     ),
     evidence: {

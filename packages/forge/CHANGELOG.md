@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.5.0] — 2026-11-26
+
+### Changed
+
+- **artifactStore replaced by primaryState** — measured wave-4 extraction evidence showed every primary-state command spanning 2-3 narrow domains (put needs releases+artifacts+locks, gc needs the same plus index writes), so per-domain spaces multiply grants without improving honesty. `primaryState: "none" | "read" | "readwrite"` is one coarse space rooted at the primary checkout root — mirroring the filesystem grant's whole-root granularity and resolveWorkshopPaths primaryRoot semantics one-to-one. Zero consumers existed for artifactStore, so the pivot is clean. Same gitdir-pointer resolution, same deferred-root semantics (RFC-1645 WP-8).
+
 ## [10.4.1] — 2026-11-26
 
 ### Changed
