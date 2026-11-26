@@ -25,7 +25,7 @@ export function coreVersion(): string {
   // The compiled artifact lives one level deeper than the source module
   // (dist/src/sdk/loader.js vs src/sdk/loader.ts) — probe both layouts.
   const here = import.meta.dirname ?? __dirname;
-  for (const candidate of ["../../package.json", "../../../package.json"]) {
+  for (const candidate of ["../../package.json", "../../../package.json"]) { // pkg-health-10: defensive probe — each candidate intentionally misses in one layout (src vs dist) and hits in the other; miss is the designed path
     try {
       const pkg = JSON.parse(readFileSync(join(here, candidate), "utf8")) as { name?: string; version?: string };
       if (pkg.name === "@warpgogol/forge" && typeof pkg.version === "string") {

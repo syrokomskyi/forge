@@ -50,7 +50,7 @@ describe("symlink ports", () => {
     const root = mkTmp("forge-symlink-");
     const ctx = createPluginContext(manifestWith("readwrite"), { workspaceRoot: root });
     await expect(ctx.workspace.symlink("target", "../escape-link")).rejects.toThrow(CapabilityViolation);
-    // Concatenated — a static "../.."-prefixed literal trips PKG-HEALTH-10's
+    // Concatenated — a static parent-traversal literal in source trips the
     // outside-package resolution scan; the probe intent is unchanged.
     const escapee = "../" + "../" + "etc/passwd";
     await expect(ctx.workspace.readlink(escapee)).rejects.toThrow(CapabilityViolation);

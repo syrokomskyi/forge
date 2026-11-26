@@ -30,7 +30,7 @@ describe("coreVersion resolution", () => {
       import { join } from "node:path";
       const here = ${JSON.stringify(join(root, "dist/src/sdk"))};
       let resolved = "10.0.0";
-      for (const candidate of ["../../package.json", "../../../package.json"]) {
+      for (const candidate of ["../../package.json", "../../../package.json"]) { // pkg-health-10: test simulates the dist-layout probe inside a tmpdir — the literals are the behavior under test, never resolve in-repo
         try {
           const pkg = JSON.parse(readFileSync(join(here, candidate), "utf8"));
           if (pkg.name === "@warpgogol/forge" && typeof pkg.version === "string") {
