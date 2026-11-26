@@ -478,3 +478,14 @@ artifact.verify/swap need ed25519 verification over canonical-json — consensus
 3. **Host crypto port** (`ctx.crypto.verifyEd25519`) — moves verification behind the SDK boundary; the host owns canonicalization. Cost: crypto is pure computation, no host privilege needed — port-ifying it contradicts the inventory's own copy-pure-primitives guidance, but consensus-critical code is arguably different from byteHash.
 
 Recommendation direction: option 2 as the pragmatic middle — one versioned subpath dep, zero copied consensus code. Decision belongs to the wave-2b session with artifact.verify in hand. Hash-only verification (unsigned artifacts) needs NO crypto at all and can proceed in any case.
+
+## Wave-2b write-cluster extraction — lifecycle proven (2026-11-26)
+
+Four commands extracted in the wave-2b session, full lifecycle chain verified end-to-end on fixtures through the 10.1.2 host:
+
+- verify: pass for valid artifact, fail for corrupted dist (both polarities)
+- swap: REFUSES unverified artifacts (verify-composition proof — surfaced accidentally when a fixture rebuild added a trailing newline; the refusal is exactly correct behavior), successful swap shifts current into previous correctly
+- rollback: engine parity confirmed including the subtle detail — only current is re-pointed, so current==previous after rollback
+- gc: dry-run candidate identification exact, real run deletes unreferenced beyond retention, referents protected
+
+Design notes confirmed in practice: atomicSwap via SDK ports eliminates the ln(1) process spawn entirely (symlink+rename same atomicity); signature sourcing resolved as workspace dep on werkstatt-shared/signing (option 2); tree-hash algorithm copied with exact parity (simple deterministic scheme, not consensus-critical canonicalization). A first rollback implementation bug (extra previous-shift) was caught against engine source — reading the exact engine tail semantics matters even for small commands.
