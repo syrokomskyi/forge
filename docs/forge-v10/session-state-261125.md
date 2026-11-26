@@ -407,3 +407,30 @@ Deep-read of the gc closure (artifact-store-commands.ts:446-757 + hygiene deps):
 - wave-4b: artifact.store.put — needs releases-space for the release-copy;
   forces the primaryState decision with concrete evidence.
 - wave-4c: artifact.store.gc — heavy hygiene closure; last.
+
+## wave-4b prep facts — artifact.store.put closure decoded (2026-11-26)
+
+- hashing: byteHash/byteHashFile from `@warpgogol/werkstatt-engine/fingerprint`
+  (re-export of werkstatt-shared fingerprint/primitives) — `sha256:<hex>` WITH
+  prefix. Plugin path: werkstatt-shared fingerprint subpath dep (signing
+  precedent wave-2b) — canonicalization stays in the versioned library.
+- **DEGENERATE SHARD (latent defect candidate)**: hashPath shards by
+  `hash.slice(0,2)` but hashes carry the `sha256:` prefix — the shard is always
+  literally `sh`. Every artifact ever stored lives in
+  `.werkstatt/artifacts/releases/sha256/sh/`. Parity replicates exactly; file
+  as werkstatt friction (sibling to F-0401/F-0402) during wave-4b.
+- hashDir: collectFiles order + `<rel>:<hash>` lines sorted, joined by \n,
+  byteHashed; empty dir → `sha256:empty` literal; byteSize sums io.stat sizes.
+- tar: `create as tarCreate` from npm `tar` — gzip:true, cwd=distDir, entries
+  `["."]`. Plugin needs `tar` dependency in werkstatt-studio package.json
+  (precedent-free but straightforward — studio already deps werkstatt-shared).
+- tmp archive `.werkstatt/artifacts/tmp/<release>-<ts>.tar.gz` then rename into
+  the CAS; tmp rm recursive best-effort; idempotent re-put removes prior
+  manifest when hash path differs; atomicWriteFile for manifest (copy primitive).
+- 17-field manifest incl. `platformVersion:"unknown"`, null snapshot hashes,
+  `sha256:unspecified` siteContentHash degrade, `archivePath` workspace-relative.
+- deriveSystemIdFromRelease: regex `^systemId:` line scan of
+  `<primary>/releases/<id>/release.yaml` — PRIMARY access (the wave-4b blocker);
+  fallback `releaseId.split("-r")[0]`.
+- locking: acquireLock(workspaceRoot, `release:<id>`) — WORKTREE-local
+  inconsistency vs gc's primary-rooted locking (already noted — friction cand).
