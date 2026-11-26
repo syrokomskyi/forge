@@ -75,6 +75,6 @@ describe("artifactStore port", () => {
   it("path escape outside the space root is refused", async () => {
     const { wt } = seedGitLayout();
     const c = ctx("readwrite", wt);
-    await expect(c.artifactStore.readFile("../../etc/passwd")).rejects.toBeInstanceOf(CapabilityViolation);
+    await expect(c.artifactStore.readFile("../../etc/passwd")).rejects.toBeInstanceOf(CapabilityViolation); // pkg-health-10: deliberate escape probe — the test asserts the port refuses it
   });
 });
