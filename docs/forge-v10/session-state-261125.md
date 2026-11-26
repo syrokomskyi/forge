@@ -829,3 +829,34 @@ hazard class documented: same names live in BOTH plugin local fingerprint
 location. Banner-comment `*/`-forming hazard: engine files carry asterisk-
 run banner closes that form `*/` early-termination sequences — commit gate
 catches on staged copies; normalize banner closes in extraction copies.
+
+## WP-8 EXTRACTION PROGRAM TERMINUS — final classification (2026-11-26)
+
+58 studio commands in plugin host across 12 modules. The extraction program
+reached its natural terminus — remaining candidates classified by measurement:
+
+**handoff (validate/pack/absorb) — KERNEL-RETAIN on economics**: zero external
+invocations, zero kernel-runtime coupling, BUT the migrators dependency is
+registrar-total by nature — handoff uses allMigratorIds/migratorRegistry/
+migrators (the complete migration set is the behavior, byte-faithful doctrine
+forbids partial extraction). Closure: 3678 handoff + 9153 migrators (28 files)
++ transitive ≈ 13000+ lines — 2.5x the largest executed wave (nachweis 5100).
+Operator-facing commands with zero pipeline coupling: extraction cost exceeds
+delegation value. IF E1 delegation architecture lands, handoff becomes a
+delegation candidate rather than an extraction candidate.
+
+**nachweis validate/publish/withdraw — E1-BLOCKED**: genuine plugin→kernel
+backwards dependency (publish invokes kernel-retained manifest.generate and
+bordbuch.validate via executeKernelCommand). Awaiting E1 delegation program.
+
+**Everything else kernel-retained by invocation-direction or semantics**:
+prepare/ready (leitstand.ship), subdomain register/validate (service-promote),
+isolation (enforcement machinery), scope (runtime infrastructure), mission/
+fleet (kernel-runtime coupling), dns/bauakte/remediation/sternsystem-lifecycle
+(pipeline-internal invocation).
+
+WP-8 FINAL STATE: 58 commands migrated across 12 modules. Evidence chain:
+waves 4a-20, every wave byte-faithful, parity proven per wave (validation
+class minimum, data class where env-free probes exist). The program now
+reduces to E1 (delegation architecture — the real endgame) and E3 (kernel
+retirement of migrated copies once delegation proves out).
