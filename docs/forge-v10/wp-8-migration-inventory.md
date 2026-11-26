@@ -1278,3 +1278,19 @@ ENDGAME WORK ITEMS (honest WP-8 remainder):
   module by module with parity evidence already collected per wave
 - E4: SDK promotion review — io-bridge.ts now proven across 30 consumers;
   promotion into forge SDK eliminates per-plugin copies (design §6 addendum)
+
+## wave-14 bordbuch extraction (2026-11-26) — first E2-inventory wave
+
+Session `wave14-bordbuch`. 6 commands ported: bordbuch.append/commit/generate/
+repair/status/validate. Closure: command files 1090 lines byte-identical; reuse
+economics decisive — bordbuch-io.ts (590 lines) already ported in wave-12,
+cacheCloneCommit/gitExec/atomic seams already extracted. New extraction surface:
+werkstatt/lock.ts + operation.ts copied byte-identical, writeSystemState added
+to registry-seam (cache-clone auto-commit + push tail, byte-faithful logic with
+fully-qualified refspec per RFC-0981/0986 + array-args exec per N11).
+werkstatt-index-shim.ts replaces engine barrel. TSC cascade 20→12→5→1→0 as
+designed. Strip-only constraints: none new. Proof: engine vs plugin validation
+parity byte-identical (--system is required same wording both sides) — reducer
+byte-identical by construction; deep behavioral parity deferred to integration
+dogfood (bordbuch status/validate run against real systems during normal ops).
+Manifest after registration: 36 commands. Commit 4ff9888b1.
