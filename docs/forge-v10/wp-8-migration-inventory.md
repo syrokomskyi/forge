@@ -1108,3 +1108,19 @@ not recon:
 
 Cheapest ACTUAL next wave candidates re-ranked: hygiene.gc (wave-4c/5 lib reuse,
 no new deps) or behavior-snapshot-style pure modules. Recommend hygiene.gc next.
+
+## wave-8 design questions RESOLVED (2026-11-26) — wave is now mechanical
+
+1. Dependency chain CLEAN: npm artifacts carry npm-versioned deps —
+   intake-validator → pbp ^1.0.0 + werkstatt-shared ^1.1.1; pbp → werkstatt-shared
+   ^1.0.0; werkstatt-shared published 1.1.1. Plugin adds npm deps directly,
+   zero vendoring.
+2. io.glob simple: exactly two pattern classes in rules.ts — `**/*` recursive
+   listing and `sources/<sha256>.*` single-level wildcard, both cwd-scoped.
+   Bridge-local glob over readdir recursion (~40 lines) suffices, no SDK minor
+   needed. Implement in io-bridge or lib/glob.ts with exact engine semantics
+   (posix separators, sorted output at call site).
+3. Wave-8 execution order when opened: add 3 npm deps to studio package.json →
+   copy intake-validate.ts + write thin command → implement glob → tsc enumerate
+   → fixture proof (synthetic bundle, INTAKE rule firing parity) → decide
+   schema.export inclusion by remaining budget.
