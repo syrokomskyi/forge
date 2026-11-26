@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.2.1] — 2026-11-26
+
+### Fixed
+
+- **forgeState capability declaration rejected** — the 10.2.0 port shipped without adding `forgeState` to the loader's known-capability set, so any manifest declaring the grant was refused with `capability-unknown` and the port was unreachable in practice. Regression test covers both acceptance of `forgeState` and continued rejection of genuinely unknown capabilities.
+
 ## [10.2.0] — 2026-11-26
 
 ### Added

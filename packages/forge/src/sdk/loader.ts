@@ -60,7 +60,7 @@ function semverSatisfies(version: string, range: string): boolean {
   return maj === eMaj && min === eMin && pat === ePat;
 }
 
-const KNOWN_CAPABILITIES = new Set(["filesystem", "network", "processSpawn", "gitMutation", "envKeys"]);
+const KNOWN_CAPABILITIES = new Set(["filesystem", "network", "processSpawn", "gitMutation", "envKeys", "forgeState"]);
 
 export function verifyManifest(raw: unknown, pluginDir: string): PluginManifest {
   const m = raw as Partial<PluginManifest>;
