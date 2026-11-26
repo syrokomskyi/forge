@@ -1279,3 +1279,49 @@ Decision recorded by the agent under operator delegation ("проведи мен
   carries non-comment entries — move exclusions into the committed `.gitignore` (strictly better
   governance: ignore rules join the auditable surface). personal-agent had `/.forge/task/` there
   since Nov 5.
+
+## 2026-11-26 E3 wave — IN FLIGHT, resumable (worktree state)
+
+**Worktree:** `werkstatt@auto-session-261126-01-e3-engine-copy-retirement` — all production
+surgery COMPLETE on disk, UNCOMMITTED (test-file layer unresolved, commit gate would refuse).
+
+**Live-proof before cutting (precondition met):** `pnpm exec forge studio.bordbuch.validate --json`
+in werkstatt workspace returned a clean contract envelope (exitCode+summary) — delegation
+shell-out resolution proven end-to-end in production shape.
+
+**Completed surgery:**
+1. 5th edge wired — ship.ts `buildEvidenceSyncStep` now uses executeDelegatedCommand
+   (E1 missed this call site: `runShipPhase(ctx, "evidence.sync")` went through the kernel
+   registry; deletion without rewiring would have broken deploy). Edge inventory now verified
+   COMPLETE: deploy-execution, mission-close, mission-open, nachweis-validate, ship.
+2. Registrations removed: bordbuch.validate + bordbuch.repair from bordbuch.module.ts,
+   evidence.sync from evidence-module.ts (brace-matched, structure preserved).
+3. Engine impls deleted: bordbuch-repair.ts, bordbuch-validate.ts, evidence-sync.ts
+   (+bordbuch-repair.test.ts, tests/bordbuch-validate.test.ts, tests/evidence-sync.test.ts,
+   tests/evidence-sync-upload.test.ts). Studio copies verified independent real copies
+   (no engine imports; studio does not even depend on werkstatt-engine).
+4. Barrels cleaned (bordbuch/index.ts, evidence/index.ts), kernel-flags-lint.ts entry removed.
+5. IN_PROC migration double DELETED from delegate-command.ts (both branches + siteName param
+   + the vitest.setup.git-identity.ts env line). envInputs WERKSTATT_DELEGATION_IN_PROC
+   removed from all 5 edge commands.
+6. nachweis-validate.ts siteName argument removed (plugin resolves from argv).
+
+**Remaining — exactly this list:**
+1. TSC residual errors are ALL in test files: tests-handoff/evidence-integration.test.ts
+   (sync-only, R2-env-skip-guarded) and tests-handoff/evidence-sync-fetch.test.ts
+   (600 lines: sync describes lines 174-468 migrate, fetch describes 469+ STAY — fetch is
+   engine-retained). Decision needed with real cost: studio has ZERO test infrastructure
+   (no vitest config, no test script — 61 commands testless today; extraction moved code but
+   coverage stayed engine-side). Creating studio vitest infra + adapting helpers
+   (makeInput/makeContext are kernel-shaped; studio command context differs) is a small
+   project. ALSO: RFC-0651/RFC-1202 acceptance probes bind to these test paths — probe
+   frontmatter must follow the migration or validation fails.
+2. evidence-module.test.ts + load-verification tests need final verification post-split.
+3. `ecosystem.manifest.generate` regen (command surface changed) — REQUIRED same commit.
+4. ecosystem.commit (expect multi-round: mock-adjacent fallout possible in suites that
+   relied on IN_PROC fallback without executeDelegatedCommand stubs — 9 files were stubbed
+   in E1 but coverage was env-based) + flow.integrate.
+
+**Architecture note for the future:** studio testlessness is a program-level debt independent
+of E3 — every extracted command's coverage still lives engine-side or nowhere. An RFC for
+studio test infrastructure would serve the whole extraction program, not just this wave.
