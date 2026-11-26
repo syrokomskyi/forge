@@ -434,3 +434,11 @@ Deep-read of the gc closure (artifact-store-commands.ts:446-757 + hygiene deps):
   fallback `releaseId.split("-r")[0]`.
 - locking: acquireLock(workspaceRoot, `release:<id>`) — WORKTREE-local
   inconsistency vs gc's primary-rooted locking (already noted — friction cand).
+
+## wave-4a INTEGRATED (2026-11-26) — develop c3ee91a48 → 72403bb81
+
+artifact.store.get+validate live in werkstatt develop. F-0402 filed (output/json
+alias collision). Noted: F-0386 already exists for the robots-parser phantom —
+no duplicate filing needed. Matrix 10.5.0 (primaryState) in flight at
+/tmp/matrix-1050.log. Next: matrix green → publish → propagation → wave-4b put
+extraction (tar dep + primaryState consumer + degenerate-shard friction filing).
