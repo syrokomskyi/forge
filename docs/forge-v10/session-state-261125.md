@@ -1081,3 +1081,13 @@ Consequences, all now settled:
 The E1 program state is thereby minimal and exact: everything implementable is
 implemented, integrated, and proven short of the live host artifact; the critical
 path is a single operator `npm publish` in the standalone forge repo.
+
+### Worktree-teardown resolution lessons
+
+- WT-GATE/teardown hooks demand a genuinely clean tree — `--dirty --force`
+  acknowledges the pre-check (FLOW-DIS-03) but the hook re-verifies independently
+  (FLOW-DIS-02). Only a byte-clean tree discards.
+- The PATH-injected git wrapper refuses direct platform-scope commits with a
+  deceptive exit 0 — `git status` is the only evidence the commit never landed.
+- Sanctioned restore path for making a throwaway worktree clean: overwrite files
+  with `git show HEAD:<path>` copies + path-scoped `git reset -q` — no blocked ops.
