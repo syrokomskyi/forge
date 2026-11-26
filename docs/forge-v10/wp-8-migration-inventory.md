@@ -1038,3 +1038,27 @@ Closure economics: 338-line handler + 4 pure support files (~450 lines) copied
 byte-identical; adaptation was retyping kernel signatures to a minimal local
 SnapshotContext (workspaceRoot/io/logger) — the cleanest kernel-decoupling
 pattern so far, candidate for the standard extraction template.
+
+## Remaining-wave ordering measurement (2026-11-26) — design §4 re-verification
+
+Measured per-module: command lines, io verbs, coupling risks (network/exec/R2-env).
+Execution order recommendation, cheapest-first:
+
+| wave | target | measured closure | coupling | verdict |
+|---|---|---|---|---|
+| 8 | intake (validate 128 + schema-export 132 + fixtures-generate 249) | shallow — io.readdir/rm/writeFile only | none | NEXT — smallest remaining command surface |
+| 9 | evidence-fetch/sync (283+433) | ~1084 module total, io surface trivial | R2 client + env creds (5 files) — needs env-port discipline + network capability decision | medium — network boundary design needed first |
+| 10 | hygiene.gc (~256 handler + missions/axiom lanes) | partial reuse of wave-4c/5 lib | R2 for axiom lane, missions lane needs sibling-worktree scan (already bridged) | medium — lanes can degrade independently |
+| 11 | evolution (5 candidate commands, 437 handler lines) | canary-router/controller runtime coupling | none measured | needs runtime-coupling investigation |
+| — | journal | LIBRARY-ONLY — no commands to migrate; consumers migrate with their modules | — | remove from wave list |
+| — | capability-artifacts | LIBRARY-ONLY (store.ts) — consumed by other modules | — | remove from wave list |
+| deep | fleet claims/ownership (478 handler + claims-repo 824 + apply 593) | io.exec process spawning + systems-cache | heavy — capability design needed | defer |
+| deep | notausgang (1030 lines) | 8 io verbs | moderate | defer |
+| deep | handoff (exec×6) | heavy process spawning | defer |
+| deep | observability (net×7) | heaviest network coupling | defer |
+| deep | integrity (341 handler + 3793 module, net×3) | per design §4 possibly NOT studio-scope — verify before scheduling | verify scope first |
+| deep | bordbuch (io.exec + net) | defer |
+
+Class-G note: scope/component-runtime/isolation command files (133/146/171/243 lines)
+are generic-platform class — they migrate with the v10-coverage verification (P0),
+not the studio plugin line.

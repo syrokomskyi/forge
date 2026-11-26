@@ -586,3 +586,19 @@ cheap preflight — run it BEFORE flow.integrate for any new friction file.
 Next candidates: hygiene.gc (large — missions/axiom lanes + R2), evidence
 cluster (evidence-fetch 283 + evidence-sync 433 + r2-client network/env).
 io-bridge SDK promotion review now due (second consumer exists).
+
+
+## wave-6 + wave-7 integrated (2026-11-26)
+
+- wave-6 signing.key.generate: 621c6f328 → develop. New boundary class documented:
+  operator-arbitrary output paths use node-io.ts, not the bridge.
+- wave-7 behavior.snapshot.capture+diff: 5a6f3d372 → ed610d93a on develop.
+  STRICTEST parity standard achieved: hash + wrapper + diff output byte-identical.
+  SnapshotContext pattern (minimal local kernel-context retype) is the cleanest
+  kernel-decoupling so far — candidate for the standard extraction template.
+  Classify-order hazard lesson in io-bridge.ts: never pass identical roots.
+- wp-8-migration-inventory.md now carries the definitive remaining-wave ordering
+  table with per-module measurements. Next wave: intake (validate+schema-export+
+  fixtures-generate, ~509 lines total, zero coupling).
+- studio plugin command count on develop: 13 commands across deploy/artifact-store/
+  hygiene/signing/behavior-snapshot/journal surfaces.
