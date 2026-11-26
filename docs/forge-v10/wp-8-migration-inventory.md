@@ -1342,3 +1342,25 @@ the backwards dependency plugin←kernel-invocation. The studio-ops class is
 operator-facing commands reading/writing workspace state. Probe: grep who
 invokes the command id via executeRegisteredCommand/invoke in kernel module
 closures before wave commitment.
+
+## verifier-fix session + F-0405 resolution (2026-11-26) — integrate-blocker eliminated
+
+Wave-14 integrate hit FLOW-INT-01 three times on a phantom: `??
+node_modules/.pnpm/robots-parser@3.0.1/node_modules/robots-parser/.gitignore`.
+Root cause diagnosed to mechanism: CX-142's sessionIgnoreRulePaths fs-walk
+prunes only `.git` — it descends into ignored trees and collects third-party
+`.gitignore` files shipped inside node_modules packages as session-authored
+evasion candidates. A rule inside an ignored tree is inert by construction
+(git never descends; hiding already-invisible paths gains nothing) — the one
+exception is an ignored directory containing TRACKED files, which git still
+descends. Fix (07afed5ab): statusDirty filters candidates through check-ignore
+on the parent + ls-files-under-parent, both probes fail-closed. Tests:
+inert-drop, live-plant-block, tracked-edge-live — 2/2 new + 54/54 regression
+green. The fix rode through the very integrate machinery it repairs — meta-
+validation by construction. EVERY future wave integrate was exposed to this
+phantom (any dep shipping a `.gitignore` recurs); the blocker is now durable
+closed. F-0405 filed + fixed in one program day.
+
+Wave-14 integrate confirmation: develop carries 4ff9888b1 (bordbuch x6) +
+3176d53e8 (F-0405 record) + 07afed5ab (verifier fix) — plugin manifest 36
+commands. Session worktrees zero.
