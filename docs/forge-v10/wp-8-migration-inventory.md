@@ -1238,3 +1238,43 @@ forge 10.8.0 candidate: opts.env widening (small, backward-compatible).
 
 Wave-12 is a full-session arc: seams + bridge + wrappers + proofs + integrate.
 Everything pre-decided in the worktree's resume doc — execution only.
+
+## ENDGAME RE-VERIFICATION (2026-11-26, post-wave-13) — honest scope assessment
+
+CORRECTION to the wave-13 "WP-8 COMPLETE" framing: the 30 migrated commands
+complete the INVENTORY-DOCUMENTED modules (artifact-store, hygiene, intake,
+evolution, evidence, deploy, signing, behavior, journal), but the design §4
+exit criteria — "every studio-ops workspace-scope command answered by the
+plugin host" — covers the 156-command workspace-scope list, of which a
+substantial surface remains in the engine. Re-verified module counts
+(engine registrations, includes dark-run copies of migrated commands):
+
+| module | commands | scope assessment |
+|---|---|---|
+| leitstand | 21 | pipeline orchestration core — ship/resume/verify chains drive the release lifecycle; heavy kernel coupling (hooks, pipeline runtime, editorial sign-off). KERNEL-RETAIN candidate |
+| mission | 20 | mission lifecycle core — open/validate/reconcile/close orchestrate the platform's central workflow; io.exec/git mutation/kernel hooks pervasive. KERNEL-RETAIN candidate, though leaf commands (status, diff) may extract |
+| sternsystem | 15 | system lifecycle core — register/sync/channels; cache-clone mutation heavy. MIXED: read-side (status/inspect) extractable |
+| nachweis | 15 | evidence/attestation pipeline — assessment ingest, signing chains. MIXED, needs per-command measurement |
+| fleet | 10 | claims/ownership — fs-only per wave-4 finding. MIGRATE candidates, medium closure |
+| release | 6 | release lifecycle — overlaps artifact-store (done); remaining prepare/promote are pipeline-adjacent. MIXED |
+| bordbuch | 6 | event ledger — append/validate; cache-clone mutation via the wave-12 seam (already extracted!). MIGRATE candidates — seam reuse makes these cheap |
+| isolation | 6 | kernel runtime security — KERNEL-RETAIN by nature |
+| lagebild/dns/subdomain/scope/remediation/handoff/notausgang/bauakte | 27 | unmeasured — needs classification pass |
+
+CRITICAL ARCHITECTURE FACT: migration so far is DARK-RUN — engine copies still
+serve `werkstatt run`; plugin copies serve `forge` invocation. The exit
+criterion "werkstatt run delegation table empty for migrated surfaces" requires
+a delegation mechanism that DOES NOT EXIST yet: engine-side command routing
+that forwards migrated command ids to the plugin host. This is endgame work
+item E1 — a forge/engine integration feature, not a wave.
+
+ENDGAME WORK ITEMS (honest WP-8 remainder):
+- E1: delegation mechanism — kernel `werkstatt run` routes migrated ids to
+  plugin host; without it migrated surfaces live duplicated forever
+- E2: scope classification pass — per-command migrate/retain verdicts for the
+  ~110 unmeasured commands above; the studio-ops definition needs operator
+  sign-off (is mission.open studio-ops or platform-core?)
+- E3: engine decommission sequencing — after E1+E2, dark-run copies retire
+  module by module with parity evidence already collected per wave
+- E4: SDK promotion review — io-bridge.ts now proven across 30 consumers;
+  promotion into forge SDK eliminates per-plugin copies (design §6 addendum)
