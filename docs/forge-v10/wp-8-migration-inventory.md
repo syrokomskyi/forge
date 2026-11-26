@@ -646,3 +646,26 @@ atomic.swap/rollback) — wave-2c completes it 6/6. The remaining deploy.*-named
 commands belong to other modules: deploy.preflight + deploy.scripts.validate are
 module `check`, deploy.smoke.run is module `testing` — they migrate with those
 ownership lines, not the deploy cluster.
+
+## Wave-2c INTEGRATED — engine deploy module migration COMPLETE 6/6 (2026-11-26)
+
+`flow.integrate` verdict: `auto/session-261126-02-wave2c-artifact-build integrated
+(7bd4b4aa7 → c3ee91a48), cleanup done`. werkstatt develop now carries the full
+deploy module extraction on npm-published forge 10.3.0:
+
+- studio.deploy.artifact.build — the first spawn-needing extraction, first
+  processSpawn array-allowlist consumer `[pnpm, cp, git, mkdir]`
+- pin forge10 10.3.0 in root + studio package.json; forgeRange >=10.3.0;
+  envKeys honestly expanded (SIGNING_PRIVATE_KEY, WORKSHOP_ID, HOSTNAME)
+
+One integrate retry needed: FLOW-INT-01 on the robots-parser nested-.gitignore
+phantom (the ls-files-descends-vs-check-ignore git-semantics corner, RFC-1616
+territory) — noise deleted, retry green. This phantom has now cost retries in
+three consecutive sessions; a friction record for systematic treatment belongs
+in the next werkstatt batch (candidate: extend DISPOSABLE_PATH_RULES by RFC-1531
+amendment so --auto-clean covers it).
+
+WP-8 deploy cluster is the first FULLY migrated engine module — the extraction
+methodology is now proven across the full difficulty spectrum: read-only paths
+(status), write-backed lifecycle (gc/verify/swap/rollback), host-state boundary
+(journal-tail via forgeState), and spawn-needing builds (artifact.build).

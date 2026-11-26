@@ -201,3 +201,15 @@ decision pending on raw branch deletion).
 verify both before pin bumps; `forge` is the bin name (not forge10); integrate NEVER
 under timeout wrapper; flow.open is the only sanctioned session opener; fixture-authored
 probes need no pathPattern for friction.validate (file field is constant FRICTION_DIR).
+
+## Thread-5 FINAL — wave-2c INTEGRATED, deploy module complete (2026-11-26)
+
+wave-2c integrate GREEN: `7bd4b4aa7 → c3ee91a48`, cleanup done. One retry on the
+robots-parser phantom (FLOW-INT-01) — noise deletion remedy proven third time.
+
+**WP-8 state: engine deploy module migration COMPLETE (6/6)** — the first fully
+migrated module. Plugin surface on develop: 7 commands on forge 10.3.0.
+
+Next-session entry points unchanged (see thread-5 resumption map above) except:
+wave-2c verify step is DONE; next-wave selection is now the top item; the
+robots-parser phantom friction filing joins the werkstatt batch candidates.
