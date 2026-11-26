@@ -93,6 +93,9 @@ export interface HookPayload {
 export interface WorkspaceIOPort {
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
+  /* Binary write — artifact archives and release copies are gzip bytes; routing
+     them through the string writeFile would corrupt them through utf8 encoding. */
+  writeFileBytes(path: string, content: Uint8Array): Promise<void>;
   exists(path: string): Promise<boolean>;
   list(dir: string, pattern?: string): Promise<string[]>;
   /* Symlink primitives — atomic deploy swaps and artifact layouts are link-based;

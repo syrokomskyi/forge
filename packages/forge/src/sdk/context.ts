@@ -110,6 +110,12 @@ function makeScopedPort(
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, content);
     },
+    async writeFileBytes(p: string, content: Uint8Array) {
+      if (grant() !== "readwrite") onDeny(capability, `writeFileBytes with ${capability}:${grant()}`);
+      const target = scopedTo(p);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, content);
+    },
     async exists(p: string) {
       if (grant() === "none") return false;
       try {
@@ -186,6 +192,11 @@ function makeDeferredSpacePort(
       const s = await space();
       if (!s) unreachable();
       return s!.writeFile(p, content);
+    },
+    async writeFileBytes(p: string, content: Uint8Array) {
+      const s = await space();
+      if (!s) unreachable();
+      return s!.writeFileBytes(p, content);
     },
     async exists(p: string) {
       const s = await space();
