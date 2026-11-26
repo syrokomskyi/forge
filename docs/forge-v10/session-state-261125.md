@@ -1204,3 +1204,47 @@ packages/werkstatt-site/src/checks/registry-integrity*.
 If round 5 passes gates despite this, integrate immediately. If it fails on
 registry-integrity only, the engine-side work is done — the scanner policy
 decision is the sole remaining item before integrate.
+
+## 2026-11-26 final — E1 edge wiring INTEGRATED, program enters E3
+
+**develop `74826cd13`** — the four kernel→plugin delegation edges are live in
+production code: mission.open→bordbuch.repair, nachweis.validate→bordbuch.validate,
+leitstand deploy-path→evidence.sync, mission.close→evidence.sync, all through
+`executeDelegatedCommand` against the published forge 10.8.1 artifact.
+
+### Gate-convergence lessons (rounds 1-7)
+
+1. **needsFullSuite classification gap (friction candidate, unfiled)**: the
+   scoped-gate classifier triggers full-suite budget only on non-TS assets
+   (yaml/json/astro/...). Pure-TypeScript core changes (kernel/runtime.ts)
+   route to `vitest related` at the 300s unit-test budget — but the related-set
+   of kernel-core files is near-full-suite. Legitimate knob: `--test-timeout 900000`
+   (tests run in full, no skip). File in warpgogol-verbund next session.
+2. **execOnReadOnly truthfully covers delegation** — a read-only command that
+   delegates through the port IS a subprocess probe; declaration is metadata
+   honesty, not weakening. nachweis.validate carries it; scanner 6/6.
+3. **envInputs must declare WERKSTATT_DELEGATION_IN_PROC** on every command whose
+   execute() reaches the port (ENV-INPUT-01) — 5 declarations landed. Note:
+   module entries may place envInputs BEFORE `name` — regex insertion anchored
+   on name-first ordering breaks (TS1117 duplicates).
+4. Never parse `rtk`-filtered git output machine-wise — filter artifacts
+   ("Changes:") enter file lists and refuse commits.
+5. Never `prettier --write` a file already dirty at HEAD — whole-file reflow
+   destroys same-line suppressions; verify with the git-show check first.
+
+### Bootstrap dogfooding (forge repo)
+
+`bd090c6b` pushed: forge-policy.yml governance (correctness.gate/pinned.validate/
+policy.digest) runs from the npm-stable `forge-stable` alias, not in-flight
+source. `.forge/policy.digest` written for the first time — the verify step
+could never pass before. OIDC trusted publishing is pre-configured in
+publish.yml — operator should complete the npmjs.com trust setup and rotate
+the chat-exposed token.
+
+### Remaining program — exactly one wave
+
+**E3 retirement**: delete the engine-copy implementations of bordbuch.repair,
+bordbuch.validate, evidence.sync (and their handoff machinery) now that
+delegation is live-proven. Includes deleting both branches of the
+WERKSTATT_DELEGATION_IN_PROC migration double (the env-gate dies with E3).
+Spec direction in prior entries of this doc.
