@@ -709,3 +709,10 @@ WP-8 endgame state: ONLY evidence.fetch/sync remains — unblocked by the same
 operator doctrine confirmation (ambient aws-sdk network with declared
 capability, auditable per RFC-1648 model). Mechanical inventory otherwise
 exhausted: 28 commands across 12 waves, 5 modules complete.
+
+## wave-13 evidence OPENED + staged (session arc 1/2)
+
+Final WP-8 wave. Session opened, initial closure copies staged. Key reuse
+discoveries: r2-client (wave-9), registry-seam readSystemState + channel-migration
+(wave-12) — evidence wave is partly a consolidation exercise. Network doctrine
+operator-confirmed. WAVE13-RESUME.md carries the full measured chain.
