@@ -1419,3 +1419,29 @@ Either scoped typecheck judges a file subset that excludes lib internals, or
 the studio package tsconfig is partially covered. Filed as F-0406 candidate —
 investigate scoped-typecheck coverage before trusting it as wave evidence.
 Fixed in-flight by follow-up commit before integrate.
+
+## wave-16 integrated — 51 commands (2026-11-26) + session-close state
+
+Wave-16 integrate green (exit 0, worktree removed). Develop carries nachweis
+leaf x10. F-0406 (scoped-typecheck verdict-cache 0ms pass on a tree carrying
+real tsc errors) remains to be filed in the werkstatt friction registry at
+the next session — signature: `scoped-typecheck: 1 package(s) pass in 0ms` in
+commit-gate output while direct `tsc -p tsconfig.json --noEmit` in the same
+package reports errors; until resolved, wave proof discipline treats direct
+tsc as the only trusted typecheck evidence (the practice that caught the
+breakage pre-integrate). Operational note: the commit-gate lint+tsc ordering
+means a lint-blocked first attempt followed by a lint-fix commit can inherit
+stale typecheck verdicts — rerun direct tsc after ANY shim-touching edit.
+
+EXTRACTION PROGRAM STATE — heavy-tail confirmed:
+- plugin manifest 51 commands across 9 modules (artifact-store, hygiene,
+  intake, evolution, evidence, bordbuch, lagebild, nachweis-leaf, + deploy/
+  signing/behavior/journal surfaces)
+- remaining extraction candidates: nachweis-coupled-3 (E1-blocked), notausgang
+  (2, depends on nachweis-io — now ported! cheap wave), release leaf
+  (invocation-form unverified), handoff (3, 3678 lines deep)
+- notausgang is now the cheapest remaining wave: nachweis-io exists in plugin,
+  closure shrinks to feature-notes + evidence-bundle + commands (~765 lines
+  measured minus shared deps)
+- E1 delegation program is the real endgame: forcing functions documented
+  (nachweis validate/publish/withdraw coupling, bordbuch sibling invocation)
