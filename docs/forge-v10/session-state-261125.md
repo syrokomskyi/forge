@@ -492,3 +492,31 @@ locks land in PRIMARY .werkstatt/locks → primaryState write, unlike put's
 worktree-local), dry-run never locks, CAS shared-hash protection, doubt-defaults-
 to-keep on degraded protection sources, release-index append before delete.
 Then: hygiene module wave (shares the closure — synergy), then re-scan.
+
+## orphan session cleanup completed (2026-11-26) — operator-surfaced, all resolved
+
+Four stale auto-sessions found and resolved:
+1. `261126-03-wave4-artifact-getval` — dead twin from accidental double flow.open
+   (truncated output → retry pattern created twins TWICE: getval 02/03, put 04/05).
+   Zero unique commits. Discarded sanctioned with --dirty (robots-parser phantom).
+2. `261126-05-wave4-artifact-put` — same twin class; earlier discard was
+   backgrounded and NEVER VERIFIED — completion-check discipline violated.
+   Discarded sanctioned.
+3. `261126-01-wave2b-followup` — unregistered orphan (pre-FLOW-INT-06 lesson),
+   patch-redundant, clean. Removed via operator-approved raw surgery
+   (worktree remove + branch -D) — the only path, machinery is registry-scoped.
+4. `261125-03-forge-v10-evidence-mirror` — stale registry entry, worktree long
+   gone, zero unique commits. Discarded sanctioned.
+
+**Lessons recorded**: (a) never re-run flow.open after truncated output — check
+`ls -d werkstatt@auto-session-*` first; (b) backgrounded discards MUST be
+completion-verified like integrates; (c) `git cherry develop <branch>` empty =
+zero unique content = safe-discard evidence; minus-prefix = patch-equivalent.
+
+**OPEN operator question surfaced**: registry carries 36 zombie session entries
+(261108–261123 release sessions) whose branches/worktrees no longer exist —
+entries were never dropped. Machinery semantics unclear (historical ledger vs
+live state); flow.discard drops entries correctly for modern sessions. Needs a
+decision: mass-discard via machinery (slow, one-by-one), registry GC command
+(candidate forge-side feature), or documented retention. NOT acted upon —
+beyond sanctioned scope.
