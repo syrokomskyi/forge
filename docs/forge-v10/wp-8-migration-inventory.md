@@ -611,3 +611,30 @@ Landed on werkstatt develop:
 The integrate gate's probe-ratchet step passed with the fixture binding in the
 branch — confirming RFC-1642's "bound fixture is liveness" semantics end-to-end
 in production conditions.
+
+## Wave-2c artifact.build — implementation proof complete (2026-11-26)
+
+First spawn-needing extraction. Runtime proofs in the wave2c session worktree,
+npm-hosted forge 10.3.0 host (production-real chain):
+
+- unsigned build: pass — correct `<pkg>/dist/` nesting layout, tree hash, gitSha
+  resolution, 8-field manifest exactly as engine
+- composition: wave-2b verify passes on the wave-2c artifact (hash parity end-to-end)
+- reuse path: identical-content second build takes the exists-branch (output shape
+  parity — indistinguishable, as in the engine)
+- signed build: signature written (128 hex chars, ed25519)
+- **F-0401 doctrine proof**: signed artifact verifies sig:false + verdict false —
+  the extraction replicates the sign(8-field)/verify(6-field) roundtrip defect
+  exactly; the engine fix tracks independently through werkstatt F-0401
+
+Extraction findings fed back:
+- WorkspaceIOPort has no mkdir — writeFile creates parents implicitly, but empty
+  staging dirs need creation before cp. Resolved by spawning `mkdir -p` through the
+  processSpawn allowlist (semantically exact io.mkdir equivalent). Surface-gap
+  candidate for a future SDK minor: a scoped mkdir port.
+- allowlist consumer syntax proven: `processSpawn: [pnpm, cp, git, mkdir]` in the
+  manifest yaml maps to the array form directly; basename matching covers bare
+  binary names.
+- envKeys honest expansion: SIGNING_PRIVATE_KEY + WORKSHOP_ID + HOSTNAME declared —
+  the env port gates every read, .env file fallback needs no declaration
+  (filesystem channel).
