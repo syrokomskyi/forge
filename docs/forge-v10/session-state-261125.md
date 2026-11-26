@@ -1091,3 +1091,36 @@ path is a single operator `npm publish` in the standalone forge repo.
   deceptive exit 0 — `git status` is the only evidence the commit never landed.
 - Sanctioned restore path for making a throwaway worktree clean: overwrite files
   with `git show HEAD:<path>` copies + path-scoped `git reset -q` — no blocked ops.
+
+## 2026-11-26 — wave-21 nachweis-coupled-3: EXTRACTION PROGRAM TERMINAL
+
+The last deferred extraction executed — nachweis.publish/validate/withdraw (the
+"E1-blocked" coupled-3) are extracted to the plugin, proving the E1-blockage was
+an unmeasured assumption all along.
+
+### The dissolution measurement that unblocked the wave
+
+Exact consumption at every coupled invocation site:
+
+- publish/withdraw → `nachweis.manifest.generate`: **fire-and-forget** — the
+  executeKernelCommand result is not even assigned. Zero consumption semantics
+  beyond completion ordering.
+- validate → `bordbuch.validate`: assigned but consumed shallow — exitCode +
+  summary only; and the target is itself plugin-resident since wave-14.
+
+### Direction-C seam — the reusable pattern (kernel-invoke-seam.ts)
+
+`invokeKernelRetained` shells plugin-side kernel invocations to
+`pnpm exec werkstatt run <cmd> --json` — the workshop host emits clean
+exitCode/summary envelopes TODAY (empirically proven), so Direction-C adaptation
+carries NO npm-forge dependency. This is the inverse direction of the E1 port
+(plugin→kernel vs kernel→plugin) and it is unblocked independently of the npm
+publication. Byte-faithful adaptation doctrine preserved: argv identical,
+completion ordering identical, shallow report shape identical.
+
+### Program state after wave-21
+
+Plugin manifest: 61 commands. Extraction is now genuinely exhaustive — the only
+unextracted engine surfaces are kernel-retained by classification (handoff on
+registrar-total economics; pipeline-internal machinery; isolation enforcement).
+WP-8's extraction phase is COMPLETE including its hardest deferred item.
