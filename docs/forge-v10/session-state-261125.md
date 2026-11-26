@@ -129,3 +129,18 @@ werkstatt follow-up in flight:
 ## Thread-4c — probe-ratchet interaction lesson (2026-11-26 ~02:20Z)
 
 New operational lesson: WT-GATE-08 PROBE-07 can refuse integration when the session's own validation activity generates liveness evidence for baselined rules. The friction.validate runs that confirmed the F-0401 fix also exercised FRICTION-02, creating evidence that staled the unprobed baseline mid-session. Remedy is sanctioned shrink-only regeneration (gate.probe.catalog --write-baseline). Watch-out: the shrink magnitude reflects ALL evidence since last regeneration (890→629 here), not just the session's own — the commit message must say so honestly. The catalog check is state-dependent: running standalone vs inside gate context can disagree because evidence accumulates between runs.
+
+
+## Thread-4d — wave-3 in flight (2026-11-26 ~03:00Z)
+
+Follow-up batch INTEGRATED into werkstatt develop (9516b009b): forge10 pin 10.2.0, F-0401 friction, probe baseline regeneration. Additional lessons:
+- PROBE-07 ratchet can refuse integration when session validation activity itself generates liveness evidence for baselined rules — shrink-only regeneration is the sanctioned remedy
+- friction.validate category vocabulary: tooling/docs/process/environment/self — defect is not valid
+- FLOW-INT-06 requires REGISTERED session branches — always flow.open, never manual worktree add (two orphan branches -01/-02 remain for operator cleanup, inert)
+
+Wave-3 commit 3071158aa in integrate: journal-tail on forgeState port + pin 10.2.1 + forgeRange >=10.2.1. Proven from inside worktree — the decisive boundary test. strip-types clean.
+
+REMAINING PROGRAM STATE:
+- deploy cluster 5/6 extracted + journal-tail on proper port = studio plugin fully on sanctioned SDK surface
+- wave-2c artifact.build — unblocked by doctrine (parity replicates defect); needs processSpawn capability scoping design
+- orphan session cleanup: werkstatt@auto-session-261126-01/02-wave2b-followup worktrees+branches inert but present
