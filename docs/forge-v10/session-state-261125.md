@@ -1325,3 +1325,18 @@ shell-out resolution proven end-to-end in production shape.
 **Architecture note for the future:** studio testlessness is a program-level debt independent
 of E3 — every extracted command's coverage still lives engine-side or nowhere. An RFC for
 studio test infrastructure would serve the whole extraction program, not just this wave.
+
+## 2026-11-26 session close — documents written, handoff committed
+
+**RFC-1650 written** (`docs/rfcs/rfc-1650-studio-test-infrastructure.md` in the E3 worktree,
+commit `5bc517737`): studio test infrastructure — coverage follows extracted code. Design:
+minimal vitest infra in werkstatt-studio, plugin-host-shaped test helpers (never engine-kernel
+imports), evidence.sync coverage as first inhabitant, RFC-0651/1202 probe rebinding,
+extraction-program rule that future waves move tests with code.
+
+**Handoff committed** (`docs/handoffs/e3-retirement-and-studio-test-infra-2026-11-26.md`,
+same commit): self-contained briefing — done/remaining inventory, execution order, operational
+knowledge. Next session starts there.
+
+**Resume instruction:** open the worktree `werkstatt@auto-session-261126-01-e3-engine-copy-retirement`,
+read the handoff, implement RFC-1650, ride the gates with `--test-timeout 900000`.
