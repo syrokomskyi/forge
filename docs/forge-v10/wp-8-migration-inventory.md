@@ -735,3 +735,75 @@ extraction. Raw output:
 - fleet claims/ownership commands — fs-only.
 - hygiene audit chain — files clean but classes.ts/gc.ts couple to
   mission/sternsystem/evidence, confirming the inventory's late-wave verdict.
+
+## Wave-4 structural finding — the extraction wall and the state-spaces port design (2026-11-26)
+
+Per-command closure analysis across all 156 workspace-scope studio-ops commands
+(manifest scope field, verified per-file): **no more mechanically-extractable
+commands exist**. Deploy (6/6 done) and journal-tail (done) were the only
+workspace-local commands. Everything else is blocked on the werkstatt state
+topology — state lives OUTSIDE the extraction workspace by design:
+
+| state space | physical location | consuming clusters | resolution |
+|---|---|---|---|
+| cache-clone ledger | `systems-cache/<id>/` — SIBLING of repo | bordbuch (events.ndjson), sternsystem registry/passport, nachweis, mission material | per-system clone path |
+| primary-root state | `<primary>/.werkstatt/` — artifacts, releases, fleet-claims | artifact-store, hygiene, release, fleet | worktree→primary pointer |
+| forge state | `<commonGitDir>/forge/` | journal (SOLVED — forgeState port) | gitdir pointer parse |
+| evidence/R2 | network object storage | evidence.fetch/sync, observability | network capability |
+
+Scope correction: ALL integrity.* commands are scope:app (they operate inside
+site workspaces — a different extraction line, probably werkstatt-site
+dissolution), so the integrity cluster is NOT a studio candidate despite its
+clean scan profile. The scan artifact above predates this scope filter.
+
+### The design unlock: semantic state ports (forgeState generalized)
+
+The forgeState port already proved the shape: host-implemented semantic
+operations crossing the sandbox boundary, capability-gated per domain, plugins
+never observe host paths. evidence.consult is the second existing instance.
+Generalize per domain:
+
+```
+ctx.hostState = {
+  // capability: hostState artifactStore: "none" | "read" | "readwrite"
+  artifactStore: {
+    get(id), put(blob, meta), gc(policy), validate(id) — semantic ops over
+    <primary>/.werkstatt/artifacts, host resolves worktree→primary
+  },
+  // capability: hostState bordbuch: ...
+  bordbuch: {
+    read(systemId), append(systemId, entry), validate(systemId)
+    — host resolves systems-cache/<id>/bordbuch/events.ndjson
+  },
+  // sternsystem registry/passport, fleet claims, nachweis ledgers — same shape
+}
+```
+
+Design principles (from forgeState evidence):
+1. **Semantic operations, never path passthrough** — a port exposing raw host
+   paths is a filesystem widening in disguise; operations name domain objects
+   (systemId, artifact id), the host owns resolution.
+2. **Capability per domain, never one wide grant** — manifest audit surface
+   stays honest about WHICH state spaces a plugin touches.
+3. **Read first, write deferred** — forgeState set the precedent (write side
+   deferred until a mutating consumer exists); the same per-domain ordering
+   applies, except where the extraction target is inherently mutating
+   (artifact-store put/gc) — those need the write side in their first version.
+4. **Locking is host-mediated** — acquireLock/releaseLock semantics cross the
+   same boundary (locks live in shared state); the port carries lock operations
+   or the host serializes internally.
+
+Sequencing consequence: wave-4 is NOT a command wave — it is this port design
++ forge SDK implementation + release, THEN command waves resume with
+artifact-store (4 commands, smallest rwp-blocked cluster) as the first consumer.
+
+Open design questions for the implementation session:
+- cache-clone resolution needs systemId→clone-path topology knowledge host-side
+  (systems-cache sibling-of-repo convention — how does the host learn the
+  sibling location when the plugin runs deep inside the repo? Probably:
+  workshop layout resolution at context construction, same as forgeState's
+  gitdir parse — measure resolveCacheClonePath's actual logic first)
+- locking semantics across concurrent worktrees — the engine's acquireLock is
+  file-based in shared state; host mediation must preserve the deadlock/
+  stale-lock recovery behavior (werkstatt.lock.* commands exist for this)
+- does the port version independently per domain, or one hostState version?
