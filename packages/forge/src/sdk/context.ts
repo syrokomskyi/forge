@@ -245,14 +245,6 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
     throw new CapabilityViolation(capability, pid, detail);
   };
 
-  const scoped = (path: string): string => {
-    const resolved = pathResolve(host.workspaceRoot, path);
-    if (!resolved.startsWith(pathResolve(host.workspaceRoot))) {
-      deny("filesystem", `path escape outside workspace root: ${path}`);
-    }
-    return resolved;
-  };
-
   return {
     workspace: makeScopedPort(host.workspaceRoot, () => fsGrant, deny, "filesystem"),
     artifactStore: makeDeferredSpacePort(

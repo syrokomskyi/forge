@@ -15,7 +15,7 @@ duplicate work is one unit evaluation, never one corruption.
 </CHANGE_SUMMARY>
 */
 
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
