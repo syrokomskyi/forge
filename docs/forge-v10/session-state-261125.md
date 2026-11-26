@@ -860,3 +860,35 @@ waves 4a-20, every wave byte-faithful, parity proven per wave (validation
 class minimum, data class where env-free probes exist). The program now
 reduces to E1 (delegation architecture — the real endgame) and E3 (kernel
 retirement of migrated copies once delegation proves out).
+
+## E1 DELEGATION REQUIREMENT SURFACE — definitive measurement (2026-11-26)
+
+Complete scan of kernel-side executeKernelCommand/registry invocation sites
+cross-referenced against the 58-command plugin manifest. The TOTAL delegation
+requirement surface is exactly 4 edges:
+
+KERNEL→PLUGIN (kernel-retained modules invoking plugin-resident commands):
+1. bordbuch.repair — invoked from mission (mission-open repair preflight)
+2. bordbuch.validate — invoked from nachweis (publish coupling)
+3. evidence.sync — invoked from leitstand AND mission (2 consuming modules)
+
+PLUGIN→KERNEL (plugin-resident commands requiring kernel-retained commands):
+4. nachweis.publish → nachweis.manifest.generate (+ bordbuch.validate) —
+   the original wave-16 forcing function
+
+Key architectural clarification from the scan: most kernel pipeline steps
+(hyphenated names like bordbuch-append) are IN-PROCESS library calls, not
+registry invocations — they bind library implementations directly and do NOT
+break when command registrations retire. Only executeKernelCommand /
+commandName-literal sites are registry-coupled. E3 registration retirement
+therefore requires delegation ONLY at these 4 edges, not program-wide.
+
+Also measured: zero executeKernelCommand references exist inside the plugin
+itself — extraction scoping cleanly avoided backwards dependencies (coupled
+commands were simply never extracted).
+
+E1 is a BOUNDED design problem: a delegation mechanism covering 4 edges.
+Options per wp-8-completion-design §7: direction-C shell-out (structured
+report reproduction problem), in-proc cross-loader invocation, or command
+re-homing (move the 3 kernel-invoked commands back to kernel — cost: reversal
+of wave-14/13 work, benefit: zero new machinery).
