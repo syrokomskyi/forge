@@ -22,12 +22,20 @@ import { LIFECYCLE_HOOKS, PluginLoadError, type CommandModule, type HookModule, 
 
 /** The running core version — plugins' forgeRange is checked against this. */
 export function coreVersion(): string {
-  try {
-    const pkg = JSON.parse(readFileSync(join(import.meta.dirname ?? __dirname, "../../package.json"), "utf8"));
-    return pkg.version as string;
-  } catch {
-    return "10.0.0";
+  // The compiled artifact lives one level deeper than the source module
+  // (dist/src/sdk/loader.js vs src/sdk/loader.ts) — probe both layouts.
+  const here = import.meta.dirname ?? __dirname;
+  for (const candidate of ["../../package.json", "../../../package.json"]) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(here, candidate), "utf8")) as { name?: string; version?: string };
+      if (pkg.name === "@warpgogol/forge" && typeof pkg.version === "string") {
+        return pkg.version;
+      }
+    } catch {
+      // try the next layout candidate
+    }
   }
+  return "10.0.0";
 }
 
 function semverSatisfies(version: string, range: string): boolean {
