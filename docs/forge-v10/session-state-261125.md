@@ -602,3 +602,14 @@ io-bridge SDK promotion review now due (second consumer exists).
   fixtures-generate, ~509 lines total, zero coupling).
 - studio plugin command count on develop: 13 commands across deploy/artifact-store/
   hygiene/signing/behavior-snapshot/journal surfaces.
+
+
+## wave-8 integrated (2026-11-26) — onboarding.intake.validate
+
+797a149c5 + e9f9a4b6b on develop. First extraction consuming a published
+workspace package rather than copied closure. Bonus: the parity proof itself
+generated probe liveness for INTAKE-01/02 — unprobed baseline shrank 629→627
+(extraction-as-liveness is a repeatable pattern: run the proof, shrink the
+baseline in the same wave). Classify-overlap hazard escalated to mechanical-
+guard candidate — documentation insufficient, author hit own trap.
+Plugin command count: 16. Next per ordering table: hygiene.gc or evidence.
