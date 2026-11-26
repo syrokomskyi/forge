@@ -652,3 +652,21 @@ Remaining WP-8 endgame (measured):
 2. evidence.fetch/sync — BLOCKED on network-capability doctrine decision
    (operator input needed: aws-sdk ambient network vs capability model)
 3. evolution — 2023 lines + fleet deps, largest, mechanical but expensive
+
+## wave-11 INTEGRATED (2026-11-26) — intake module COMPLETE, 19 commands
+
+`studio.onboarding.intake.fixtures.generate` integrated f95bf224a → develop.
+Parity proof strongest form: delete-and-regenerate fixture trees byte-identical
+(hash 5bf8248c… both engines, all four fixtures). test-bundle.ts closure copied
+byte-identical with single redirect (resolveIntakeExportSha256 → published
+@warpgogol/intake-validator). SnapshotContext pattern third use.
+
+INTAKE MODULE COMPLETE: validate (wave-8) + schema.export (wave-10) +
+fixtures.generate (wave-11) — RFC-1281/1324/1349 surface fully migrated.
+Session total: THREE waves integrated (9, 10, 11) — mechanical-port machinery
+now routine.
+
+WP-8 remaining endgame (only two modules):
+1. evidence.fetch/sync — BLOCKED on operator network-capability doctrine
+   (aws-sdk ambient network vs plugin capability model — decision needed)
+2. evolution — 2023 lines + fleet deps, mechanical but largest
