@@ -814,3 +814,18 @@ resolver in plugin (wave-13) — mission-io-seam only needed read/write
 manifest (~40 lines). Composition-programmatic extraction validated: spans
 extracted by brace-matching, dead imports pruned by usage analysis (15
 dropped), then lint-driven final pruning.
+
+**wave-20 release.sign** (1 command + integrity cluster, commit 3354b01d4):
+the last release-module extraction. Kernel coupling proved illusory on
+measurement — requireApp/optionalEnv/requireEnv route through the integrity
+barrel itself, not kernel runtime. runIntegrityBuildRecord closure only 38
+lines within integrity-commands (byte-faithful extraction dropped the
+unused loadPrivateKeyPem — it belongs to a different integrity command).
+Integrity subtree copied whole (14 files, 2200+ lines) — reuse economics:
+fingerprint in plugin (wave-17), atomic in plugin (wave-12), loadPrivateKey
+npm-importable from shared signing. byteHash/byteHashFile split-import
+hazard class documented: same names live in BOTH plugin local fingerprint
+(copy) and shared fingerprint (npm) — imports must split by actual export
+location. Banner-comment `*/`-forming hazard: engine files carry asterisk-
+run banner closes that form `*/` early-termination sequences — commit gate
+catches on staged copies; normalize banner closes in extraction copies.
