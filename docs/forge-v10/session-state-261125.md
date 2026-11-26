@@ -1039,3 +1039,14 @@ is a hard prerequisite rather than a versioning formality:
 
 Publication blocking-order is now empirically settled, not just designed:
 npm minor → then integration proof of the port → then edge wiring.
+
+### Operational lessons from the E1 port commit rounds
+
+- `ecosystem.commit` takes `--message`, not `--subject` — the flag-error refusal is
+  cheap but cost a round. Valid flags are enumerated in the KERNEL-FLAG-01 error itself.
+- **Shell exit codes do not reflect werkstatt command verdicts**: a refused
+  ecosystem.commit can exit the shell 0 while the JSON report carries `exitCode: 1`.
+  Always parse the json report's exitCode — `echo $?` is not evidence. This same
+  masking hid the first integrate refusal's true cause until the report was read.
+- EC-24 subject format: `<type>(<scope>)?: <lowercase imperative clause>` — the
+  em-dash is fine, the capital after the colon is not.
