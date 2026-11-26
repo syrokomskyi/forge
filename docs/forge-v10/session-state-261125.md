@@ -928,3 +928,25 @@ Recommended E1 shape: a kernel-side delegateCommandPort helper —
 npm-published forge host with the same argv/exitCode/summary semantics as
 executeKernelCommand — landing behind the existing invocation sites with zero
 consumer changes.
+
+## E1 delegateCommandPort — concrete engineering spec from live probing (2026-11-26)
+
+Live probe of `forge studio.release.list --json` reveals TWO contract gaps
+the delegation helper must close:
+
+1. STREAM MIXING: stdout carries log lines (`[werkstatt-studio] Found 9 valid
+   releases...`) BEFORE the JSON envelope — naive JSON.parse of stdout fails.
+   Requirement: forge CLI needs a clean-json mode (logs→stderr, envelope-only
+   stdout) or the port must envelope-extract with a tolerant scanner.
+2. ENVELOPE SHAPE MISMATCH: forge emits `{status: "pass"|"fail", ...data}`
+   while executeKernelCommand consumers expect `{exitCode, summary}`. The
+   port must normalize: exitCode = status==="pass" ? 0 : 1, summary from the
+   wrapper message field (currently NOT emitted in the envelope — wrappers
+   return message but the CLI envelope drops it; verify or add).
+
+Neither gap is architectural — both are small CLI contract improvements in
+the forge host (forge repo, publishable minor). Once closed,
+executeDelegatedCommand is a drop-in at the 3 kernel edges with zero consumer
+changes. The bordbuch.repair edge (fire-and-forget) can migrate first as the
+lowest-risk proof; evidence.sync (deploy-critical) migrates last after the
+port is battle-tested.
