@@ -20,7 +20,11 @@ export interface PluginManifest {
   capabilities: {
     filesystem?: "none" | "read" | "readwrite";
     network?: boolean;
-    processSpawn?: boolean;
+    /* Binary allowlist form is the hardened grant: spawning a side-effecting binary
+       is equivalent to trusting the plugin with those effects — the manifest surface
+       stays honest about WHICH binaries. boolean true = unrestricted (fully-trusted,
+       legacy form); false/absent = no spawn. */
+    processSpawn?: boolean | string[];
     gitMutation?: boolean;
     envKeys?: string[];
     /* forge's own state space (.git/forge/) lives outside the workspace sandbox in

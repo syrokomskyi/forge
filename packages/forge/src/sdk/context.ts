@@ -195,7 +195,14 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
     },
     process: {
       async spawn(cmd, args, opts) {
-        if (!caps.processSpawn) deny("processSpawn", `spawn refused: ${cmd}`);
+        const grant = caps.processSpawn;
+        if (!grant) deny("processSpawn", `spawn refused: ${cmd}`);
+        if (Array.isArray(grant)) {
+          const base = cmd.split("/").pop() ?? cmd;
+          if (!(grant.includes(cmd) || grant.includes(base))) {
+            deny("processSpawn", `binary not in manifest allowlist: ${cmd}`);
+          }
+        }
         const timeoutMs = opts?.timeoutMs ?? 120_000; // mandatory timeouts — hanging commands die as executor error
         try {
           const { stdout, stderr } = await execFileAsync(cmd, args, {
