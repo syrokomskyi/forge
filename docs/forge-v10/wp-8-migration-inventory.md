@@ -1124,3 +1124,31 @@ no new deps) or behavior-snapshot-style pure modules. Recommend hygiene.gc next.
    copy intake-validate.ts + write thin command → implement glob → tsc enumerate
    → fixture proof (synthetic bundle, INTAKE rule firing parity) → decide
    schema.export inclusion by remaining budget.
+
+## wave-8 evidence (2026-11-26) — onboarding.intake.validate, classify-overlap root cause
+
+Fifth mechanical-port execution — first consuming a PUBLISHED workspace package
+(@warpgogol/intake-validator) rather than copied closure. Rule logic stays in
+the package per RFC-1540 by design; the port is the thin command wrapper only.
+
+PARITY PROOF: DIAG-PARITY EXACT — INTAKE-01/INTAKE-02 fire byte-identical
+engine vs plugin on the same synthetic bundle (missing MANIFEST.sha256 +
+missing intake.json diagnostics, identical messages, ordering, severity).
+
+META-LESSON (severe): the wave-7 classify-order hazard recurrence — the command
+wired cacheRoot=workspaceRoot (overlap), and since classify checks cache before
+workspace, every workspace path routed to cacheClone whose port resolved rels
+against the real ../systems-cache — exists() false, readFileBytes ENOENT into a
+nonsense path. The author of the hazard documentation fell into his own trap:
+the hazard needs a MECHANICAL guard, not documentation. Recorded as a forge
+enhancement candidate — io-bridge construction should throw when roots overlap
+(prefix-collision detection at makeIoBridge construction time).
+
+Also proven: import.meta.resolve behaves identically in plugin host and engine
+host for workspace package resolution; the io-type gap to the published
+validator is bridged with `as never` casts — candidate for SDK WorkspaceIO
+interface alignment when the bridge promotes.
+
+glob added to the bridge: node builtin fs/promises glob — exact engine parity
+since the engine implements io.glob over the same builtin (read-only ambient
+scan, no port translation — documented in io-bridge.ts).
