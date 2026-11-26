@@ -1,2 +1,2 @@
 minimumReleaseAgeExclude:
-  - '@warpgogol/forge@10.0.0 || 10.2.0 || 10.2.1'
+  - '@warpgogol/forge@10.0.0 || 10.2.0 || 10.2.1 || 10.3.0'
