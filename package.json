@@ -14,5 +14,6 @@
   },
   "devDependencies": {
     "forge-stable": "npm:@warpgogol/forge@10.8.1"
-  }
+  },
+  "packageManager": "pnpm@11.20.0"
 }
