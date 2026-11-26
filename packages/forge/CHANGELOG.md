@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.4.0] — 2026-11-26
+
+### Added
+
+- **artifactStore spaces port** — the forgeState pattern generalized: a WorkspaceIO-shaped port rooted at the primary checkout's `.werkstatt/artifacts`, resolved through the gitdir pointer per call. Deploy/release artifact state is shared across worktrees by design, so extraction of artifact-store/release/hygiene clusters was structurally impossible against the workspace-scoped filesystem port. Capability `artifactStore: "none" | "read" | "readwrite"` — per-space grant, never a filesystem widening. Implementation shares one scoped-port factory across workspace and space ports; deferred root resolution keeps context construction synchronous; reads degrade to absent-shape and writes refuse plainly when no git state is resolvable (topology, never a capability violation) (RFC-1645 WP-8 wave-4 unblocker).
+
 ## [10.3.0] — 2026-11-26
 
 ### Added
