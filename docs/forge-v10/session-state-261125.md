@@ -111,3 +111,16 @@ NEXT (priority order):
 2. harness reinstall + self-host green after propagation
 3. wave-2c decision: artifact.build sign-semantics — OPERATOR DECISION REQUIRED (replicate bug vs fix consensus bytes)
 4. wave-3: journal-tail migration to forgeState port (draft ready in docs/forge-v10/wave3-journal-tail-forgestate.draft.ts)
+
+
+## Thread-4b (2026-11-26 ~01:55Z)
+
+forge 10.2.1 PUBLISHED + PROPAGATED + matrix composition fully green:
+- 5393/5395 + self-host pin bump (designed chore) = full green; harness reinstalled, 3/3
+- forgeState capability registration fixed — the 10.2.0 port was unreachable (capability-unknown)
+- LESSON: release validation must include a load-smoke of a manifest declaring the NEW capability — matrix alone did not catch that the port could never be declared
+
+werkstatt follow-up in flight:
+- forge10 pin 10.2.0 + F-0401 friction cherry-picked into REGISTERED session auto/session-261126-03 (f4deac73c); integrate running
+- FLOW LESSON: session branches must be opened via pnpm exec forge flow.open --kind session --slug <slug> — manual git worktree add creates unregistered branches that FLOW-INT-06 refuses and FLOW-GUARD-02 grammar-rejects; two orphan sessions (-01 unregistered, -02 empty from timed-out open) need flow.discard cleanup AFTER integrate completes (registry writes must not race)
+- wave-3 READY: journal-tail migration content staged in /tmp/wave3-scratch (may be gone after reboot — regenerable from docs/forge-v10/wave3-journal-tail-forgestate.draft.ts); needs pin 10.2.1 + manifest forgeState:read + output shape fix (event/branch/sha/at — old pilot emitted wrong-schema kind/opId/ts)
