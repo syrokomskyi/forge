@@ -277,6 +277,12 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
 
   return {
     workspace: makeScopedPort(host.workspaceRoot, () => fsGrant, deny, "filesystem"),
+    cacheClone: makeScopedPort(
+      pathResolve(host.workspaceRoot, "..", "systems-cache"),
+      () => caps.cacheClone ?? "none",
+      deny,
+      "cacheClone",
+    ),
     primaryState: makeDeferredSpacePort(
       "primaryState",
       () => caps.primaryState ?? "none",

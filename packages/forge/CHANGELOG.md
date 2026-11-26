@@ -784,3 +784,13 @@ _Patch release published between 4.2.3 and the 5.0.0 major — no dedicated bump
   same grant discipline — reads deny with CapabilityViolation under `none`,
   writes require `readwrite`; deferred space ports delegate with the existing
   unreachable/unreadable semantics.
+
+## 10.7.0
+
+- New `cacheClone` capability + space port: read-only access to the
+  systems-cache sibling tree (`<workspaceRoot>/../systems-cache/`). Motivated
+  by artifact.store.gc extraction — the chain-head/deployed-lane protection
+  reads `<clone>/system-state.yaml`, and without access gc degrades to
+  keep-everything. Read-only by design: cache clones are sync-owned;
+  write verbs deny regardless of grant. Same scoped/deferred mechanics and
+  escape refusal as the other spaces.

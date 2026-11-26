@@ -38,6 +38,12 @@ export interface PluginManifest {
        narrow domains, so per-domain spaces multiply grants without improving
        honesty (plugins run in-process — capabilities are audit boundaries). */
     primaryState?: "none" | "read" | "readwrite";
+    /* Deployed-system cache clones (<workspaceRoot>/../systems-cache/) — the
+       sibling-convention state gc protection lanes, bordbuch and fleet read.
+       Outside every other root by topology; read-only by design: the cache is
+       sync-owned (sternsystem.sync writes it), consumers only read. Write verbs
+       always deny regardless of grant. */
+    cacheClone?: "none" | "read";
   };
   registers: {
     commands?: string[];
@@ -169,6 +175,7 @@ export interface PluginContext {
      the whole point — methods deny with CapabilityViolation when the grant is
      insufficient, read methods degrade to absent-shape when no git state exists. */
   primaryState: WorkspaceIOPort;
+  cacheClone: WorkspaceIOPort;
 }
 
 /* The journal record shape is open-ended by design — the flow machinery evolves
