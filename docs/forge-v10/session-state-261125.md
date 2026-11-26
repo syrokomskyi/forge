@@ -1182,3 +1182,25 @@ forge only for governance and never invoke these kernel paths.
   delegation-compatible since the envelope-rest parser preserves the full data
   payload shape. Lesson: shallow-contract measurements need per-field
   consumption enumeration, not just "exitCode/summary" spot checks.
+
+### Edge-wiring gate convergence state (round 5 in flight)
+
+Test-boundary migration completed: 9 test files patched with executeDelegatedCommand
+stubs mirroring their executeKernelCommand mocks (nachweis-commands, rfc-0872,
+rfc-0652 stateful, +6 batch) — all locally green (42/42, 29/29, 7/7). The vitest
+barrel-mock interception does NOT reliably cover dynamic imports inside the port
+(resolved-instance mismatch) — per-file port stubs are the only reliable pattern.
+
+REMAINING KNOWN BLOCKER — werkstatt-site registry-integrity test: commands wired
+through executeDelegatedCommand now transitively spawn subprocesses; the
+mutatesState:false static scan flags them as new violations. Resolution options
+next session: (a) exempt the delegation-port subprocess pattern in the scanner
+(architecturally honest — delegation is a managed boundary, not arbitrary
+subprocess), or (b) adjust the mutatesState declarations of the 4 edge-owning
+commands. Option (a) is recommended — the scanner's intent is unmanaged side
+effects, and the port is the governed alternative. Scanner location:
+packages/werkstatt-site/src/checks/registry-integrity*.
+
+If round 5 passes gates despite this, integrate immediately. If it fails on
+registry-integrity only, the engine-side work is done — the scanner policy
+decision is the sole remaining item before integrate.
