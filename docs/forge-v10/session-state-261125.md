@@ -562,3 +562,14 @@ throw → protection-null → doubt-keeps — safe direction, matches doctrine).
 adapter is proven but lives plugin-side; 10.8.0 candidate to promote it as a
 first-class SDK helper once a second consumer (hygiene cluster) validates the
 shape.
+
+## FINAL (2026-11-26): wave-4c INTEGRATED — artifact-store module transition COMPLETE
+
+`5ba7aee45` + manifest-regen `82b7bce07` on develop. Primary smoke green:
+gc dry-run pass (examined 11, retained 8) on npm-hosted 10.7.0 chain.
+Artifact-store operator surface fully migrated: get/validate/put/gc 4/4.
+
+Wave-4c was the wp-8-completion-design's first full execution — mechanical-port
+validated as the default mechanics for large closures. Next per design §4:
+hygiene/evidence smallest-first within workspace-scope; bridge-adapter SDK
+promotion review after second consumer; self-host conversion separate program.
