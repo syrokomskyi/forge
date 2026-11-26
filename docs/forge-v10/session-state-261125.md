@@ -716,3 +716,23 @@ Final WP-8 wave. Session opened, initial closure copies staged. Key reuse
 discoveries: r2-client (wave-9), registry-seam readSystemState + channel-migration
 (wave-12) — evidence wave is partly a consolidation exercise. Network doctrine
 operator-confirmed. WAVE13-RESUME.md carries the full measured chain.
+
+## wave-13 INTEGRATED — WP-8 PROGRAM COMPLETE (2026-11-26)
+
+`studio.evidence.fetch` + `studio.evidence.sync` integrated a7c1cde7b → develop.
+**30 studio commands in plugin host — the ENTIRE WP-8 mechanical inventory migrated.**
+
+Final wave lessons: strip-only mode constraint generalized — engine-internal
+runtime imports (@warpgogol/werkstatt-engine/*) break plugin loading because
+engine source carries parameter properties; every engine import must redirect
+to npm-published shared packages or local seams. The fail-closed load model
+made diagnosis systematic: unregister-suspect isolation bisects in one step.
+
+Fail-closed parity proven: MISSING_ENV R2_AXIOM_ACCOUNT_ID identical semantics
+(network doctrine applied — aws-sdk ambient, declared network:true, auditable).
+
+WP-8 FINAL STATE: 13 waves, 30 commands, 6 modules complete:
+artifact-store(4) hygiene(2) intake(3) evolution(9) evidence(2) +
+deploy(6) signing(1) behavior(2) journal(1). Mechanical-port machinery
+proven across closures from 79 to 2600+ lines; seam-extraction strategy
+validated for deep transitive closures.
