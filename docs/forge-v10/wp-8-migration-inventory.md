@@ -638,3 +638,11 @@ Extraction findings fed back:
 - envKeys honest expansion: SIGNING_PRIVATE_KEY + WORKSHOP_ID + HOSTNAME declared —
   the env port gates every read, .env file fallback needs no declaration
   (filesystem channel).
+
+## Deploy module boundary correction (2026-11-26)
+
+The engine `deploy` module is exactly 6 commands (status, artifact.build/gc/verify,
+atomic.swap/rollback) — wave-2c completes it 6/6. The remaining deploy.*-named
+commands belong to other modules: deploy.preflight + deploy.scripts.validate are
+module `check`, deploy.smoke.run is module `testing` — they migrate with those
+ownership lines, not the deploy cluster.
