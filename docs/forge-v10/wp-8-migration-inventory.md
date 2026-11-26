@@ -503,3 +503,16 @@ Signed-path verification (proven end-to-end after fixes, both polarities):
 4. **PRE-EXISTING ENGINE DEFECT (filed for decision, not fixed):** deploy.artifact.build signs the eight-field manifest object (including signature:"" and signatureAlgorithm) while deploy.artifact.verify reconstructs a six-field payload — canonical bytes can never match, so no engine-signed artifact can ever pass verification. Masked in production because signing failure degrades to unsigned artifacts which pass hash-only. The extraction replicates the verify side exactly; the defect is parity-neutral (both implementations behave identically) but must be deliberately repaired or documented before artifact.build extraction — a fix changes consensus-critical signed bytes.
 
 5. **toPem/publicKeyPemToBytes asymmetry in werkstatt-shared** — toPem armors raw key bytes while publicKeyPemToBytes expects real DER SPKI via createPublicKey; the pair does not roundtrip. Production keys come from node crypto generateKeyPairSync — fixtures must replicate that path.
+
+## Wave-2c artifact.build extraction analysis (2026-11-26)
+
+The final deploy command is the hardest by design — needs assessment:
+
+- turbo run build orchestration: io.exec pnpm with 5-minute timeout — requires processSpawn: true in the manifest (the capability exists precisely for this differentiation; the write-cluster correctly stays false)
+- cp -r directory copies via spawn — either per-file SDK copy loop (slow for large trees) or a copyDir port candidate
+- git rev-parse HEAD — read-only git, covered
+- dirent-aware readdir — per-entry stat pattern already proven in gc
+- SIGNING DECISION POINT: extraction collides with the filed engine defect — replicating eight-field sign input preserves byte-parity with engine-built artifacts (and their never-verifying signatures), fixing it changes consensus bytes. This is an operator-level decision, not an implementer one — must be resolved before wave-2c starts
+- WORKSHOP_ID env with hostname fallback — covered by env port
+
+Sequencing recommendation: resolve the sign-semantics decision first; consider whether build orchestration belongs in a plugin at all vs remaining a host-level operation the plugin composes.
