@@ -1152,3 +1152,29 @@ interface alignment when the bridge promotes.
 glob added to the bridge: node builtin fs/promises glob — exact engine parity
 since the engine implements io.glob over the same builtin (read-only ambient
 scan, no port translation — documented in io-bridge.ts).
+
+## wave-9 evidence (2026-11-26) — hygiene.gc, all four lanes byte-identical
+
+Sixth mechanical-port execution — the largest wave yet and the one that closes
+the hygiene module (audit wave-5 + gc wave-9 + artifact-store wave-4a/b/c).
+Lane executors in gc.ts copied byte-identical: releases whole-unit deletion,
+missions salvage-export digest spine before delete, axiom R2 upload+verify
+with fail-closed degradation, caches lane. r2-client copied byte-identical —
+ambient process.env exactly as engine (no port adaptation needed); @aws-sdk/client-s3
++ tar added as npm deps matching engine pins.
+
+PARITY PROOF (harness pattern, strictest available for scan-heavy commands):
+policy EXACT + scanAllClasses EXACT + actionable-plan EXACT — engine core vs
+plugin core on the same synthetic fixture. Degraded doctrine demonstrated live:
+r4/r5 releases carried protection-source-degraded:sibling-worktrees with
+doubt-resolves-to-keep, axiom lane blocked no-r2-credentials fail-closed —
+both engine and plugin identical.
+
+Production-scale note: scanAllClasses scans ALL classes regardless of --class
+filter (scan-then-filter is engine design) — F-0404 scan cost applies equally
+to gc dry-runs on production trees; parity confirmed by identical 240s timeouts
+engine and plugin.
+
+hygiene module status: audit + gc + artifact-store all extracted — the RFC-1570
+storage surface is fully migrated. Lock helpers reused from wave-4c artifact-store-gc
+(generateOperationId duplication caught by tsc — dedupe lesson recorded).
