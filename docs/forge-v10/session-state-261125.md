@@ -694,3 +694,18 @@ TSC enumeration converged 6→5 errors, all in bordbuch-io.ts, all one class
 (io-threading arity at seam boundaries). Exact line-precise inventory in
 WAVE12-RESUME.md. Evolution core 2023 lines byte-identical + seams ~200 lines
 replace 4000+ transitive closure — strategy-A validated empirically.
+
+## wave-12 INTEGRATED (2026-11-26) — evolution module, seam-strategy validated, 28 commands
+
+`studio.evolution.candidate.*` — 9 commands integrated 0588f388d → develop.
+Largest wave: 2023 lines core byte-identical + seam-extraction strategy-A
+VALIDATED: ~200 lines of seams (cacheCloneCommit, registry-seam 3 functions,
+channel-migration) replaced 4000+ lines of transitive closure. gitMutation:true
+declared per operator-confirmed doctrine. Forced adaptation documented:
+ChannelsNotMigratedError parameter properties → explicit fields (Node strip-only
+mode constraint — runtime-compat, not semantic).
+
+WP-8 endgame state: ONLY evidence.fetch/sync remains — unblocked by the same
+operator doctrine confirmation (ambient aws-sdk network with declared
+capability, auditable per RFC-1648 model). Mechanical inventory otherwise
+exhausted: 28 commands across 12 waves, 5 modules complete.
