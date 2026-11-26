@@ -1248,3 +1248,34 @@ bordbuch.validate, evidence.sync (and their handoff machinery) now that
 delegation is live-proven. Includes deleting both branches of the
 WERKSTATT_DELEGATION_IN_PROC migration double (the env-gate dies with E3).
 Spec direction in prior entries of this doc.
+
+## 2026-11-26 addendum — forge-repo self-adoption decision (operator-delegated)
+
+Decision recorded by the agent under operator delegation ("проведи меня к решению или реши сам"):
+
+1. **DONE — cheap CI layers:** `packageManager` (pnpm/action-setup unblock, prior session) and
+   forge-policy.yml node 22→24 (engines floor, commit `52fb208c`, pushed).
+2. **REMAINING — the deep layer:** ci.yml `pnpm run test` fails in CI (never green, 15/15
+   historically) — trust-boundary test surface is environment-sensitive in the runner.
+   This is real repair work, not configuration: budget a dedicated wave.
+3. **Full self-adoption sequence (the program):** repair CI test layer to green →
+   adopt fixed branch model (flow.open/integrate/push) → hooks + commit gates.
+   Scheduled AFTER E3 (werkstatt delegation retirement) — E3 remains the program tail.
+4. **Declared boundary:** build/test/typecheck in CI always run from SOURCE (circularity
+   is physics, not a gap); governance runs from the npm stable artifact (already live).
+
+## 2026-11-26 consumer-wave lessons (personal-agent 9.4.0 → 10.8.1)
+
+- `forge upgrade` on 10.8.1 **adds `.agents/skills/` to .gitignore** — the untracked-runtime-artifact
+  model is now enforced. Repos that historically TRACKED skills (personal-agent, 101 files) must
+  `git rm -r --cached .agents/skills` in the upgrade commit — forward-only alignment.
+- git 2.53: a tracked file inside a slash-terminated ignored directory CANNOT be `git add`-ed —
+  pre-commit hooks that re-add staged files crash until the tree is untracked.
+- FLOW-INT-18: integrate shells to the PRIMARY install's forge for base-revision gates —
+  upgrading across major versions (9→10) requires refreshing the primary checkout's node_modules
+  BEFORE integrate, while keeping its package.json/lock byte-identical to HEAD (FLOW-INT-03
+  refuses dirty primary). Restore via `git show HEAD:<f> > <f>` — never checkout/reset.
+- EVIDENCE-REFUSED info/exclude: verifier-git refuses evidence channels when `.git/info/exclude`
+  carries non-comment entries — move exclusions into the committed `.gitignore` (strictly better
+  governance: ignore rules join the auditable surface). personal-agent had `/.forge/task/` there
+  since Nov 5.
