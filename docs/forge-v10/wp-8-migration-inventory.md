@@ -832,3 +832,46 @@ Design decisions taken (resolving the wave-4 open questions):
 - cache-clone resolution needs NO pointer: `../systems-cache` is
   worktree-invariant because session worktrees are siblings of the primary at
   the same depth — the cache space port (when built) resolves trivially
+
+## artifactStore granularity — design pivot question discovered in wave-4 prep (2026-11-26)
+
+The committed 10.4.0 port roots at `<primary>/.werkstatt/artifacts` — narrow by
+design. Engine reading during extraction prep surfaced a boundary problem:
+
+`artifact.store.put` writes BOTH the content-addressed store AND
+`<primary>/releases/<releaseId>/artifact.tar.gz` (+ reads `release.yaml` there).
+releasesDir lives at `<primary>/releases` — OUTSIDE the artifacts space. The
+narrow port is therefore insufficient for put parity (fine for validate/gc
+reads, likely).
+
+Options weighed:
+- **per-domain spaces** (artifactStore + releases + fleetClaims + …): maximal
+  honesty per domain, but a put-class command needs 2+ grants and the
+  capability surface multiplies toward a dozen dimensions
+- **one `primaryState` space rooted at the primary checkout**: mirrors the
+  workspace `filesystem` grant's granularity exactly — the existing model
+  already treats whole-root scoping as the honest unit. Consistent, one
+  dimension, but loses per-domain narrowing and a readwrite grant can bypass
+  the integrate gate by writing the primary tree directly (forge.yaml, hooks).
+  Note: plugins run in-process — capabilities are audit/accident boundaries,
+  not security walls, so the escalation is real but bounded.
+
+Leaning: keep `artifactStore` as shipped (additive, non-breaking), extract
+validate/gc first (they fit), and decide the put/release-write granularity
+with the second consumer's evidence in hand. Alternative: ship `primaryState`
+as the coarse space and keep narrow spaces for read-heavy domains.
+
+Additional extraction-surface facts gathered (artifact-store-commands.ts):
+- put uses the `tar` npm package (tarCreate) — the plugin needs a tar dep or
+  a declared spawn of the system tar; content-addressed layout
+  `.werkstatt/artifacts/<hash[:2]>/<hash>/` (verify exact hashPath shape)
+- storeArtifactCore copies the archive into releasesDir and parses release.yaml
+  with a regex line scan — parity-replicate exactly
+- manifest is 17-field with sha256:unspecified degrade for siteContentHash;
+  idempotent re-put removes the previous manifest when the hash path differs
+- locking acquireLock(workspaceRoot, `release:<id>`) is WORKTREE-LOCAL while
+  the data is primary-shared — a mutual-exclusion semantics gap across
+  worktrees; extraction replicates exactly, file as werkstatt friction candidate
+- io.mkdir exists on the engine WorkspaceIO — confirms the SDK port mkdir gap;
+  the artifactStore port inherits the gap (writeFile creates parents, but
+  empty-dir creation needs the mkdir spawn workaround)
