@@ -1062,3 +1062,18 @@ Execution order recommendation, cheapest-first:
 Class-G note: scope/component-runtime/isolation command files (133/146/171/243 lines)
 are generic-platform class — they migrate with the v10-coverage verification (P0),
 not the studio plugin line.
+
+## wave-8 intake measurement correction (2026-11-26) — ordering table revised
+
+intake deep-measurement during wave-8 open: handler files small (validate 128 +
+schema-export 132 + fixtures-generate 249) but closure is DEEP — test-bundle.ts
+1045 lines + @warpgogol/pbp/entities zod chain. pbp IS npm-published (1.0.0) so
+the dependency is satisfiable in the plugin — no architectural blocker — but
+total closure ~1500+ lines makes it a mid-size wave, not the small one the
+handler measurement suggested. Session opened then discarded empty (zero work
+invested — reopening costs nothing).
+
+Revised cheapest-first order: intake (~1500, no network) → hygiene.gc (lib reuse,
+lanes degrade independently) → evidence (needs network/env design) → evolution.
+Lesson: handler-file line counts are not closure measurements — measure
+test/fixture-bundle files and workspace-internal deps before wave selection.
