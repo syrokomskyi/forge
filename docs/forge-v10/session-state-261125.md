@@ -90,3 +90,24 @@ prettier normalization required before commit; pnpm-exec json noise — use dire
 - **wave-2 first extraction LANDED**: studio.deploy.status in werkstatt develop (a54569734 + rebase regen 2c559b5fc), worktree cleaned. Exact parity proven before commit.
 - **forgeState port IMPLEMENTED** in forge develop (bb9dc6a) — option B, 8/8 tests including decisive worktree boundary proof. Ships with next minor.
 - npm two-stage replication: version-doc 200 preceded tarball 200 by ~15 min; pnpm install fails on tarball 404 mid-window — sequence installs after tarball replication.
+
+
+## Thread-4 continuation (2026-11-26 ~00:30Z)
+
+Wave-2b COMPLETE in worktree, integrate in flight:
+- 167bd675f write-cluster extraction + fa8f7430c hardening, both through commit gates
+- full lifecycle proven end-to-end; signed verify both polarities (correct key pass, wrong key fail)
+- ENGINE DEFECT DISCOVERED + FILED: artifact.build signs 8-field object, verify reconstructs 6 — signed artifacts can never verify in production. Parity-neutral for extraction; operator decision needed before wave-2c.
+
+forge 10.2.0 PUBLISHED:
+- coreVersion dist-layout bug fixed (silent 10.0.0 fallback broke forgeRange enforcement)
+- forgeState port ships (journal host-mediated reads)
+- matrix composition green: 5391/5393 + pkg-health suppressions isolated green
+- self-host pin bumped to 10.2.0, harness reinstall pending propagation
+- propagation poller active
+
+NEXT (priority order):
+1. complete wave-2b integrate (in flight) + verify develop
+2. harness reinstall + self-host green after propagation
+3. wave-2c decision: artifact.build sign-semantics — OPERATOR DECISION REQUIRED (replicate bug vs fix consensus bytes)
+4. wave-3: journal-tail migration to forgeState port (draft ready in docs/forge-v10/wave3-journal-tail-forgestate.draft.ts)
