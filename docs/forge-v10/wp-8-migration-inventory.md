@@ -1178,3 +1178,27 @@ engine and plugin.
 hygiene module status: audit + gc + artifact-store all extracted — the RFC-1570
 storage surface is fully migrated. Lock helpers reused from wave-4c artifact-store-gc
 (generateOperationId duplication caught by tsc — dedupe lesson recorded).
+
+## wave-9 addendum — PROBE-06 counter-journal death lesson
+
+Wave-9 integrate first refused WT-GATE-08/PROBE-06 on INTAKE-01/02 — the SAME
+rules whose wave-8 proof evidence had shrunk the baseline. Root cause chain:
+rule-liveness "fired" requires counters-journal diagnostic emissions; the
+counters journal (docs/.index/checks/counters.jsonl) is gitignored per-worktree
+state that DIES with the session worktree. Wave-8's emissions never reached the
+committed projection (docs/metrics/check-counters.generated.yaml still shows
+diagnostic:0 from a 2026-11-08 evaluation), so wave-9's fresh worktree read
+liveness:none for rules no longer in the baseline.
+
+F-0287 already knew this class: "local records still cover unexported runs" and
+the flow-journal union exists exactly because worktree counters die. For
+check-rules the durable halves are (a) the committed counters projection —
+regenerate it in the same change that gains the evidence, or (b) a real
+gate.probe fixture. Immediate remedy that worked: re-run the engine command
+(onboarding.intake.validate --bundle <broken>) in the CURRENT worktree —
+emissions land in the local journal and the ratchet passes.
+
+Extraction-proof corollary: any wave whose parity proof shrinks the unprobed
+baseline MUST either regenerate the committed counters projection in the same
+integrate or expect the NEXT wave's integrate to refuse PROBE-06 on the same
+rules. Wave-8 got lucky ordering; wave-9 paid the debt.
