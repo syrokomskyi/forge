@@ -371,3 +371,12 @@ wave-3 forgeState consumer integrated; FRICTION-02 paradox resolved (RFC-1642
 fixture); 10.3.0 (processSpawn allowlist) + 10.4.0 (artifactStore spaces port)
 published; wave-4 structural analysis + artifact-store decode + sizing +
 runbook; tmpfs matrix lesson (disk-backed TMPDIR).
+
+## UPDATE — 10.4.1 widening implemented, matrix in flight (2026-11-26 ~03:20)
+
+Space root widened to `<primary>/.werkstatt` (design correction executed).
+Tests 6/6 green, typecheck clean, committed. Matrix 10.4.1 at
+`/tmp/matrix-1041.log` (MATRIX_DONE marker). Port paths gain `artifacts/` prefix.
+
+**Resume**: matrix green → publish 10.4.1 (both 10.4.0+10.4.1 propagate
+together) → selfhost pin to 10.4.1 + install + commit → wave-4a runbook.
