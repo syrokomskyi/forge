@@ -520,3 +520,21 @@ live state); flow.discard drops entries correctly for modern sessions. Needs a
 decision: mass-discard via machinery (slow, one-by-one), registry GC command
 (candidate forge-side feature), or documented retention. NOT acted upon —
 beyond sanctioned scope.
+
+## thread-8 (2026-11-26 late) — cleanup + design pivot + wave-4c in flight
+
+1. Orphan/zombie autosessions ALL resolved (4/4) — details in this file above;
+   registry zombie question (36 entries 261108–261123) escalated to operator.
+2. Operator surfaced self-host gap — CONFIRMED: forge monorepo has no hooks,
+   plain-git commits, harness-only. Judged SEPARATE program (design §5 of
+   wp-8-completion-design.md) — do not mix into migration waves.
+3. `docs/forge-v10/wp-8-completion-design.md` committed — mechanical-port
+   default for closures >300 lines, io-boundary adaptation contract, wave-4c
+   plan, endgame sequencing, cacheClone port decision teed up.
+4. wave-4c IN FLIGHT: session `auto/session-261126-01-wave4-artifact-gc` —
+   materials staged (776 helper lines + 327 body lines byte-identical copies),
+   tsc surface enumerated (44 errors, classified), bridge-adapter breakthrough
+   recorded in worktree WAVE4C-RESUME.md. RESUME: read that file first.
+5. New SDK gaps queued: (a) no primaryRoot path string in PluginContext;
+   (b) abs-path bridge adapter — promote into SDK after wave-4c proof;
+   (c) cacheClone space port for gc full parity + bordbuch/fleet class.
