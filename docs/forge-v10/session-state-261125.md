@@ -613,3 +613,23 @@ generated probe liveness for INTAKE-01/02 — unprobed baseline shrank 629→627
 baseline in the same wave). Classify-overlap hazard escalated to mechanical-
 guard candidate — documentation insufficient, author hit own trap.
 Plugin command count: 16. Next per ordering table: hygiene.gc or evidence.
+
+## wave-9 INTEGRATED (2026-11-26) — hygiene module COMPLETE
+
+`studio.hygiene.gc` integrated `2c0d9bdd5` → `0e9e9eb53` on develop. 17 studio
+commands in plugin host. All four gc lanes byte-identical (releases/missions/
+axiom/caches), r2-client ambient-env copied exact, aws-sdk+tar deps pinned to
+engine versions. Parity: policy+scan+plan EXACT three layers on synthetic
+fixture; degraded-doubt-keeps doctrine demonstrated live; axiom fail-closed
+no-r2-credentials correct. Production scan cost parity confirmed (240s timeout
+both engines — scan-then-filter F-0404 semantics).
+
+PROBE-06 debt lesson paid: wave-8 baseline shrink evidence died with wave-8's
+worktree counters journal — wave-9 re-emitted INTAKE-01/02 diagnostics in its
+own worktree (onboarding.intake.validate --bundle broken). Recorded in
+inventory: baseline-shrinking waves must regenerate committed counters or
+expect next-wave PROBE-06.
+
+HYGIENE MODULE COMPLETE: audit (wave-5) + artifact-store (wave-4a/b/c) + gc
+(wave-9) — RFC-1570 storage surface fully migrated. Remaining WP-8 modules:
+evidence cluster, evolution, capability-artifacts, intake fixtures remainder.
