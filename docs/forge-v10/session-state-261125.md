@@ -317,3 +317,13 @@ werkstatt RFC-1623. Residue hygiene: `find /tmp -maxdepth 1 -name 'forge-*'
 When green: publish 10.4.0, propagation poll (two-stage), selfhost pin bump.
 Then werkstatt wave-4a = artifact.store.gc — the true first artifactStore-port
 consumer per the parity-logic split.
+
+- **wave-4a sizing correction**: artifact.store.gc is NOT small — the command
+  body delegates to `collectReleaseArtifacts(paths, io, keep, {dryRun,
+  systemFilter, logger})` which implements the protection-set logic (per
+  AGENTS.md: newest-3-per-system + live readers + chain head). Locking is
+  `acquireLock(paths.primaryRoot, "hygiene-gc", …, 3600)` — PRIMARY-rooted,
+  unlike put's workspaceRoot lock (cross-command lock inconsistency — friction
+  candidate). Dry-run never locks. Extraction unit realistically:
+  collectReleaseArtifacts + helpers translate with it; estimate the closure
+  before committing to the wave (grep collectReleaseArtifacts definition).
