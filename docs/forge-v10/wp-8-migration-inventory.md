@@ -941,3 +941,28 @@ Proofs on the 10.5.0 tarball (file-pin, pre-publication):
   discovered mid-implementation; string writeFile would corrupt gzip bytes
 
 Integrate blocked on: matrix r2 green → publish → propagation → npm-spec pins.
+
+## wave-4c evidence (2026-11-26) — artifact.store.gc, module 4/4 COMPLETE pending integrate
+
+Mechanical-port extraction per wp-8-completion-design — the strategy's first
+full validation:
+
+- Closure ported byte-identical: protection 257 + anomalies 168 + release-index
+  99 + types 75 + atomicWriteFile 27 (stripped) + collectReleaseArtifacts 112 —
+  boundary-only adaptation through the abs-path io-bridge (101 lines).
+- gc.ts facade lanes (missions/axiom) confirmed out of scope — the command
+  calls collectReleaseArtifacts directly. Closure halved by measurement.
+- io-verb surface measured exactly: 8 verbs (exists/readdir/readFile/
+  readFileBytes/writeFile/rm/mkdir/rename) — drove the 10.6.0 widening.
+- cacheClone capability (10.7.0) mandatory, not optional: degraded protection
+  means keep-EVERYTHING (verified in collectReleaseArtifacts — degraded.length
+  > 0 short-circuits to keep), so gc without cache-clone reads is a no-op.
+- proofs: dry-run exact plan (3 candidates beyond keep:2, keep-latest+chain-head
+  lanes correct); apply deleted exactly the plan, index.yaml appended
+  state:removed, lock released clean; production-scale dry-run — 13 examined,
+  protection lanes deployed-lane:12/keep-latest:9/chain-head:6 firing against
+  REAL cache clones (decisive cacheClone proof).
+- incident: operator-adjacent — fixture cleanup script corrupted the proof-created
+  releases/index.yaml; root-caused as file created by the proof itself (mtime),
+  defensive readIndex degrades gracefully; file removed restoring pre-proof
+  state. Lesson: never scripted-edit generated files without a backup copy.
