@@ -1340,3 +1340,13 @@ knowledge. Next session starts there.
 
 **Resume instruction:** open the worktree `werkstatt@auto-session-261126-01-e3-engine-copy-retirement`,
 read the handoff, implement RFC-1650, ride the gates with `--test-timeout 900000`.
+
+## 2026-11-26 friction-wave handoff added
+
+Second handoff committed to the E3 worktree (`7d2e544d2`):
+`docs/handoffs/friction-wave-after-e3-2026-11-26.md` — 6 complete filing specs
+(needsFullSuite classifier gap, FLOW-INT-18 catch-22, upgrade/skills untracking,
+contour operator ritual documentation, registry phantom branches, worktree skills
+materialization) + zero-recurrence triage method (67/77 open). Registry verdict:
+no open friction obsoleted by the migration; F-0334/F-0399/F-0385 re-confirmed live.
+Sequence: execute after the E3 handoff completes and integrates.
