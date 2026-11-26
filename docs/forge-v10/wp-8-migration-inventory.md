@@ -1315,3 +1315,30 @@ or the E1 architecture decision first — specifically whether plugin commands
 may invoke kernel commands through a defined port (shell-out vs in-proc
 delegation), which determines whether kernel-coupled-but-workspace-scoped
 modules like fleet can ever migrate.
+
+## E2 kernel-coupling probe results (2026-11-26) — classification framework refined
+
+First-pass probe (grep `kernel/runtime/execute` per module, io.exec count as
+secondary signal — NOT a blocker since wave-12/13 proved io.exec works through
+the bridge with declared capabilities):
+
+| module | kernel-runtime files | ioexec files | verdict |
+|---|---|---|---|
+| mission | 3 | 15 | KERNEL-RETAIN confirmed |
+| fleet | >0 (measured wave-15) | — | KERNEL-RETAIN confirmed |
+| nachweis | 0 | 1 | extractable candidate, medium (15 cmds) |
+| release | 0 | 1 | extractable candidate, small (6 cmds) |
+| sternsystem | 0 | 7 | extractable, heavy ioexec but wave-12 seams exist |
+| leitstand | 0 | 7 | NEEDS DEEPER PROBE — pipeline orchestrator, indirect coupling likely |
+| handoff | 0 | 5 | small but check invocation direction |
+| lagebild | 0 | 1 | small |
+| bauakte/remediation/dns/subdomain/scope/notausgang | 0 | 0-0 | smallest candidates |
+
+REFINED FRAMEWORK — kernel-coupling is necessary but not sufficient for the
+retain verdict. Second dimension: INVOCATION DIRECTION. Commands invoked BY
+kernel orchestration (pipeline steps, mission lifecycle internals) must stay
+kernel-resident even when mechanically extractable — migrating them creates
+the backwards dependency plugin←kernel-invocation. The studio-ops class is
+operator-facing commands reading/writing workspace state. Probe: grep who
+invokes the command id via executeRegisteredCommand/invoke in kernel module
+closures before wave commitment.
