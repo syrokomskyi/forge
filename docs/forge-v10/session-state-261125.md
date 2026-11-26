@@ -144,3 +144,24 @@ REMAINING PROGRAM STATE:
 - deploy cluster 5/6 extracted + journal-tail on proper port = studio plugin fully on sanctioned SDK surface
 - wave-2c artifact.build — unblocked by doctrine (parity replicates defect); needs processSpawn capability scoping design
 - orphan session cleanup: werkstatt@auto-session-261126-01/02-wave2b-followup worktrees+branches inert but present
+
+## Thread-5 continuation (2026-11-26 late) — wave-3 INTEGRATED, forge 10.3.0 published
+
+- **wave-3 integrate GREEN** — `9516b009b → 7bd4b4aa7`, cleanup machinery-done. werkstatt
+  develop carries journal-tail on the forgeState port + the FRICTION-02 probe fixture.
+- **FRICTION-02 ratchet paradox RESOLVED** — full decode in wp-8-migration-inventory.md:
+  firing evidence died with the follow-up worktree's counters journal; RFC-1642's
+  binding-is-liveness is the designed escape; first frictions-contract fixture written,
+  probe PASS with exactly 1 diagnostic. Residual design question noted: integrate-time
+  capture of worktree firing evidence into the committed counters projection.
+- **forge 10.3.0 published** — processSpawn binary allowlist (array form). Matrix green
+  5400/5401 (1 skipped). node24 tarball smoke PASS. Propagation poll in flight.
+  Wave-2c artifact.build unblocked once propagated + pinned.
+- **orphan cleanup** — session-261126-02 discarded through sanctioned flow.discard;
+  01 is unregistered (FLOW-DIS-04) — machinery disowns it, content proven
+  patch-equivalent in develop (git cherry `-`), left inert pending operator decision
+  on raw branch deletion.
+- **wave-2c draft validated** — cp/turbo/gitSha/manifest ordering parity confirmed
+  against engine source; one deviation annotated in /tmp/wave2c-scratch draft
+  (no `reused` flag on the reuse path). SDK assumptions verified: paths.resolve sync,
+  process.spawn default cwd workspaceRoot, allowlist basename matching.
