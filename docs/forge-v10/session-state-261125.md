@@ -686,3 +686,11 @@ Honest endgame state: mechanical waves are DONE — every remaining item
 not execution. WP-8 mechanical inventory: 19 commands migrated across
 11 waves, 4 modules complete (artifact-store, hygiene, intake, signing/
 behavior/journal/deploy surfaces).
+
+## wave-12 seam-extraction EXECUTED (session end)
+
+cacheCloneCommit + registry-seam + channel-migration extracted/copied.
+TSC enumeration converged 6→5 errors, all in bordbuch-io.ts, all one class
+(io-threading arity at seam boundaries). Exact line-precise inventory in
+WAVE12-RESUME.md. Evolution core 2023 lines byte-identical + seams ~200 lines
+replace 4000+ transitive closure — strategy-A validated empirically.
