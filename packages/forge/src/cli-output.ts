@@ -57,3 +57,27 @@ Registered commands (${commands.length}):`;
 
   return `${header}\n${commandLines}\n`;
 }
+
+/**
+ * Shape the --json output envelope for a command result (RFC-1648 E1 delegation
+ * contract): carries exitCode + summary authoritatively so shell-out consumers
+ * can reconstruct executeKernelCommand-equivalent semantics, plus the data
+ * payload and nextSteps. Data keys never override the envelope contract keys.
+ */
+export function shapeJsonOutput(result: {
+  data?: unknown;
+  summary?: string;
+  exitCode?: number;
+  nextSteps?: unknown[];
+}): Record<string, unknown> {
+  const data =
+    result.data !== null && typeof result.data === "object" && !Array.isArray(result.data)
+      ? (result.data as Record<string, unknown>)
+      : {};
+  return {
+    ...data,
+    exitCode: result.exitCode ?? 0,
+    summary: result.summary ?? "",
+    nextSteps: result.nextSteps ?? [],
+  };
+}

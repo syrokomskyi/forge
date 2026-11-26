@@ -409,7 +409,7 @@ export function createPluginContext(manifest: PluginManifest, host: ContextHostS
       },
     },
     log: {
-      info: (msg) => console.log(`[${pid}] ${msg}`),
+      info: (msg) => process.stderr.write(`[${pid}] ${msg}\n`),
       warn: (msg) => console.warn(`[${pid}] ${msg}`),
       error: (msg) => console.error(`[${pid}] ${msg}`),
     },

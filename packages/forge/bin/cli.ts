@@ -98,7 +98,7 @@ import type {
   ForgeRegisteredCommandInfo,
   WorkspaceIO,
 } from "../src/types.ts";
-import { renderNextSteps, renderIdeRecommendation, generateHelp } from "../src/cli-output.ts";
+import { renderNextSteps, renderIdeRecommendation, generateHelp, shapeJsonOutput } from "../src/cli-output.ts";
 import { resolveCliFlags } from "../src/cli-flags.ts";
 import type { ForgeModuleRegistry, ForgePipelineStep } from "../src/forge-module.ts";
 import { loadForgeCommandModules } from "../src/command-modules.ts";
@@ -481,7 +481,7 @@ async function main(): Promise<void> {
   try {
     const result = (await command.execute(input, context)) as ForgeCommandResult | void;
     if (result && outputFormat === "json") {
-      const output = { ...(result.data ?? {}), nextSteps: result.nextSteps ?? [] };
+      const output = shapeJsonOutput(result);
       console.log(JSON.stringify(output, null, 2));
     } else if (result && outputFormat === "pretty") {
       if (result.summary) {
