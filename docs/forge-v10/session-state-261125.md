@@ -783,3 +783,19 @@ WP-8 state after wave-17: 53 studio commands across 10 modules. Extraction
 exhausted except: release leaf (invocation-form verification needed), handoff
 (deep, 3678 lines), nachweis-coupled-3 (E1-blocked). Program reduces to
 E1/E3 endgame.
+
+**wave-18 subdomain.list** (1 command, commit b98a5ec61): reuse economics
+terminal case — zero initial TSC errors after adaptation because every dep
+was already in the plugin (filterEnv/sourceDotenv wave-15 seam, registry-seam
+wave-12/14/17, workersDevHost npm-shared). Only new extraction: 166-line
+cloudflare-api-seam (listDnsRecords + listWorkersRoutes + primitives from
+the 750-line adapter). requireCloudflareEntry added to registry-seam as a
+14-line pure function. E2 classification completed for all remainder modules:
+isolation = enforcement machinery (semantic kernel-retain — the kernel cannot
+delegate its own isolation enforcement into a plugin); subdomain register/
+validate pipeline-invoked by leitstand/service-promote (kernel-retain);
+release.prepare/ready pipeline-invoked by leitstand.ship (kernel-retain);
+release leaf = validate/list/state.validate/sign (4 extractable, closure
+~2300 lines core + handoff/integrity/closed-workpiece transitive — largest
+remaining wave); handoff deep (3678 lines core); nachweis-coupled-3
+E1-blocked. WP-8 extraction program now at 54 studio commands.
