@@ -246,3 +246,34 @@ replicates defects (F-0401 precedent); scope field decides candidacy (app-scope 
 different extraction line — ALL integrity.* are app-scope, do not retry that analysis);
 integrate NEVER under timeout wrapper; nested node_modules .gitignore phantom costs
 one FLOW-INT-01 retry per session (delete noise file, retry — friction candidate).
+
+## artifact-store internal inconsistency — decode before wave-4 extraction (2026-11-26)
+
+Close reading of artifact-store-commands.ts (757 lines) surfaced contradictory
+root resolution INSIDE the engine — extraction ordering must account for it:
+
+- `storeArtifactCore` (put): archive tmp/store/manifest paths are
+  `path.join(workspaceRoot, ARTIFACTS_DIR, …)` — WORKSPACE-RELATIVE. In a
+  worktree the store lands in the worktree's own `.werkstatt/artifacts`, not
+  the primary's! Only the release-copy uses `resolveWorkshopPaths().releasesDir`
+  (primary-rooted). Two ARTIFACTS_DIR-ish constants exist:
+  `.werkstatt/artifacts` vs `.werkstatt/artifacts/releases` (ARTIFACTS_DIR_NAME)
+  — verify which commands use which before translating anything.
+- `runArtifactStoreGet`/`runArtifactStoreValidate`: storeBase also built
+  workspaceRoot-relative (line ~310-445 region) — same worktree-divergence.
+- `gc` (line ~685): uses `resolveWorkshopPaths` — PRIMARY-rooted, plus
+  acquireLock.
+
+Consequence: in the primary checkout worktree==primary and everything agrees;
+in a worktree, put writes artifact data worktree-locally while gc manages the
+primary store — the two never see the same bytes. Either (a) artifact-store
+operations are only ever run in the primary checkout in practice (making the
+divergence latent), or (b) this is an undiscovered defect class sibling to
+F-0401. DECISION NEEDED before extraction: read the callers (who invokes
+artifact.store.* — leitstand.ship? release pipeline? hygiene?) and determine
+the actual execution root. If operations are primary-only in practice, the
+artifactStore port may be unnecessary for parity — the workspace port suffices,
+and the port's first real consumer becomes gc/hygiene instead. Do NOT extract
+on the primary-root assumption without this decode. Search terms for next
+session: `hashPath`, `ARTIFACTS_DIR`, `ARTIFACTS_DIR_NAME`, call sites of
+`artifact.store.put` in leitstand/release pipelines.
