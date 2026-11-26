@@ -114,3 +114,41 @@ shape mismatch on readdir/list; appendFile/mkdir/copyFile/mkdtemp/realpath
 missing plugin-side. Decision teed in WAVE4C-RESUME.md — lean SDK-first:
 10.6.0 widens the port verbs, then the abs-path bridge adapter is thin and
 shared. If adapter proves general it promotes into the SDK itself.
+
+## 7. E1 delegation architecture — design seed (2026-11-26)
+
+The exit criterion's delegation mechanism does not exist yet. Three candidate
+directions, analysed against the program's proven constraints:
+
+**Direction A — kernel routes to plugin host in-proc.** `werkstatt run` loads
+the project plugin and forwards migrated ids. REJECTED-leaning: reverses the
+dependency arrow the entire migration was built on (kernel→plugin knowledge),
+re-introduces the strip-only loading problem inside the kernel runtime, and
+makes kernel correctness depend on project-local plugin state — the failure
+surface WP-8 exists to shrink.
+
+**Direction B — caller migration + hard error.** `werkstatt run <migrated>`
+errors with a redirect hint (`use forge <cmd>`); callers migrate; engine copies
+retire module-by-module. No new machinery — decommission sequencing only. The
+friction cost lands on operator muscle memory and every script/skill/hook that
+invokes `werkstatt run` for migrated surfaces — measurable via grep across the
+workshop before committing.
+
+**Direction C — shell-out shim.** kernel command becomes a thin shim exec'ing
+`forge <cmd>` with forwarded argv, propagating exit code and stdout/stderr.
+`werkstatt run` UX preserved byte-identically during transition; implementation
+is per-command trivial and uniformly testable; subprocess cost ~100ms per call
+which operator-facing commands absorb trivially but pipeline-internal hot
+paths never pay (they are kernel-retained anyway). The delegation TABLE is
+then literally the list of shimmed commands — and the exit criterion's
+"table empty for migrated surfaces" reads naturally as: shims removed once
+callers have migrated, engine copies deleted.
+
+C-then-B is the coherent sequence: shim first (zero caller friction day one),
+measure shim invocation frequency through the journal, retire shims whose
+caller migration completes, end with the table empty. Design question for the
+E1 program session: whether the shim lives in the engine command registry
+(explicit per-command shim declarations) or in a generic argv-time fallback
+(any registered-plugin id intercepted before unknown-command error). The
+explicit form is auditable per RFC-1648 doctrine; the implicit form risks
+routing ambiguity during partial migrations.
