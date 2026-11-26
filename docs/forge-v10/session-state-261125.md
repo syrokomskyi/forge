@@ -633,3 +633,22 @@ expect next-wave PROBE-06.
 HYGIENE MODULE COMPLETE: audit (wave-5) + artifact-store (wave-4a/b/c) + gc
 (wave-9) — RFC-1570 storage surface fully migrated. Remaining WP-8 modules:
 evidence cluster, evolution, capability-artifacts, intake fixtures remainder.
+
+## wave-10 INTEGRATED (2026-11-26) — 18 commands + PROBE-06 debt ended durably
+
+`studio.onboarding.intake.schema.export` integrated b2a3b3cce → develop.
+Byte-exact render parity (sha256 identical engine/plugin). Fastest wave yet —
+132-line shallow closure, npm-published deps only.
+
+DURABLE FIX LANDED — 0f4de1f92 regenerated the committed counters projection
+with INTAKE-01/02 diagnostic:1. This ENDS the per-worktree PROBE-06 recurrence:
+evidence now lives in committed state, every future worktree inherits it.
+The lesson is now mechanical doctrine: any wave whose proof emits rule
+diagnostics should run checks.counters.export and commit the projection in
+the same integrate — cost is trivial, benefit is permanent.
+
+Remaining WP-8 endgame (measured):
+1. intake.fixtures.generate — 249+1045 closure, mechanical, no blockers
+2. evidence.fetch/sync — BLOCKED on network-capability doctrine decision
+   (operator input needed: aws-sdk ambient network vs capability model)
+3. evolution — 2023 lines + fleet deps, largest, mechanical but expensive
