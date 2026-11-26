@@ -1294,3 +1294,24 @@ parity byte-identical (--system is required same wording both sides) — reducer
 byte-identical by construction; deep behavioral parity deferred to integration
 dogfood (bordbuch status/validate run against real systems during normal ops).
 Manifest after registration: 36 commands. Commit 4ff9888b1.
+
+## wave-15 fleet measurement (2026-11-26) — KERNEL-COUPLED, not a migrate candidate
+
+Correction to the endgame table: fleet measured for wave-15 and found genuinely
+kernel-coupled — claims-commands/apply import `kernel/runtime/execute-command`
++ `execute-pipeline` directly (fleet.apply invokes kernel command execution;
+claims.sync drives pipeline chains). Migrating these to the plugin host would
+create a backwards dependency plugin→kernel-runtime. This is exactly the exit
+criterion's "commands genuinely requiring kernel internals" class. Fleet is
+reclassified KERNEL-RETAIN. The endgame table's MIGRATE/MIXED rows need the
+same kernel-import probe before any wave commitment: grep for
+`kernel/runtime/execute` in the module's closure — its presence is the
+kernel-retain signature.
+
+Updated honest endgame position after wave-14: the extractable surface is
+nearly exhausted. Remaining candidates need either per-command kernel-coupling
+measurement (nachweis, release remainder, sternsystem read-side, mission leaf)
+or the E1 architecture decision first — specifically whether plugin commands
+may invoke kernel commands through a defined port (shell-out vs in-proc
+delegation), which determines whether kernel-coupled-but-workspace-scoped
+modules like fleet can ever migrate.
