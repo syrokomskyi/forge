@@ -526,3 +526,11 @@ IMPORTANT SEQUENCING NOTE: the plugin manifest requires forge >=10.1.2, but publ
 ## Wave-2c doctrine resolution (2026-11-26)
 
 The sign-semantics question resolves by doctrine, not operator decision: dark-run parity means extraction replicates engine behavior EXACTLY — including the eight-field sign input. The defect is orthogonal: filed as werkstatt F-0401, fixed (or documented-as-vestigial) through the engine's own governance, and the plugin then tracks the fix in a synchronized change. Extraction never repairs behavior, even broken behavior. wave-2c is unblocked on that axis; remaining complexity is processSpawn capability scoping and copyDir port economics.
+
+## Wave-3 journal-tail forgeState migration — proven (2026-11-26)
+
+The first consumer of the forgeState host port is migrated and proven end-to-end: studio.journal.tail no longer touches .git/forge/journal.jsonl through the workspace filesystem port. Decisive proof shape: the command was run from INSIDE a linked worktree — the port resolved the gitdir pointer host-side and returned real journal records (total 1040) with correct schema fields, where the workspace-port version was structurally blind.
+
+Chain validated in the same stroke: forge 10.2.1's capability registration fix works (manifest declares forgeState: read, plugin loads), and the output schema correction is documented — the pilot emitted kind/opId/ts fields that never existed in real journal records; the migration emits the measured event/branch/sha/at shape.
+
+Design note for future journal consumers: forgeState.journal returns oldest-first tails; size() is the cheap existence probe. The draft at docs/forge-v10/wave3-journal-tail-forgestate.draft.ts matches the shipped implementation.
