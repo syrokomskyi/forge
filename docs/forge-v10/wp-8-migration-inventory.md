@@ -1009,3 +1009,32 @@ message byte-identical modulo path, encoding validation identical.
 
 Dependency note: @noble/ed25519 ^3.2.0 added to studio package — matches
 werkstatt-shared resolution exactly.
+
+## wave-7 evidence (2026-11-26) — behavior.snapshot.capture+diff, strongest parity yet
+
+Fourth mechanical-port execution. Two commands in one wave (shared closure):
+capture + diff, both pure computation over workspace-scoped dist trees.
+Parity proofs at the strictest standard: capture behaviorSnapshotHash +
+wrapper byte-identical modulo timestamp; diff output byte-identical
+(3/3 differences: routeCount, added route, headers — engine semantics do NOT
+diff per-route contentHash changes, faithfully replicated).
+
+CRITICAL BRIDGE LESSON (recorded in io-bridge.ts): classify-order hazard —
+passing identical roots for all three bridge roots misroutes every path to
+primaryState (first match wins), and the deferred primaryState space resolves
+absent in session worktrees so exists() degrades false and every scan reads
+empty. Resolution: makeWorkspaceIO single-root adapter for purely
+workspace-scoped commands; io-bridge proper remains for multi-root commands.
+
+Fixture-trap lesson: collectFiles defaultIgnore skips `old-*`/`-*` prefixed
+names — a fixture file named old-page.html silently vanishes from scans; this
+is correct faithful engine behavior, not a bug.
+
+byteHash sync/async split: engine primitive is sync; wave-2's deploy-shared
+copy is async (adaptation artifact). hashHtml needs sync — html-normalizer
+carries its own 5-line sync copy now. SDK promotion review should consolidate.
+
+Closure economics: 338-line handler + 4 pure support files (~450 lines) copied
+byte-identical; adaptation was retyping kernel signatures to a minimal local
+SnapshotContext (workspaceRoot/io/logger) — the cleanest kernel-decoupling
+pattern so far, candidate for the standard extraction template.
