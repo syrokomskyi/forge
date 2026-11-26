@@ -1124,3 +1124,40 @@ Plugin manifest: 61 commands. Extraction is now genuinely exhaustive — the onl
 unextracted engine surfaces are kernel-retained by classification (handoff on
 registrar-total economics; pipeline-internal machinery; isolation enforcement).
 WP-8's extraction phase is COMPLETE including its hardest deferred item.
+
+## 2026-11-26 — PUBLISHED forge 10.8.1 + end-to-end delegation chain PROVEN
+
+### Publication (operator-token authorized)
+
+`@warpgogol/forge@10.8.1` live on npm — the first artifact carrying the E1
+contract fixes. Publication lessons:
+
+- npm registry publishes now commit ASYNC (PUT 202): the success line prints
+  immediately but the version sits in a staged pipeline for ~10 minutes before
+  appearing on the read path. A retry during staging hits 409 "Cannot publish
+  over previously staged version" — the correct response is WAITING, and
+  unpublishing a staged version burns the version number permanently (npm never
+  releases it). 10.8.0 was burned exactly this way; 10.8.1 carries identical
+  content. Artifact verified byte-level: shapeJsonOutput + stderr separation
+  confirmed present in the published tarball.
+
+### The end-to-end proof — the program's pivotal measurement
+
+`pnpm exec forge studio.release.list --json` in a werkstatt worktree on
+forge10 10.8.1: **clean-parse stdout with zero noise** (stderr separation live),
+authoritative `exitCode: 0` + `summary` in envelope, data payload intact
+(9 releases). Every link of the delegation chain is now operationally verified:
+npm host → envelope contract → port parser → shallow consumption at all edges.
+
+### Edge wiring (in flight at writing)
+
+All 4 executeKernelCommand edges rewired to executeDelegatedCommand:
+mission-open→bordbuch.repair, nachweis-validate→bordbuch.validate,
+deploy-execution→evidence.sync, mission-close→evidence.sync. TSC clean.
+Structured-consumption discovery during wiring: mission-close consumes
+data.r2KeyPrefix/uploadedFiles — delegation-compatible since the parser's
+envelope-rest preserves the full data payload shape. runShipPhase in ship.ts
+binds registry commands in-proc — NOT a delegation edge, belongs to E3.
+Topology verification: all edges execute inside the werkstatt platform repo
+(missions live in-repo) where the studio plugin resolves; consumer repos use
+forge only for governance and never invoke these kernel paths.
