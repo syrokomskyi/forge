@@ -286,3 +286,15 @@ session: `hashPath`, `ARTIFACTS_DIR`, `ARTIFACTS_DIR_NAME`, call sites of
   with? If primary (likely — releases are primary state), the
   workspaceRoot-relative store paths ARE primary paths in practice and the
   divergence is latent-but-real only for CLI facades run inside worktrees.
+
+- **wave-4 split resolved by parity logic**: extraction replicates the engine's
+  resolution exactly — workspaceRoot-relative paths map to the plugin's
+  workspace port (identical semantics: both root at the execution checkout).
+  Consequence: put/get/validate need NO state-space port for their store
+  operations; only (a) put's releasesDir copy and (b) gc's
+  resolveWorkshopPaths-rooted scan touch primary state. Clean split:
+  wave-4a = artifact.store.gc (the true first artifactStore-port consumer —
+  small, self-contained, exercises the boundary decisively);
+  wave-4b = put/get/validate (workspace-port-heavy, put additionally needs a
+  releases-space decision — the granularity pivot question). This ordering
+  also front-loads the port proof before the heavy tar machinery translation.
