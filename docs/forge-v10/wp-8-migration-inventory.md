@@ -988,3 +988,24 @@ digest-export 132 + handler ~100 lines of new authoring.
   sequences — FRICTION-01 yaml parse errors; F-0403 shape is the canonical
   template (id/created/session/category/friction/signature/measure/artifacts/
   status/lastSeen).
+
+## wave-6 evidence (2026-11-26) — signing.key.generate, smallest-closure execution
+
+Third mechanical-port execution. Closure measurement-driven selection:
+signing module total 240 lines shared + 88 handler — shallowest in the
+remaining inventory. key.ts/types.ts copied byte-identical from
+werkstatt-shared/signing with exactly one adaptation class: createDefaultIO
+kernel coupling dropped, io param made required.
+
+NEW BOUNDARY CLASS discovered: --output-dir is operator-arbitrary — outside
+workspace/primary/cache roots, so io-bridge cannot carry it without breaking
+parity. Resolution: node-io.ts (20-line node-fs-backed WorkspaceIO) used for
+operator-explicit paths only; documented as the same trust class as the CLI
+invocation itself. io-bridge remains the discipline for governed roots.
+
+Parity proofs: hex layout (64-char files, correct naming), pem shape
+byte-format identical (BEGIN/END armor + single-line base64), KEY_FILE_EXISTS
+message byte-identical modulo path, encoding validation identical.
+
+Dependency note: @noble/ed25519 ^3.2.0 added to studio package — matches
+werkstatt-shared resolution exactly.

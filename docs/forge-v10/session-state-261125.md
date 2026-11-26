@@ -573,3 +573,16 @@ Wave-4c was the wp-8-completion-design's first full execution — mechanical-por
 validated as the default mechanics for large closures. Next per design §4:
 hygiene/evidence smallest-first within workspace-scope; bridge-adapter SDK
 promotion review after second consumer; self-host conversion separate program.
+
+
+## wave-5 integrated (2026-11-26) — hygiene.audit
+
+fec42a754 on werkstatt develop. Integration blockers encountered and resolved:
+friction schema (recurrences field required), category vocabulary
+(tooling|docs|process|environment|self — no "performance"), folded plain
+scalars must not contain colon+space. All recorded; friction.validate is the
+cheap preflight — run it BEFORE flow.integrate for any new friction file.
+
+Next candidates: hygiene.gc (large — missions/axiom lanes + R2), evidence
+cluster (evidence-fetch 283 + evidence-sync 433 + r2-client network/env).
+io-bridge SDK promotion review now due (second consumer exists).
