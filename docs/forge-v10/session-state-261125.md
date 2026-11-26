@@ -1050,3 +1050,34 @@ npm minor → then integration proof of the port → then edge wiring.
   masking hid the first integrate refusal's true cause until the report was read.
 - EC-24 subject format: `<type>(<scope>)?: <lowercase imperative clause>` — the
   em-dash is fine, the capital after the colon is not.
+
+### Host-resolution discovery — the decisive architecture fact (2026-11-26)
+
+`pnpm exec forge` inside the werkstatt workspace does NOT execute the workspace
+`packages/forge` (version 9.7.1 — the legacy pre-extraction lineage). The bin shim
+targets `node_modules/forge10/bin/cli.js`: werkstatt deliberately dogfoods the
+npm-published forge host aliased as the `forge10` package (currently 10.7.0).
+Empirical proof: `forge --version` in a werkstatt worktree reports 10.7.0 while
+the workspace package.json carries 9.7.1.
+
+Consequences, all now settled:
+
+1. The exitCode/summary envelope contract fix lives in exactly one correct place —
+   the standalone forge repo (already committed there). Werkstatt-side propagation
+   is not merely unnecessary but impossible: the executing host never reads
+   workspace packages/forge. (A worktree branch attempting it was discarded
+   wrong-target with the reason recorded.)
+2. The npm publication of the contract-fix minor is the single hard blocker for
+   E1 edge wiring — the delegation port shells `pnpm exec forge`, which IS the
+   npm artifact. There is no werkstatt-internal workaround path.
+3. `werkstatt run` is not an alternative host for plugin commands — empirically
+   KERNEL-CMD-01 unknown command (plugins register with the forge host, not the
+   kernel registry).
+4. npm auth is absent in the agent environment (E401) — publication is genuinely
+   operator-executed. Once the operator publishes, edge wiring is one bounded
+   session: bordbuch.repair → bordbuch.validate → evidence.sync per the
+   documented order, each verified through the delegation port's envelope contract.
+
+The E1 program state is thereby minimal and exact: everything implementable is
+implemented, integrated, and proven short of the live host artifact; the critical
+path is a single operator `npm publish` in the standalone forge repo.
