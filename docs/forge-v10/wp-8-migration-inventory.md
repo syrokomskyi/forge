@@ -892,3 +892,31 @@ Additional extraction-surface facts gathered (artifact-store-commands.ts):
   crash the scan in both implementations) — deviations corrected during proof.
 - forge 10.4.1 propagated during the wave (artifactStore widened space live);
   selfhost harness validated on the npm artifact.
+
+## primaryState design DECISION (2026-11-26) — coarse space replaces narrow
+
+The deferral asked for first-consumer evidence; wave-4b put provides it:
+put needs `<primary>/releases` (copy + systemId derivation) AND
+`<primary>/.werkstatt/artifacts` (CAS) AND worktree-local locks — two spaces
+for one command. gc needs releases + artifacts + locks — three. hygiene.audit
+would need missions/archive too — four. Narrow spaces multiply toward a dozen
+dimensions where every interesting command carries 2-3 grants — worse audit UX
+than one honest coarse grant, and the narrowing is enforcement-theater anyway
+(plugins run in-process; capabilities are audit/accident boundaries).
+
+DECISION: `primaryState: "none" | "read" | "readwrite"` — one space rooted at
+the primary checkout root, resolved through the same gitdir-pointer machinery,
+mirroring the workspace `filesystem` grant's whole-root granularity exactly.
+`artifactStore` is replaced before any consumer adopts it (zero consumers —
+clean pivot, documented in the 10.5.0 changelog). The escalation honesty:
+readwrite primaryState CAN write the primary tree unmediated (forge.yaml,
+hooks) — bypassing the integrate gate path. Accepted because (a) in-process
+plugins are not a security boundary, (b) the audit surface says exactly what is
+true — this plugin operates primary state directly, (c) the alternative is 2-4
+narrow grants per command with identical effective access.
+
+Implementation notes for 10.5.0: same makeDeferredSpacePort machinery, root =
+dirname(common-git-dir); capability rename artifactStore→primaryState in
+types+loader+tests; the widened-root lesson (locks live next to artifacts)
+generalizes — the whole checkout is the boundary, matching resolveWorkshopPaths
+primaryRoot semantics one-to-one.
