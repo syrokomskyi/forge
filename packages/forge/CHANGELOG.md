@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.8.1] — 2026-11-26
+
+Republish of 10.8.0 — the 10.8.0 version number was burned by a staged-registry-state conflict during first publish; content identical.
+
 ## [10.8.0] — 2026-11-26
 
 ### Fixed
