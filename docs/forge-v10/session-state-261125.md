@@ -165,3 +165,39 @@ REMAINING PROGRAM STATE:
   against engine source; one deviation annotated in /tmp/wave2c-scratch draft
   (no `reused` flag on the reuse path). SDK assumptions verified: paths.resolve sync,
   process.spawn default cwd workspaceRoot, allowlist basename matching.
+
+## Thread-5 resumption map — wave-2c integrate in flight (2026-11-26)
+
+**In flight**: wave-2c integrate in werkstatt session `auto/session-261126-02-wave2c-artifact-build`,
+commit `ed3a75c3b` — deploy.artifact.build extraction (6/6 deploy module completion).
+Capture files: `/tmp/w2c-integrate.json` / `.err` (EXIT marker). Verdict reading:
+`summary` field — "integrated ... cleanup done" = green.
+
+**If integrate refuses**: read the full json for the rule id. Known refusals this session
+and their remedies: PROBE-06/07 → probe fixture (FRICTION-02 precedent in
+docs/gate-probes/frictions/); WT-GATE lint → fix + recommit; FLOW-INT-19 → synthetic ids
+in fixtures. Never rerun integrate blindly — extract the rule first.
+
+**Completed this thread** (all durable): wave-3 INTEGRATED (journal-tail forgeState);
+forge 10.3.0 published+propagated (processSpawn array allowlist); selfhost pin aligned;
+FRICTION-02 ratchet paradox RESOLVED via RFC-1642 fixture binding; orphan 02 discarded,
+orphan 01 left inert (unregistered, content patch-equivalent in develop — operator
+decision pending on raw branch deletion).
+
+**Next-session entry points by priority**:
+1. Verify wave-2c integrate verdict; if green — deploy module migration COMPLETE (6/6),
+   update inventory wave-2c section.
+2. Next migration wave selection — candidates by ownership line: integrity cluster
+   (12 commands, signing domain overlap with proven chain), check module's
+   deploy.preflight/scripts.validate, or smallest-first re-analysis. journal.* are
+   domain commands (grants/materials), NOT the forge journal — different ownership.
+3. werkstatt F-0401 engine fix — independent track: decide sign-side payload fix
+   vs vestigial documentation; plugin tracks in synchronized change.
+4. SDK surface-gap candidate: scoped mkdir port (wave-2c workaround: spawn mkdir -p).
+5. Residual probe-ratchet design question: integrate-time capture of worktree firing
+   evidence into committed counters projection (inventory tail).
+
+**Operational reminders**: npm propagation lag is two-stage (metadata then tarball) —
+verify both before pin bumps; `forge` is the bin name (not forge10); integrate NEVER
+under timeout wrapper; flow.open is the only sanctioned session opener; fixture-authored
+probes need no pathPattern for friction.validate (file field is constant FRICTION_DIR).
