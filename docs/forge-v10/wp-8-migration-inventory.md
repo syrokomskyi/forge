@@ -1445,3 +1445,32 @@ EXTRACTION PROGRAM STATE — heavy-tail confirmed:
   measured minus shared deps)
 - E1 delegation program is the real endgame: forcing functions documented
   (nachweis validate/publish/withdraw coupling, bordbuch sibling invocation)
+
+## TERMINAL CLASSIFICATION — waves 17-20 executed, program at terminus (2026-11-26)
+
+Waves 17-20 integrated: notausgang x2 (wave-17, fingerprint subtree promoted),
+subdomain.list x1 (wave-18, terminal reuse economics — zero initial TSC errors),
+release leaf x3 (wave-19, surgical span extraction — leaf set proved
+transitively self-contained), release.sign + integrity cluster x1 (wave-20,
+kernel coupling illusory on measurement). F-0406 filed in werkstatt friction
+registry (integrated with wave-17).
+
+PLUGIN MANIFEST: 58 commands across 12 modules.
+
+TERMINAL CLASSIFICATION (measurement-based, definitive):
+
+| module residue | classification | evidence |
+|---|---|---|
+| handoff validate/pack/absorb | KERNEL-RETAIN economics | migrators registrar-total dependency: 9153 lines/28 files, complete set IS the behavior; total closure ~13k lines = 2.5x largest executed wave |
+| nachweis validate/publish/withdraw | E1-BLOCKED | genuine plugin→kernel backwards dependency (executeKernelCommand into kernel-retained commands) |
+| release prepare/ready | KERNEL-RETAIN | execution-invoked by leitstand.ship |
+| subdomain register/validate | KERNEL-RETAIN | execution-invoked by leitstand/service-promote |
+| isolation x6 | KERNEL-RETAIN semantic | enforcement machinery cannot migrate into what it enforces |
+| scope x3 | KERNEL-RETAIN semantic | ScopeManager runtime infrastructure (RFC-1036) |
+| mission/fleet/leitstand | KERNEL-RETAIN | kernel-runtime coupling (execute-command/pipeline imports) |
+| dns/bauakte/remediation/sternsystem-lifecycle | KERNEL-RETAIN | pipeline-internal invocation positions |
+
+PROGRAM REDUCES TO: E1 (delegation architecture — direction-C contract
+decision documented in wp-8-completion-design §7) and E3 (kernel retirement
+of migrated dark-run copies). Extraction machinery proven across closures
+79→5100 lines, 17 waves, zero regressions on integrate gates.
