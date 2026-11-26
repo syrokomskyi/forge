@@ -1222,3 +1222,19 @@ Endgame measurement (remaining WP-8 surface):
   aws-sdk bypasses the fetch capability port by construction (auditability
   not sandbox) — needs explicit doctrine before extraction
 - evolution — 2023 lines + fleet/health deps (largest remaining)
+
+## wave-12 seam-extraction progress (2026-11-26) — strategy-A validated in part
+
+First seam extracted: cacheCloneCommit byte-faithful into studio lib/evolution/
+(MISSION_GIT_COMMIT=1 bypass preserved exactly) — bordbuch-io redirect done.
+registry-io 534-line copy REMOVED after measurement: its consumption is two
+functions, one trivial (resolveCacheClonePath one-liner), one chained
+(resolveActiveWorkpieceDir → channel-migration + systemStateSchema +
+resolveWorkpiecePath). Line-precise extraction recipe in WAVE12-RESUME.md.
+
+New SDK need identified: ProcessPort.spawn opts lacks env — cacheCloneCommit's
+MISSION_GIT_COMMIT=1 env-passing has no clean adaptation without shell-inlining.
+forge 10.8.0 candidate: opts.env widening (small, backward-compatible).
+
+Wave-12 is a full-session arc: seams + bridge + wrappers + proofs + integrate.
+Everything pre-decided in the worktree's resume doc — execution only.
