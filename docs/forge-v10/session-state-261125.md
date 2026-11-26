@@ -981,3 +981,39 @@ executeDelegatedCommand port in werkstatt kernel + land behind 3 edges in
 order bordbuch.repair → bordbuch.validate → evidence.sync. The dark-run
 doctrine crossing (live deploy behavior change) still requires operator
 sign-off — but every prerequisite is now proven and published-artifact-ready.
+
+## 2026-11-26 — E1 delegation port implemented (unwired artifact)
+
+The E1 engineering spec is now executable infrastructure: `executeDelegatedCommand`
+implemented in werkstatt `packages/werkstatt-engine/src/kernel/runtime/delegate-command.ts`
+as a zero-risk UNWIRED artifact — nothing calls it until operator sign-off on the
+dark-run doctrine crossing.
+
+### Port shape (as implemented)
+
+- `parseDelegatedEnvelope(stdout)` — pure. Extracts exitCode/summary/data from the
+  forge `--json` envelope; tolerant scanner accepts leading stdout noise (legacy
+  pre-separation hosts), fast path is the whole-document parse. Consumption
+  contract unit-proven 6/6: clean envelopes, failure exit codes, legacy noise,
+  unparseable-output diagnostics.
+- `delegatedCommandId(name)` — kernel `bordbuch.repair` → plugin surface
+  `studio.bordbuch.repair` mapping, pass-through for already-prefixed ids.
+- `executeDelegatedCommand({workspaceRoot, commandName, argv, timeoutMs})` —
+  shells `pnpm exec forge <studio-id> --json <argv>` cwd-rooted at workspaceRoot
+  so project-local plugin discovery (forge.yaml) resolves identically to
+  interactive use. 10-minute default timeout, explicit SIGTERM kill, bounded
+  error diagnostics. Returns the shallow `DelegatedCommandResult` measured
+  sufficient at all live edges — NOT a fabricated full KernelExecutionReport
+  (metadata/logs can't survive a process boundary honestly).
+
+### What remains operator-gated (nothing else)
+
+1. npm publication of the forge contract-fix minor (envelope + stream separation)
+2. Edge wiring — 3 call-site swaps in documented order: bordbuch.repair (proof,
+   fire-and-forget) → bordbuch.validate → evidence.sync (deploy-critical, last)
+3. E3 retirement once delegation is live-proven
+
+The research phase of E1 is fully closed: measurement definitive, contract gaps
+closed and proven end-to-end, port implemented and unit-tested. Remaining work
+is a bounded wiring diff plus verification, executable in one session after
+sign-off.
