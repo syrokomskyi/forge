@@ -920,3 +920,24 @@ dirname(common-git-dir); capability rename artifactStore→primaryState in
 types+loader+tests; the widened-root lesson (locks live next to artifacts)
 generalizes — the whole checkout is the boundary, matching resolveWorkshopPaths
 primaryRoot semantics one-to-one.
+
+## wave-4b proof complete (2026-11-26) — first primaryState consumer validated
+
+Proofs on the 10.5.0 tarball (file-pin, pre-publication):
+- put executes end-to-end: CAS write worktree-local, degenerate shard `sh`
+  replicated exactly, 17-field manifest byte-shape, tmp archive rename,
+  idempotent first-match scan semantics
+- **decisive boundary proof**: `releases/w4bproof-r1/artifact.tar.gz` written
+  into the REAL primary checkout from the session worktree — md5-identical
+  bytes through writeFileBytes (binary-safe, no utf8 corruption)
+- systemId derivation read `<primary>/releases/<id>/release.yaml` through the
+  primaryState port — cross-boundary read proof
+- composition: wave-4a validate reads wave-4b artifact — module internally
+  consistent across extractions
+- lock lifecycle correct (acquire/release, finally-path release)
+- F-0403 filed: degenerate shard — `sha256:` prefix makes slice(0,2) constant
+  "sh"; sharding design is dead code in the engine
+- writeFileBytes added to WorkspaceIOPort (10.5.0) — the binary-copy gap was
+  discovered mid-implementation; string writeFile would corrupt gzip bytes
+
+Integrate blocked on: matrix r2 green → publish → propagation → npm-spec pins.
