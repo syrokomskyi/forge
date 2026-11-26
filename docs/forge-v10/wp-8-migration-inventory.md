@@ -1388,3 +1388,34 @@ extractable inventory after wave-15: nachweis leaf (13/15, heavy ~5000 lines),
 notausgang (2, 1629 lines), release leaf (invocation-form unverified), handoff
 (3, 3678 lines deep). The extraction program is entering its heavy-tail phase —
 each remaining wave is evolution-scale or partial-module surgery.
+
+## wave-16 nachweis leaf extraction (2026-11-26) — E1 forcing function discovered
+
+Session `wave16-nachweis`. 10 of 13 leaf commands ported: approve/sign/ingest/
+timestamp/key.ensure/consent.update/assessment.ingest/screenshot.ingest/
+screenshot.process/screenshot.upload. Closure ~4700 lines byte-identical;
+reuse economics at maximum — r2-client (wave-9), bordbuch-io + registry-seam +
+werkstatt-index-shim (wave-12/14) all already in tree; initial TSC count just
+12 for a 5100-line copy. sharp+pkijs+asn1js joined plugin deps (engine-pinned
+versions, dynamic-import boundaries preserved). Dotted-id convention fixed
+mid-wave: hyphenated file names map to dotted command ids per evolution
+precedent (studio.nachweis.key.ensure not key-ensure).
+
+ARCHITECTURALLY SIGNIFICANT — the coupling the E2 framework predicts was found
+INTRA-MODULE: nachweis.validate invokes bordbuch.validate and nachweis.publish
+invokes nachweis.manifest.generate through executeKernelCommand. publish's
+dependency is kernel-RETAINED (manifest.generate is pipeline-internal) — a
+genuine plugin→kernel backwards invocation. validate's dependency is a sibling
+plugin command (bordbuch.validate migrated in wave-14) — resolvable in-plugin.
+The three coupled commands (validate/publish/withdraw) are DEFERRED to the E1
+program: they are its forcing function. Direction-C shell-out shim cannot
+reproduce executeKernelCommand's structured in-proc report objects without
+a fidelity answer — `werkstatt run --json` output shape vs KernelCommandResult
+needs a contract decision. Documented in wp-8-completion-design §7.
+
+GATE HOLE discovered: commit 37892869f's scoped typecheck reported pass while
+the tree carried 2 real TSC errors (nachweis-n3-types broken shim restore).
+Either scoped typecheck judges a file subset that excludes lib internals, or
+the studio package tsconfig is partially covered. Filed as F-0406 candidate —
+investigate scoped-typecheck coverage before trusting it as wave evidence.
+Fixed in-flight by follow-up commit before integrate.
