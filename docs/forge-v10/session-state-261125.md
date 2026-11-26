@@ -124,3 +124,8 @@ werkstatt follow-up in flight:
 - forge10 pin 10.2.0 + F-0401 friction cherry-picked into REGISTERED session auto/session-261126-03 (f4deac73c); integrate running
 - FLOW LESSON: session branches must be opened via pnpm exec forge flow.open --kind session --slug <slug> — manual git worktree add creates unregistered branches that FLOW-INT-06 refuses and FLOW-GUARD-02 grammar-rejects; two orphan sessions (-01 unregistered, -02 empty from timed-out open) need flow.discard cleanup AFTER integrate completes (registry writes must not race)
 - wave-3 READY: journal-tail migration content staged in /tmp/wave3-scratch (may be gone after reboot — regenerable from docs/forge-v10/wave3-journal-tail-forgestate.draft.ts); needs pin 10.2.1 + manifest forgeState:read + output shape fix (event/branch/sha/at — old pilot emitted wrong-schema kind/opId/ts)
+
+
+## Thread-4c — probe-ratchet interaction lesson (2026-11-26 ~02:20Z)
+
+New operational lesson: WT-GATE-08 PROBE-07 can refuse integration when the session's own validation activity generates liveness evidence for baselined rules. The friction.validate runs that confirmed the F-0401 fix also exercised FRICTION-02, creating evidence that staled the unprobed baseline mid-session. Remedy is sanctioned shrink-only regeneration (gate.probe.catalog --write-baseline). Watch-out: the shrink magnitude reflects ALL evidence since last regeneration (890→629 here), not just the session's own — the commit message must say so honestly. The catalog check is state-dependent: running standalone vs inside gate context can disagree because evidence accumulates between runs.
