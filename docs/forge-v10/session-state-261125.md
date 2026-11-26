@@ -213,3 +213,36 @@ migrated module. Plugin surface on develop: 7 commands on forge 10.3.0.
 Next-session entry points unchanged (see thread-5 resumption map above) except:
 wave-2c verify step is DONE; next-wave selection is now the top item; the
 robots-parser phantom friction filing joins the werkstatt batch candidates.
+
+## Thread-6 resumption map — forge 10.4.0 release in flight (2026-11-26)
+
+**In flight**: matrix for forge 10.4.0 at `/tmp/matrix-1040.log` (marker MATRIX_DONE:0).
+Version+changelog committed. artifactStore spaces port is the cargo.
+
+**When matrix green** (proven release procedure):
+1. `cd packages/forge && npm publish --access public` — prepublish runs node24 smoke
+2. propagation poll: BOTH `registry.npmjs.org/@warpgogol%2fforge/10.4.0` AND the tarball
+   URL must be 200 (two-stage lag proven repeatedly)
+3. selfhost pin: `.forge-selfhost/package.json` → 10.4.0, pnpm install, commit lockfile
+   + pnpm-workspace.yaml release-age exclude (machine-updated)
+
+**Then werkstatt wave-4**: artifact-store extraction — first consumer of the port.
+Open session `flow.open --kind session --slug wave4-artifact-store`. Engine source:
+`packages/werkstatt-engine/src/artifact-store/artifact-store-commands.ts` (4 commands:
+get/put/gc/validate). Key extraction notes: coupling is utility-grade only
+(atomicWriteFile, acquireLock/releaseLock, generateOperationId — copy into plugin);
+artifactStoreDir resolves primaryRoot — the NEW PORT replaces exactly that
+resolution; locking semantics need care (locks in shared state — investigate whether
+acquireLock operates inside the artifacts dir or elsewhere before extraction).
+Manifest needs `artifactStore: readwrite` + `forgeRange >=10.4.0` + forge10 pin 10.4.0.
+
+**Completed this thread**: deploy module 6/6 INTEGRATED (wave-2c); wave-3 forgeState
+consumer INTEGRATED; FRICTION-02 ratchet paradox resolved via RFC-1642 fixture;
+forge 10.3.0 published (processSpawn allowlist); wave-4 structural finding documented
+(extraction wall — semantic state ports); artifactStore port implemented+tested 6/6.
+
+**Wave-4 doctrine reminders**: extraction unit = command, never cluster; parity
+replicates defects (F-0401 precedent); scope field decides candidacy (app-scope is a
+different extraction line — ALL integrity.* are app-scope, do not retry that analysis);
+integrate NEVER under timeout wrapper; nested node_modules .gitignore phantom costs
+one FLOW-INT-01 retry per session (delete noise file, retry — friction candidate).
