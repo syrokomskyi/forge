@@ -4,6 +4,6 @@
   "version": "0.0.0",
   "description": "WP-6 self-host pin \u2014 the forge monorepo is governed by the npm-published forge artifact, never its own workspace build. Bump the pin after every forge release.",
   "dependencies": {
-    "@warpgogol/forge": "10.3.0"
+    "@warpgogol/forge": "10.4.0"
   }
 }

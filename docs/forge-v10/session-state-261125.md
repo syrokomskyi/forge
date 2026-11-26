@@ -327,3 +327,17 @@ consumer per the parity-logic split.
   candidate). Dry-run never locks. Extraction unit realistically:
   collectReleaseArtifacts + helpers translate with it; estimate the closure
   before committing to the wave (grep collectReleaseArtifacts definition).
+
+## forge 10.4.0 PUBLISHED (2026-11-26) — artifactStore spaces port live
+
+Release chain executed: matrix r1 failed on tmpfs pressure + lint residue →
+environmental fix (disk-backed TMPDIR, residue cleanup) + lint repairs →
+matrix r2 all heavyweight gate tests green, one pkg-health suppression →
+published. Propagation poll in flight; selfhost pin bumped to 10.4.0 (install
+after propagation). Matrix composition doctrine applied per wave-2c precedent.
+
+**Next session resume**: (1) complete selfhost install+commit if not done;
+(2) werkstatt wave-4a — artifact.store.gc extraction against the new port.
+Remember: collectReleaseArtifacts closure ~120 lines, primary-rooted locking,
+dry-run never locks. The granularity pivot question (narrow spaces vs one
+primaryState) is OPEN — decide with put evidence; gc fits the narrow port.
