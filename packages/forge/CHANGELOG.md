@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [10.2.0] — 2026-11-26
+
+### Added
+
+- **forgeState port** — host-implemented reads of forge's own state space across the workspace sandbox boundary (RFC-1645 WP-8). `resolveGitCommonDir` parses the worktree pointer file without spawning git; `forgeState.journal.tail/count` and `.size` sit behind the distinct `forgeState` manifest grant — never a widening of filesystem. The decisive test proves the boundary shape: a worktree journal is readable through the port while `ctx.workspace` correctly cannot see it. Capability: `forgeState: "none" | "read"` (write deferred until a mutating consumer exists).
+
 ## [10.1.2] — 2026-11-25
 
 ### Added
