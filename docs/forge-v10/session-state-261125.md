@@ -442,3 +442,14 @@ alias collision). Noted: F-0386 already exists for the robots-parser phantom —
 no duplicate filing needed. Matrix 10.5.0 (primaryState) in flight at
 /tmp/matrix-1050.log. Next: matrix green → publish → propagation → wave-4b put
 extraction (tar dep + primaryState consumer + degenerate-shard friction filing).
+
+## 10.5.0 published (2026-11-26) — primaryState + writeFileBytes live pending propagation
+
+primaryState replaces artifactStore (evidence-based pivot); writeFileBytes added
+(binary copy gap found mid-wave-4b). Matrix r2 green (race-test flake in r1 was
+load-induced — isolation green; note for future: avoid integrate+matrix concurrency).
+wave-4b proof complete on tarball — see inventory. Remaining mechanical chain:
+propagation → npm-spec pins in wave-4b worktree (BOTH root + studio package.json,
+currently file:/tmp/warpgogol-forge-10.5.0.tgz) → reinstall → production-real
+smoke → commit F-0403+put+manifest → integrate (phantom already preempted).
+Session worktree: werkstatt@auto-session-261126-04-wave4-artifact-put.
