@@ -670,3 +670,19 @@ WP-8 remaining endgame (only two modules):
 1. evidence.fetch/sync — BLOCKED on operator network-capability doctrine
    (aws-sdk ambient network vs plugin capability model — decision needed)
 2. evolution — 2023 lines + fleet deps, mechanical but largest
+
+## wave-12 STAGED not integrated — evolution closure explosion mapped honestly
+
+Session opened wave-12 (evolution), copied 13 files byte-identical into
+lib/evolution/, then TSC enumeration revealed the truth: transitive closure
+through registry-io → channel-migration/passport + mission-git-commit cluster
+explodes to 4000+ lines. Evolution is NOT a mechanical-port wave at
+byte-identical granularity. WAVE12-RESUME.md in the worktree carries three
+strategies (seam-extraction recommended / SDK-widening / scope-question:
+evolution may legitimately stay kernel-resident as platform-core).
+
+Honest endgame state: mechanical waves are DONE — every remaining item
+(evidence network doctrine, evolution scope/strategy) needs a decision,
+not execution. WP-8 mechanical inventory: 19 commands migrated across
+11 waves, 4 modules complete (artifact-store, hygiene, intake, signing/
+behavior/journal/deploy surfaces).
