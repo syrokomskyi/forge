@@ -380,3 +380,30 @@ Tests 6/6 green, typecheck clean, committed. Matrix 10.4.1 at
 
 **Resume**: matrix green → publish 10.4.1 (both 10.4.0+10.4.1 propagate
 together) → selfhost pin to 10.4.1 + install + commit → wave-4a runbook.
+
+## wave-4 REASSESSMENT — measured closure reorders the plan (2026-11-26)
+
+Deep-read of the gc closure (artifact-store-commands.ts:446-757 + hygiene deps):
+
+- gc pulls THREE hygiene helpers: protection.ts (257 lines — readReleaseInfos
+  + computeReleaseProtection), anomalies.ts (168 — readCasManifests),
+  release-index.ts (99 — appendReleaseIndexEntry). Total translation surface
+  ~700 lines — HEAVY, not the small first-consumer assumed.
+- access topology kills the narrow-space sufficiency: readReleaseInfos reads
+  `<primary>/releases` (OUTSIDE the .werkstatt space), release-index writes
+  `<primary>/releases/index.yaml`, CAS inside artifactStoreDir. gc needs TWO
+  spaces minimum. Evidence now favors the `primaryState` coarse space (rooted
+  at primary checkout, mirroring the filesystem grant's whole-root granularity)
+  over multiplying narrow spaces — plugins run in-process, narrowing is
+  audit-granularity not security, and 2-3 spaces per command is worse audit UX
+  than one honest coarse grant. DECISION DEFERRED to first true consumer;
+  artifactStore port as shipped stays (harmless, possibly useful).
+
+**Revised wave ordering**:
+- wave-4a: artifact.store.get + validate — PURE workspace parity (storeBase is
+  workspaceRoot-relative in both, zero resolveWorkshopPaths usage in their
+  bodies — verify once more during extraction). No state port needed at all;
+  extraction = mechanical translation. Two commands banked fast.
+- wave-4b: artifact.store.put — needs releases-space for the release-copy;
+  forces the primaryState decision with concrete evidence.
+- wave-4c: artifact.store.gc — heavy hygiene closure; last.
