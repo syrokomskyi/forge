@@ -298,3 +298,22 @@ session: `hashPath`, `ARTIFACTS_DIR`, `ARTIFACTS_DIR_NAME`, call sites of
   wave-4b = put/get/validate (workspace-port-heavy, put additionally needs a
   releases-space decision — the granularity pivot question). This ordering
   also front-loads the port proof before the heavy tar machinery translation.
+
+## tmpfs matrix lesson + r2 in flight (2026-11-26)
+
+The first 10.4.0 matrix failed TWO ways: (1) lint — dead `scoped` residue from
+the factory extraction + pre-existing unused `existsSync` in RFC-1647's
+lease.ts (both fixed, committed); (2) heavyweight gate tests dying with git
+`config.lock` write failures — /tmp is tmpfs (31G), vitest mkTmp residue had
+consumed 23G. trust-boundary-cx34h passes in isolation after cleanup —
+environmental, not behavioral.
+
+**Durable lesson**: run the matrix with `TMPDIR=~/projects/warpgogol/.tmp-forge`
+(disk-backed, created) so heavyweight tests stop consuming RAM — same lesson as
+werkstatt RFC-1623. Residue hygiene: `find /tmp -maxdepth 1 -name 'forge-*'
+-mmin +30 | xargs rm -rf` — vitest never cleans mkTmp dirs.
+
+**Matrix r2 in flight**: `/tmp/matrix-1040-r2.log`, marker MATRIX_DONE:0.
+When green: publish 10.4.0, propagation poll (two-stage), selfhost pin bump.
+Then werkstatt wave-4a = artifact.store.gc — the true first artifactStore-port
+consumer per the parity-logic split.
